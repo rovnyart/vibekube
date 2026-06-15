@@ -6,8 +6,8 @@ This file tracks implementation status across all phases. Keep this updated when
 
 | Phase | Plan | Status | Current Checkpoint |
 | --- | --- | --- | --- |
-| 0 | [Project Foundation](PHASE0.md) | Review checkpoint | Native shell foundation builds; unit tests pass; UI automation blocked locally |
-| 1 | [Kubeconfig Discovery](PHASE1.md) | Not started | Waiting for Phase 0 app foundation |
+| 0 | [Project Foundation](PHASE0.md) | Review checkpoint | Native shell foundation builds; unit and UI tests pass with preview fixtures |
+| 1 | [Kubeconfig Discovery](PHASE1.md) | Review checkpoint | App loads kubeconfig contexts; parser/unit/UI tests pass; file watching/search/persistence remain |
 | 2 | [Kubernetes API Connectivity](PHASE2.md) | Not started | Waiting for kubeconfig/auth models |
 | 3 | [Main App Shell](PHASE3.md) | Not started | Waiting for foundation/navigation model |
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Not started | Waiting for API client/resource store |
@@ -27,7 +27,7 @@ This file tracks implementation status across all phases. Keep this updated when
 - [x] Create detailed phase implementation plans.
 - [x] Keep existing scaffold and demo cluster untouched while planning.
 - [x] Replace scaffold UI with Vibekube app shell.
-- [ ] Parse kubeconfig and show contexts.
+- [x] Parse kubeconfig and show contexts.
 - [ ] Connect to demo cluster.
 - [ ] Browse resources.
 - [ ] Inspect YAML.

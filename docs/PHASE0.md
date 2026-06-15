@@ -105,7 +105,7 @@ Checkpoint: stop for visual feedback after the shell and placeholders are visibl
 
 - Build passed on June 15, 2026 with `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' build`.
 - Unit tests passed on June 15, 2026 with `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests`.
-- Full UI test run compiled but failed before executing UI assertions because Xcode timed out while enabling automation mode locally.
+- UI tests passed on June 15, 2026 after adding deterministic preview-cluster launch data.
 
 ## Validation Commands
 

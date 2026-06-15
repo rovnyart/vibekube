@@ -25,6 +25,7 @@ final class vibekubeUITests: XCTestCase {
     @MainActor
     func testShellLaunches() throws {
         let app = XCUIApplication()
+        app.launchEnvironment["VIBEKUBE_USE_PREVIEW_CLUSTERS"] = "1"
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Vibekube"].waitForExistence(timeout: 5))
@@ -36,7 +37,9 @@ final class vibekubeUITests: XCTestCase {
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
+            let app = XCUIApplication()
+            app.launchEnvironment["VIBEKUBE_USE_PREVIEW_CLUSTERS"] = "1"
+            app.launch()
         }
     }
 }

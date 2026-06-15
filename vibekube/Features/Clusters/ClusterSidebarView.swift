@@ -7,16 +7,31 @@ struct ClusterSidebarView: View {
         VStack(spacing: 0) {
             sidebarHeader
 
-            List(selection: $appModel.selectedClusterID) {
-                Section("Contexts") {
-                    ForEach(appModel.clusters) { cluster in
-                        ClusterRow(cluster: cluster)
-                            .tag(cluster.id as String?)
+            if appModel.clusters.isEmpty {
+                EmptyStateView(
+                    title: appModel.kubeconfigState.title,
+                    subtitle: appModel.kubeconfigState.detail,
+                    systemImage: "externaldrive.badge.questionmark"
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 12)
+            } else {
+                List(selection: $appModel.selectedClusterID) {
+                    Section {
+                        ForEach(appModel.clusters) { cluster in
+                            ClusterRow(cluster: cluster)
+                                .tag(cluster.id as String?)
+                        }
+                    } header: {
+                        Text("Contexts")
+                    } footer: {
+                        Text(appModel.kubeconfigState.title)
+                            .font(.caption)
                     }
                 }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
             }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
         }
         .background(.thinMaterial)
         .onChange(of: appModel.selectedClusterID) { _, selectedClusterID in
@@ -56,12 +71,28 @@ private struct ClusterRow: View {
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(cluster.name)
-                    .font(.body.weight(.medium))
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(cluster.name)
+                        .font(.body.weight(.medium))
+                        .lineLimit(1)
+
+                    if cluster.isCurrentContext {
+                        Text("Current")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.teal)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.teal.opacity(0.12), in: Capsule())
+                    }
+                }
+
                 Text(cluster.contextName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text("\(cluster.namespace) · \(cluster.authDescription)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
 

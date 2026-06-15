@@ -78,6 +78,20 @@ private struct DashboardRows: View {
             }
 
             GridRow {
+                Text("Source")
+                    .foregroundStyle(.secondary)
+                Text(cluster?.sourceName ?? "None")
+                    .textSelection(.enabled)
+            }
+
+            GridRow {
+                Text("Auth")
+                    .foregroundStyle(.secondary)
+                Text(cluster?.authDescription ?? "None")
+                    .textSelection(.enabled)
+            }
+
+            GridRow {
                 Text("Server")
                     .foregroundStyle(.secondary)
                 Text(cluster?.server ?? "None")

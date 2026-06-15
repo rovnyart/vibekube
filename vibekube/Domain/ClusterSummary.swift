@@ -6,6 +6,9 @@ struct ClusterSummary: Identifiable, Hashable {
     var contextName: String
     var server: String
     var namespace: String
+    var sourceName: String
+    var isCurrentContext: Bool
+    var authDescription: String
     var connectionState: ConnectionState
     var kubernetesVersion: String?
     var lastSeenAt: Date?
@@ -19,6 +22,9 @@ extension ClusterSummary {
             contextName: "kind-vibekube-dev",
             server: "https://127.0.0.1",
             namespace: "vibekube-demo",
+            sourceName: "~/.kube/config",
+            isCurrentContext: true,
+            authDescription: "Client certificate",
             connectionState: .disconnected,
             kubernetesVersion: nil,
             lastSeenAt: nil
@@ -29,6 +35,9 @@ extension ClusterSummary {
             contextName: "staging",
             server: "https://staging.example.invalid",
             namespace: "default",
+            sourceName: "~/.kube/config",
+            isCurrentContext: false,
+            authDescription: "Exec auth",
             connectionState: .unsupportedAuth,
             kubernetesVersion: nil,
             lastSeenAt: nil
@@ -39,6 +48,9 @@ extension ClusterSummary {
             contextName: "production",
             server: "https://production.example.invalid",
             namespace: "default",
+            sourceName: "~/.kube/config",
+            isCurrentContext: false,
+            authDescription: "Bearer token",
             connectionState: .disconnected,
             kubernetesVersion: nil,
             lastSeenAt: nil

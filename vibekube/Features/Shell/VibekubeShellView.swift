@@ -31,6 +31,7 @@ struct VibekubeShellView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
+                .help("Reload kubeconfig")
                 .accessibilityIdentifier("toolbar.refresh")
 
                 Button {

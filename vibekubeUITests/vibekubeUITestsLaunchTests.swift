@@ -20,6 +20,7 @@ final class vibekubeUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunch() throws {
         let app = XCUIApplication()
+        app.launchEnvironment["VIBEKUBE_USE_PREVIEW_CLUSTERS"] = "1"
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Vibekube"].waitForExistence(timeout: 5))
