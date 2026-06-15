@@ -19,7 +19,7 @@ Goal: browse Kubernetes resources by group with sortable, filterable, namespace-
 - The app can now list discovered resources through generic Kubernetes list endpoints.
 - Built-in navigation items route to a native table once their API resource is discovered.
 - The table currently shows safe generic columns: name, namespace, kind, status, age, and labels.
-- Selecting a table row opens a side inspector and loads the full Kubernetes object manifest.
+- Selecting a table row opens the bottom detail inspector and loads the full Kubernetes object manifest.
 - Toolbar search filters the current table.
 - New cluster connections default to `All Namespaces` so workload lists are cluster-wide unless narrowed.
 - Toolbar namespace selection reloads namespaced resources for the selected namespace or all namespaces.
@@ -42,25 +42,25 @@ Goal: browse Kubernetes resources by group with sortable, filterable, namespace-
 
 - [x] Pods.
 - [x] Deployments.
-- [ ] ReplicaSets.
-- [ ] StatefulSets.
-- [ ] DaemonSets.
-- [ ] Jobs.
-- [ ] CronJobs.
+- [x] ReplicaSets.
+- [x] StatefulSets.
+- [x] DaemonSets.
+- [x] Jobs.
+- [x] CronJobs.
 - [x] Services.
-- [ ] Ingresses.
+- [x] Ingresses.
 - [x] ConfigMaps.
 - [x] Secrets.
-- [ ] PersistentVolumes.
-- [ ] PersistentVolumeClaims.
-- [ ] StorageClasses.
-- [ ] ServiceAccounts.
-- [ ] Roles.
-- [ ] RoleBindings.
-- [ ] ClusterRoles.
-- [ ] ClusterRoleBindings.
-- [ ] Nodes.
-- [ ] Namespaces.
+- [x] PersistentVolumes.
+- [x] PersistentVolumeClaims.
+- [x] StorageClasses.
+- [x] ServiceAccounts.
+- [x] Roles.
+- [x] RoleBindings.
+- [x] ClusterRoles.
+- [x] ClusterRoleBindings.
+- [x] Nodes.
+- [x] Namespaces.
 - [x] Events.
 - [ ] CRDs.
 
@@ -85,7 +85,7 @@ Goal: browse Kubernetes resources by group with sortable, filterable, namespace-
 - [ ] Copy name, namespace/name, UID, labels, and JSON path.
 - [x] Loading/empty/error states.
 - [x] Row selection.
-- [x] Side manifest inspector.
+- [x] Bottom detail inspector.
 
 Checkpoint: stop after Pods, Deployments, Services, ConfigMaps, Secrets, and Events browse correctly.
 

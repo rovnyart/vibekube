@@ -9,7 +9,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 0 | [Project Foundation](PHASE0.md) | Review checkpoint | Native shell foundation builds; unit and UI tests pass with preview fixtures |
 | 1 | [Kubeconfig Discovery](PHASE1.md) | Review checkpoint | App loads kubeconfig contexts, including exec/Teleport metadata; parser/unit/UI tests pass |
 | 2 | [Kubernetes API Connectivity](PHASE2.md) | Review checkpoint | Native client connects, runs exec auth, discovers API resources, and loads namespaces |
-| 3 | [Main App Shell](PHASE3.md) | Not started | Waiting for foundation/navigation model |
+| 3 | [Main App Shell](PHASE3.md) | Review checkpoint | NavigationSplitView shell, grouped resource nav, toolbar controls, placeholders, and basic shortcuts exist |
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Started | Dashboard Recent Events loads real Kubernetes events; full health summaries and charts are planned |
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
 | 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, Environment, YAML, Metadata, and Conditions tabs with masked Secret env reveal |
@@ -20,6 +20,17 @@ This file tracks implementation status across all phases. Keep this updated when
 | 11 | [Preferences, Security, Packaging](PHASE11.md) | Not started | Waiting for core app behavior |
 | 12 | [AI Foundations](PHASE12.md) | Not started | Waiting for stable resource context model |
 | 13 | [Advanced AI Operations](PHASE13.md) | Not started | Waiting for AI foundation |
+
+## Current Execution Track
+
+The implementation is intentionally allowed to take small cross-phase slices when user-visible gaps are found, but the product milestone remains ordered:
+
+1. Close read-only foundation gaps in Phases 3-6.
+2. Finish a useful Phase 4 dashboard: health summaries, charts, warnings, node/pod/workload status, and metrics fallback.
+3. Start Phase 7 logs once dashboard and detail basics are coherent.
+4. Move to watches/realtime updates only after logs have a stable first version.
+
+Current stop rule: after any visible UI slice, stop for manual review before moving to the next feature family.
 
 ## Global Progress
 
