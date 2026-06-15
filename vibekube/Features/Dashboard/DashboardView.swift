@@ -11,6 +11,7 @@ struct DashboardView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                connectionMessage
 
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                     MetricTile(title: "Nodes", value: "0", systemImage: "server.rack", tint: .indigo)
@@ -54,6 +55,21 @@ struct DashboardView: View {
             Spacer()
 
             StatusBadge(state: appModel.selectedConnectionState)
+        }
+    }
+
+    @ViewBuilder
+    private var connectionMessage: some View {
+        if let message = appModel.connectionErrorMessage, !message.isEmpty {
+            Label(message, systemImage: appModel.selectedConnectionState.systemImage)
+                .font(.callout)
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                .textSelection(.enabled)
+                .accessibilityIdentifier("dashboard.connectionError")
         }
     }
 }

@@ -18,6 +18,18 @@ struct KubeconfigSource: Hashable {
         }
         return path
     }
+
+    func resolve(path: String) -> URL {
+        let expandedPath = (path as NSString).expandingTildeInPath
+        if (expandedPath as NSString).isAbsolutePath {
+            return URL(fileURLWithPath: expandedPath).standardizedFileURL
+        }
+
+        return self.url
+            .deletingLastPathComponent()
+            .appendingPathComponent(expandedPath)
+            .standardizedFileURL
+    }
 }
 
 struct Kubeconfig: Equatable {

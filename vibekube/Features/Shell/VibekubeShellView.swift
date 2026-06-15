@@ -76,6 +76,50 @@ private struct ClusterPicker: View {
             }
 
             StatusBadge(state: appModel.selectedConnectionState)
+
+            Button {
+                if appModel.selectedConnectionState == .connected ||
+                    appModel.selectedConnectionState == .connecting {
+                    appModel.disconnectSelectedCluster()
+                } else {
+                    appModel.connectSelectedCluster()
+                }
+            } label: {
+                Label(connectButtonTitle, systemImage: connectButtonImage)
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.bordered)
+            .disabled(!canUseConnectionButton)
+            .help(connectButtonTitle)
+            .accessibilityIdentifier("toolbar.connection")
         }
+    }
+
+    private var connectButtonTitle: String {
+        switch appModel.selectedConnectionState {
+        case .connected:
+            "Disconnect"
+        case .connecting:
+            "Cancel Connection"
+        default:
+            "Connect"
+        }
+    }
+
+    private var connectButtonImage: String {
+        switch appModel.selectedConnectionState {
+        case .connected:
+            "xmark.circle"
+        case .connecting:
+            "stop.circle"
+        default:
+            "bolt.horizontal.circle"
+        }
+    }
+
+    private var canUseConnectionButton: Bool {
+        appModel.selectedConnectionState == .connected ||
+            appModel.selectedConnectionState == .connecting ||
+            appModel.canConnectSelectedCluster
     }
 }

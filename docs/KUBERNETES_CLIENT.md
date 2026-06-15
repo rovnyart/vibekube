@@ -1,6 +1,6 @@
 # Kubernetes Client Design
 
-Status: Draft, updated during Phase 1.
+Status: Draft, updated during Phase 2.
 
 This document captures client behavior that should stay true across implementation phases. The most important rule: Vibekube should behave like `kubectl` and established clients wherever kubeconfig semantics already define the right thing.
 
@@ -9,11 +9,33 @@ This document captures client behavior that should stay true across implementati
 | Kubeconfig auth method | Phase 1 parse/display | Phase 2 connection target | Notes |
 | --- | --- | --- | --- |
 | Bearer token | Supported | Supported | Never log or display token values. |
-| Client certificate/key data | Supported | Supported if feasible in first pass | Use in-memory TLS identity where possible. |
-| Client certificate/key paths | Supported | Supported if feasible in first pass | Preserve paths and avoid copying secrets. |
-| `exec` credential plugin | Supported | Supported | Required for Teleport, EKS, GKE, Azure, and many corporate clusters. |
+| Client certificate/key data | Supported | Supported | Currently imported into a temporary keychain to create a URLSession client identity. |
+| Client certificate/key paths | Supported | Supported | Paths are resolved relative to the kubeconfig source file. |
+| `exec` credential plugin | Supported | Next Phase 2 slice | Required for Teleport, EKS, GKE, Azure, and many corporate clusters. |
 | Legacy `auth-provider` | Visible as unsupported | Deferred | Keep visible with a useful message. |
 | Basic auth | Visible as unsupported | Deferred | Deprecated/rare; do not prioritize. |
+
+## Current Phase 2 Checkpoint
+
+Vibekube now builds a native client configuration from the selected kubeconfig context and calls `/version` with `URLSession`.
+
+Implemented:
+
+- certificate-authority data and file paths
+- bearer token auth
+- client certificate/key data and file paths
+- basic HTTP status and Kubernetes `Status` error mapping
+- connected/connecting/error UI states
+- opt-in kind integration test through `VIBEKUBE_RUN_KIND_INTEGRATION=1`
+
+Not implemented yet:
+
+- `/api` and `/apis` discovery
+- namespace/resource list APIs
+- exec credential execution
+- Teleport browser SSO/MFA through `tsh`
+
+Client certificate note: URLSession needs a `SecIdentity` for mTLS. The current implementation imports the PEM certificate/key into a temporary keychain, uses the identity for the session challenge, and deletes the keychain afterward. This avoids polluting the login keychain, but it uses deprecated `SecKeychain` APIs; revisit the long-term packaging/security approach in Phase 11.
 
 ## Exec Credential Plugins
 

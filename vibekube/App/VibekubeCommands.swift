@@ -13,7 +13,7 @@ struct VibekubeCommands: Commands {
             Button("Disconnect") {
                 appModel.disconnectSelectedCluster()
             }
-            .disabled(appModel.selectedConnectionState != .connected)
+            .disabled(appModel.selectedConnectionState != .connected && appModel.selectedConnectionState != .connecting)
 
             Divider()
 
