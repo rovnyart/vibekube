@@ -5,6 +5,59 @@ metadata:
   labels:
     app.kubernetes.io/part-of: vibekube
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-runtime-config
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/part-of: vibekube
+    app.kubernetes.io/name: demo-runtime-config
+data:
+  APP_MODE: "demo"
+  FEATURE_FLAGS: "env-panel,secret-reveal,configmap-ref"
+  LOG_LEVEL: "debug"
+  PUBLIC_GREETING: "hello-from-configmap"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: echo-web-settings
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/part-of: vibekube
+    app.kubernetes.io/name: echo-web-settings
+data:
+  NGINX_ENTRYPOINT_QUIET_LOGS: "1"
+  WEB_THEME: "liquid-glass-demo"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: demo-credentials
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/part-of: vibekube
+    app.kubernetes.io/name: demo-credentials
+type: Opaque
+stringData:
+  API_TOKEN: "vk_demo_token_reveal_me"
+  DB_PASSWORD: "vibekube-demo-password"
+  LICENSE_KEY: "license-demo-123"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: demo-envfrom-secret
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/part-of: vibekube
+    app.kubernetes.io/name: demo-envfrom-secret
+type: Opaque
+stringData:
+  PAYMENT_KEY: "secret-from-envfrom"
+  WEBHOOK_SECRET: "envfrom-webhook-secret"
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -28,6 +81,45 @@ spec:
           ports:
             - name: http
               containerPort: 80
+          env:
+            - name: APP_ENV
+              value: "development"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: CPU_LIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.cpu
+            - name: PUBLIC_GREETING
+              valueFrom:
+                configMapKeyRef:
+                  name: demo-runtime-config
+                  key: PUBLIC_GREETING
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: demo-credentials
+                  key: DB_PASSWORD
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: demo-credentials
+                  key: API_TOKEN
+          envFrom:
+            - configMapRef:
+                name: demo-runtime-config
+            - prefix: ECHO_
+              configMapRef:
+                name: echo-web-settings
+            - prefix: SECRET_BUNDLE_
+              secretRef:
+                name: demo-envfrom-secret
           readinessProbe:
             httpGet:
               path: /
@@ -79,13 +171,36 @@ spec:
       containers:
         - name: counter
           image: busybox:1.36
+          env:
+            - name: APP_ENV
+              value: "demo"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: demo-runtime-config
+                  key: LOG_LEVEL
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: demo-credentials
+                  key: API_TOKEN
+          envFrom:
+            - configMapRef:
+                name: demo-runtime-config
+            - prefix: DEMO_SECRET_
+              secretRef:
+                name: demo-envfrom-secret
           command:
             - /bin/sh
             - -c
             - |
               i=0
               while true; do
-                echo "$(date -Iseconds) vibekube demo log line $i from $(hostname)"
+                echo "$(date -Iseconds) vibekube demo log line $i from ${POD_NAME:-$(hostname)} env=${APP_ENV:-unset} log=${LOG_LEVEL:-unset}"
                 i=$((i + 1))
                 sleep 2
               done
@@ -117,10 +232,30 @@ spec:
           containers:
             - name: heartbeat
               image: busybox:1.36
+              env:
+                - name: HEARTBEAT_MESSAGE
+                  value: "vibekube env inspector demo"
+                - name: FEATURE_FLAGS
+                  valueFrom:
+                    configMapKeyRef:
+                      name: demo-runtime-config
+                      key: FEATURE_FLAGS
+                - name: LICENSE_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: demo-credentials
+                      key: LICENSE_KEY
+              envFrom:
+                - prefix: HEARTBEAT_
+                  configMapRef:
+                    name: demo-runtime-config
+                - prefix: HEARTBEAT_SECRET_
+                  secretRef:
+                    name: demo-envfrom-secret
               command:
                 - /bin/sh
                 - -c
-                - echo "$(date -Iseconds) vibekube heartbeat job finished"
+                - echo "$(date -Iseconds) ${HEARTBEAT_MESSAGE} flags=${FEATURE_FLAGS:-unset}"
               resources:
                 requests:
                   cpu: 5m

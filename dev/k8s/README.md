@@ -7,6 +7,7 @@ It uses [kind](https://kind.sigs.k8s.io/) on top of Docker and creates:
 - `vibekube-demo/echo-web`: two small nginx pods behind a service.
 - `vibekube-demo/log-counter`: a pod that writes a log line every two seconds.
 - `vibekube-demo/tiny-heartbeat`: a CronJob that creates short-lived job pods every two minutes.
+- Demo ConfigMaps and Secrets referenced through pod `env`, `envFrom`, `configMapKeyRef`, and `secretKeyRef` so the resource inspector has real data to render.
 
 ## Start
 
@@ -32,6 +33,8 @@ http://localhost:18080
 kubectl -n vibekube-demo get pods -w
 kubectl -n vibekube-demo logs -f deploy/log-counter
 kubectl -n vibekube-demo describe svc echo-web
+kubectl -n vibekube-demo describe pod -l app.kubernetes.io/name=echo-web
+kubectl -n vibekube-demo get configmap,secret
 kubectl -n vibekube-demo get jobs
 ```
 
