@@ -216,7 +216,7 @@ private struct ManifestYAMLTextView: NSViewRepresentable {
         scrollView.drawsBackground = true
         scrollView.backgroundColor = .textBackgroundColor
         scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = true
+        scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
 
         let textView = NSTextView(
@@ -232,33 +232,27 @@ private struct ManifestYAMLTextView: NSViewRepresentable {
         textView.drawsBackground = true
         textView.backgroundColor = .textBackgroundColor
         textView.insertionPointColor = .labelColor
-        textView.textContainerInset = NSSize(width: 8, height: 6)
+        textView.textContainerInset = NSSize(width: 10, height: 8)
         textView.font = ManifestYAMLAttributedRenderer.font
         textView.textColor = .labelColor
-        textView.minSize = NSSize(width: 0, height: scrollView.contentSize.height)
+        textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(
-            width: CGFloat.greatestFiniteMagnitude,
+            width: scrollView.contentSize.width,
             height: CGFloat.greatestFiniteMagnitude
         )
         textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = true
+        textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
         textView.textContainer?.containerSize = NSSize(
-            width: CGFloat.greatestFiniteMagnitude,
+            width: max(1, scrollView.contentSize.width),
             height: CGFloat.greatestFiniteMagnitude
         )
-        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.lineFragmentPadding = 0
         textView.setAccessibilityIdentifier("resource.detail.yaml.text")
 
         scrollView.documentView = textView
-        let rulerView = ManifestLineNumberRulerView(textView: textView, scrollView: scrollView)
-        scrollView.verticalRulerView = rulerView
-        scrollView.hasVerticalRuler = true
-        scrollView.rulersVisible = true
-
         context.coordinator.textView = textView
-        context.coordinator.rulerView = rulerView
         return scrollView
     }
 
@@ -272,6 +266,7 @@ private struct ManifestYAMLTextView: NSViewRepresentable {
             matches: matches,
             selectedMatchID: selectedMatch?.id
         )
+        let yamlChanged = context.coordinator.renderState?.yaml != yaml
 
         if context.coordinator.renderState != renderState {
             let selectedRange = textView.selectedRange()
@@ -287,7 +282,12 @@ private struct ManifestYAMLTextView: NSViewRepresentable {
         }
 
         Self.resizeDocumentView(textView, in: scrollView)
-        context.coordinator.rulerView?.lineStarts = ManifestYAMLAttributedRenderer.lineStarts(in: yaml)
+
+        if yamlChanged, selectedMatch == nil {
+            scrollView.contentView.scroll(to: .zero)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            context.coordinator.scrolledMatchID = nil
+        }
 
         if context.coordinator.scrolledMatchID != selectedMatch?.id {
             context.coordinator.scrolledMatchID = selectedMatch?.id
@@ -296,9 +296,6 @@ private struct ManifestYAMLTextView: NSViewRepresentable {
                 textView.scrollRangeToVisible(range)
             }
         }
-
-        scrollView.contentView.postsBoundsChangedNotifications = true
-        context.coordinator.rulerView?.needsDisplay = true
     }
 
     private static func resizeDocumentView(_ textView: NSTextView, in scrollView: NSScrollView) {
@@ -307,12 +304,15 @@ private struct ManifestYAMLTextView: NSViewRepresentable {
             return
         }
 
+        let width = max(1, scrollView.contentSize.width)
+        textView.maxSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+
         layoutManager.ensureLayout(for: textContainer)
         let usedRect = layoutManager.usedRect(for: textContainer)
         let inset = textView.textContainerInset
-        let width = max(scrollView.contentSize.width, ceil(usedRect.width + inset.width * 2 + 16))
         let height = max(scrollView.contentSize.height, ceil(usedRect.height + inset.height * 2 + 16))
-        let size = NSSize(width: max(1, width), height: max(1, height))
+        let size = NSSize(width: width, height: max(1, height))
 
         if textView.frame.size != size {
             textView.setFrameSize(size)
@@ -327,131 +327,38 @@ private struct ManifestYAMLTextView: NSViewRepresentable {
         }
 
         weak var textView: NSTextView?
-        weak var rulerView: ManifestLineNumberRulerView?
         var renderState: RenderState?
         var scrolledMatchID: String?
     }
 }
 
-private final class ManifestLineNumberRulerView: NSRulerView {
-    weak var textView: NSTextView?
-    var lineStarts: [Int] = [0] {
-        didSet {
-            ruleThickness = Self.thickness(forLineCount: lineStarts.count)
-            needsDisplay = true
-        }
-    }
-
-    init(textView: NSTextView, scrollView: NSScrollView) {
-        self.textView = textView
-        super.init(scrollView: scrollView, orientation: .verticalRuler)
-        clientView = textView
-        ruleThickness = Self.thickness(forLineCount: lineStarts.count)
-    }
-
-    required init(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func drawHashMarksAndLabels(in rect: NSRect) {
-        NSColor.textBackgroundColor.setFill()
-        rect.fill()
-
-        guard let textView,
-              let layoutManager = textView.layoutManager,
-              let textContainer = textView.textContainer,
-              !lineStarts.isEmpty else {
-            return
-        }
-
-        layoutManager.ensureLayout(for: textContainer)
-
-        let visibleRect = textView.visibleRect
-        let glyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: textContainer)
-        let firstCharacter = layoutManager.characterIndexForGlyph(at: glyphRange.location)
-        let lastGlyphIndex = max(glyphRange.location, NSMaxRange(glyphRange) - 1)
-        let lastCharacter = layoutManager.characterIndexForGlyph(at: lastGlyphIndex)
-
-        let firstLine = max(0, lineIndex(forUTF16Location: firstCharacter) - 1)
-        let lastLine = min(lineStarts.count - 1, lineIndex(forUTF16Location: lastCharacter) + 1)
-        guard firstLine <= lastLine else {
-            return
-        }
-
-        for lineIndex in firstLine...lastLine {
-            drawLineNumber(lineIndex + 1, forLineStart: lineStarts[lineIndex], layoutManager: layoutManager)
-        }
-    }
-
-    private func drawLineNumber(
-        _ lineNumber: Int,
-        forLineStart lineStart: Int,
-        layoutManager: NSLayoutManager
-    ) {
-        guard let textView else {
-            return
-        }
-
-        let stringLength = max((textView.string as NSString).length, 1)
-        let characterIndex = min(lineStart, stringLength - 1)
-        let glyphIndex = layoutManager.glyphIndexForCharacter(at: characterIndex)
-        let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
-        let textPoint = NSPoint(
-            x: 0,
-            y: lineRect.minY + textView.textContainerOrigin.y
-        )
-        let rulerPoint = convert(textPoint, from: textView)
-
-        let text = "\(lineNumber)" as NSString
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
-            .foregroundColor: NSColor.tertiaryLabelColor
-        ]
-        let size = text.size(withAttributes: attributes)
-        let x = ruleThickness - size.width - 7
-        let y = rulerPoint.y + max(0, (lineRect.height - size.height) / 2)
-        text.draw(at: NSPoint(x: x, y: y), withAttributes: attributes)
-    }
-
-    private func lineIndex(forUTF16Location location: Int) -> Int {
-        var lowerBound = 0
-        var upperBound = lineStarts.count
-        while lowerBound < upperBound {
-            let middle = (lowerBound + upperBound) / 2
-            if lineStarts[middle] <= location {
-                lowerBound = middle + 1
-            } else {
-                upperBound = middle
-            }
-        }
-        return max(0, lowerBound - 1)
-    }
-
-    private static func thickness(forLineCount lineCount: Int) -> CGFloat {
-        let digits = max(2, String(max(lineCount, 1)).count)
-        return CGFloat(digits) * 7 + 18
-    }
-}
-
 private enum ManifestYAMLAttributedRenderer {
     static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    private static let lineNumberFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
 
     static func attributedString(
         yaml: String,
         matches: [ManifestSearchMatch],
         selectedMatch: ManifestSearchMatch?
     ) -> NSAttributedString {
-        let displayText = yaml.isEmpty ? " " : yaml
+        let document = renderedDocument(in: yaml)
         let attributed = NSMutableAttributedString(
-            string: displayText,
+            string: document.text,
             attributes: [
                 .font: font,
                 .foregroundColor: NSColor.labelColor
             ]
         )
 
-        for line in lineInfos(in: yaml) {
-            applySyntax(to: attributed, line: line.text, baseUTF16Offset: line.startUTF16)
+        for line in document.lines {
+            attributed.addAttributes(
+                [
+                    .font: lineNumberFont,
+                    .foregroundColor: NSColor.tertiaryLabelColor
+                ],
+                range: NSRange(location: line.displayStartUTF16, length: line.contentStartUTF16 - line.displayStartUTF16)
+            )
+            applySyntax(to: attributed, line: line.text, baseUTF16Offset: line.contentStartUTF16)
         }
 
         for match in matches {
@@ -468,45 +375,61 @@ private enum ManifestYAMLAttributedRenderer {
         return attributed
     }
 
-    static func lineStarts(in yaml: String) -> [Int] {
-        lineInfos(in: yaml).map(\.startUTF16)
-    }
-
     static func range(for match: ManifestSearchMatch, in yaml: String) -> NSRange? {
-        let infos = lineInfos(in: yaml)
-        guard infos.indices.contains(match.lineNumber - 1) else {
+        let document = renderedDocument(in: yaml)
+        guard document.lines.indices.contains(match.lineNumber - 1) else {
             return nil
         }
 
-        let line = infos[match.lineNumber - 1]
+        let line = document.lines[match.lineNumber - 1]
         return nsRange(
             in: line.text,
             start: match.lowerBound,
             length: match.length,
-            baseUTF16Offset: line.startUTF16
+            baseUTF16Offset: line.contentStartUTF16
         )
+    }
+
+    private struct RenderedDocument {
+        var text: String
+        var lines: [LineInfo]
     }
 
     private struct LineInfo {
         var text: String
-        var startUTF16: Int
+        var displayStartUTF16: Int
+        var contentStartUTF16: Int
     }
 
-    private static func lineInfos(in yaml: String) -> [LineInfo] {
+    private static func renderedDocument(in yaml: String) -> RenderedDocument {
         let lines = yaml.isEmpty
             ? [""]
             : yaml.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let numberWidth = max(2, String(lines.count).count)
 
         var infos: [LineInfo] = []
-        var startUTF16 = 0
+        var displayText = ""
+        var displayStartUTF16 = 0
+
         for (index, line) in lines.enumerated() {
-            infos.append(LineInfo(text: line, startUTF16: startUTF16))
-            startUTF16 += line.utf16.count
+            let prefix = String(format: "%\(numberWidth)d  ", index + 1)
+            displayText += prefix
+            displayText += line
+            infos.append(
+                LineInfo(
+                    text: line,
+                    displayStartUTF16: displayStartUTF16,
+                    contentStartUTF16: displayStartUTF16 + prefix.utf16.count
+                )
+            )
+            displayStartUTF16 += prefix.utf16.count + line.utf16.count
             if index < lines.count - 1 {
-                startUTF16 += 1
+                displayText += "\n"
+                displayStartUTF16 += 1
             }
         }
-        return infos
+
+        return RenderedDocument(text: displayText, lines: infos)
     }
 
     private static func applySyntax(
