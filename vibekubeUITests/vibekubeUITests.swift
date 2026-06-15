@@ -23,7 +23,7 @@ final class vibekubeUITests: XCTestCase {
     }
 
     @MainActor
-    func testShellLaunches() throws {
+    func testPreviewPodManifestRendersYAMLText() throws {
         let app = configuredApp()
         app.launch()
 
@@ -31,10 +31,26 @@ final class vibekubeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["kind-vibekube-dev"].exists)
         XCTAssertTrue(app.buttons["toolbar.refresh"].exists)
 
+        app.buttons["toolbar.connection"].click()
+
         let podsItem = app.buttons["resource.nav.pods"]
         XCTAssertTrue(podsItem.waitForExistence(timeout: 5))
         podsItem.click()
-        XCTAssertTrue(app.staticTexts["resource.placeholder.pods"].waitForExistence(timeout: 5))
+
+        let podName = app.staticTexts["web-0"].firstMatch
+        XCTAssertTrue(podName.waitForExistence(timeout: 5))
+        podName.click()
+
+        let yamlText = app.textViews["resource.detail.yaml.text"]
+        XCTAssertTrue(yamlText.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(yamlText.frame.width, 240)
+        XCTAssertGreaterThan(yamlText.frame.height, 120)
+
+        let yamlValue = try XCTUnwrap(yamlText.value as? String)
+        XCTAssertTrue(yamlValue.contains("apiVersion: v1"))
+        XCTAssertTrue(yamlValue.contains("kind: Pod"))
+        XCTAssertTrue(yamlValue.contains("name: web-0"))
+        XCTAssertTrue(yamlValue.contains("containers:"))
     }
 
     @MainActor
@@ -50,6 +66,7 @@ final class vibekubeUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
         app.launchEnvironment["VIBEKUBE_USE_PREVIEW_CLUSTERS"] = "1"
+        app.launchEnvironment["VIBEKUBE_USE_PREVIEW_DATA"] = "1"
         return app
     }
 }

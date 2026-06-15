@@ -29,11 +29,14 @@ final class AppModel: ObservableObject {
     convenience init() {
         let environment = ProcessInfo.processInfo.environment
         if environment["VIBEKUBE_USE_PREVIEW_CLUSTERS"] == "1" {
+            let usePreviewData = environment["VIBEKUBE_USE_PREVIEW_DATA"] == "1"
             self.init(
                 clusters: ClusterSummary.preview,
                 kubeconfigState: .loaded(contextCount: ClusterSummary.preview.count, sourceCount: 1),
                 kubeconfigLoader: nil,
-                connectionService: nil
+                connectionService: usePreviewData ? PreviewKubernetesConnectionService() : nil,
+                resourceListService: usePreviewData ? PreviewKubernetesResourceListService() : nil,
+                resourceDetailService: usePreviewData ? PreviewKubernetesResourceDetailService() : nil
             )
         } else {
             let execCredentialProvider = DefaultKubernetesExecCredentialProvider()
@@ -585,5 +588,119 @@ final class AppModel: ObservableObject {
         return values.filter { value in
             !value.isEmpty && seen.insert(value).inserted
         }
+    }
+}
+
+private struct PreviewKubernetesConnectionService: KubernetesConnectionServicing {
+    func connect(contextName: String, kubeconfig: Kubeconfig) async throws -> KubernetesConnectionSnapshot {
+        KubernetesConnectionSnapshot(
+            version: KubernetesVersion(
+                major: "1",
+                minor: "30",
+                gitVersion: "v1.30.0",
+                gitCommit: nil,
+                platform: nil
+            ),
+            discovery: .preview
+        )
+    }
+}
+
+private struct PreviewKubernetesResourceListService: KubernetesResourceListServicing {
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        guard resource.name == "pods" else {
+            return try decodeList(
+                """
+                {
+                  "apiVersion": "\(resource.groupVersion)",
+                  "kind": "\(resource.kind)List",
+                  "items": []
+                }
+                """
+            )
+        }
+
+        return try decodeList(
+            """
+            {
+              "apiVersion": "v1",
+              "kind": "PodList",
+              "items": [
+                {
+                  "apiVersion": "v1",
+                  "kind": "Pod",
+                  "metadata": {
+                    "name": "web-0",
+                    "namespace": "\(namespace ?? "vibekube-demo")",
+                    "uid": "preview-pod-web-0",
+                    "creationTimestamp": "2026-06-15T10:00:00Z",
+                    "labels": {
+                      "app": "web",
+                      "tier": "frontend"
+                    }
+                  },
+                  "status": {
+                    "phase": "Running"
+                  }
+                }
+              ]
+            }
+            """
+        )
+    }
+
+    private func decodeList(_ json: String) throws -> KubernetesUnstructuredResourceList {
+        try JSONDecoder().decode(KubernetesUnstructuredResourceList.self, from: Data(json.utf8))
+    }
+}
+
+private struct PreviewKubernetesResourceDetailService: KubernetesResourceDetailServicing {
+    func resourceDetail(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String
+    ) async throws -> KubernetesResourceDetail {
+        try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "\(resource.groupVersion)",
+                  "kind": "\(resource.kind)",
+                  "metadata": {
+                    "name": "\(name)",
+                    "namespace": "\(namespace ?? "vibekube-demo")",
+                    "labels": {
+                      "app": "web",
+                      "tier": "frontend"
+                    }
+                  },
+                  "spec": {
+                    "containers": [
+                      {
+                        "name": "web",
+                        "image": "nginx:1.27",
+                        "ports": [
+                          {
+                            "containerPort": 8080
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "status": {
+                    "phase": "Running"
+                  }
+                }
+                """.utf8
+            )
+        )
     }
 }

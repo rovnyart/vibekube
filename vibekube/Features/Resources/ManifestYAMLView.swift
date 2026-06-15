@@ -219,7 +219,12 @@ private struct ManifestYAMLTextView: NSViewRepresentable {
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
 
-        let textView = NSTextView(frame: .zero)
+        let textView = NSTextView(
+            frame: NSRect(
+                origin: .zero,
+                size: NSSize(width: max(1, scrollView.contentSize.width), height: max(1, scrollView.contentSize.height))
+            )
+        )
         textView.isEditable = false
         textView.isSelectable = true
         textView.isRichText = true
@@ -281,6 +286,7 @@ private struct ManifestYAMLTextView: NSViewRepresentable {
             context.coordinator.renderState = renderState
         }
 
+        Self.resizeDocumentView(textView, in: scrollView)
         context.coordinator.rulerView?.lineStarts = ManifestYAMLAttributedRenderer.lineStarts(in: yaml)
 
         if context.coordinator.scrolledMatchID != selectedMatch?.id {
@@ -293,6 +299,24 @@ private struct ManifestYAMLTextView: NSViewRepresentable {
 
         scrollView.contentView.postsBoundsChangedNotifications = true
         context.coordinator.rulerView?.needsDisplay = true
+    }
+
+    private static func resizeDocumentView(_ textView: NSTextView, in scrollView: NSScrollView) {
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else {
+            return
+        }
+
+        layoutManager.ensureLayout(for: textContainer)
+        let usedRect = layoutManager.usedRect(for: textContainer)
+        let inset = textView.textContainerInset
+        let width = max(scrollView.contentSize.width, ceil(usedRect.width + inset.width * 2 + 16))
+        let height = max(scrollView.contentSize.height, ceil(usedRect.height + inset.height * 2 + 16))
+        let size = NSSize(width: max(1, width), height: max(1, height))
+
+        if textView.frame.size != size {
+            textView.setFrameSize(size)
+        }
     }
 
     final class Coordinator {
