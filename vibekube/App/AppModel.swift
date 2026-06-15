@@ -487,6 +487,7 @@ final class AppModel: ObservableObject {
             ResourceDetailSnapshot(
                 query: query,
                 yaml: detail.yaml,
+                summary: detail.summary,
                 loadedAt: Date()
             )
         )
@@ -677,10 +678,25 @@ private struct PreviewKubernetesResourceDetailService: KubernetesResourceDetailS
                   "metadata": {
                     "name": "\(name)",
                     "namespace": "\(namespace ?? "vibekube-demo")",
+                    "uid": "preview-pod-web-0",
+                    "resourceVersion": "420",
+                    "creationTimestamp": "2026-06-15T10:00:00Z",
                     "labels": {
                       "app": "web",
                       "tier": "frontend"
-                    }
+                    },
+                    "annotations": {
+                      "kubectl.kubernetes.io/last-applied-configuration": "{\\"kind\\":\\"Pod\\"}",
+                      "vibekube.io/demo": "true"
+                    },
+                    "ownerReferences": [
+                      {
+                        "apiVersion": "apps/v1",
+                        "kind": "ReplicaSet",
+                        "name": "web-74fbd884",
+                        "controller": true
+                      }
+                    ]
                   },
                   "spec": {
                     "containers": [
@@ -696,7 +712,23 @@ private struct PreviewKubernetesResourceDetailService: KubernetesResourceDetailS
                     ]
                   },
                   "status": {
-                    "phase": "Running"
+                    "phase": "Running",
+                    "conditions": [
+                      {
+                        "type": "Ready",
+                        "status": "True",
+                        "reason": "ContainersReady",
+                        "message": "All containers are ready.",
+                        "lastTransitionTime": "2026-06-15T10:01:00Z"
+                      }
+                    ],
+                    "containerStatuses": [
+                      {
+                        "name": "web",
+                        "ready": true,
+                        "restartCount": 0
+                      }
+                    ]
                   }
                 }
                 """.utf8

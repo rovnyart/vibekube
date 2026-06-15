@@ -74,6 +74,7 @@ struct ResourceDetailQuery: Identifiable, Hashable {
 struct ResourceDetailSnapshot: Equatable {
     var query: ResourceDetailQuery
     var yaml: String
+    var summary: KubernetesResourceDetailSummary
     var loadedAt: Date
 }
 

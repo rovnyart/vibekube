@@ -12,7 +12,7 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - [x] Basic YAML viewer exists.
 - [ ] Event panel exists.
 - [ ] Relationship resolver exists.
-- [ ] Conditions/metadata views exist.
+- [x] Conditions/metadata views exist.
 
 ## Checkpoint Notes
 
@@ -22,7 +22,9 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - The inspector fetches the full object through generic discovery-derived `get` endpoints.
 - The manifest view is read-only, selectable, line-numbered, searchable, copyable, and lightly syntax-highlighted.
 - Secret manifests redact top-level `data`, `stringData`, and `binaryData`.
-- The richer Phase 6 detail experience still needs dedicated tabs, save/export YAML tools, conditions, events, relationships, and custom metadata sections.
+- Resource detail now has Overview, YAML, Metadata, and Conditions tabs.
+- The overview tab extracts status, identity, owner references, conditions, and pod-like container summaries.
+- The richer Phase 6 detail experience still needs save/export YAML tools, events, relationships, and custom metadata sections.
 
 ## Implementation Slices
 
@@ -30,11 +32,11 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 
 - [x] Define `ResourceDetailSnapshot`.
 - [x] Load full resource object by identity.
-- [ ] Extract metadata.
-- [ ] Extract labels and annotations.
-- [ ] Extract owner references.
-- [ ] Extract conditions.
-- [ ] Extract resource-specific status.
+- [x] Extract metadata.
+- [x] Extract labels and annotations.
+- [x] Extract owner references.
+- [x] Extract conditions.
+- [x] Extract resource-specific status.
 
 ### 6.2 YAML Viewer
 
@@ -71,12 +73,12 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 
 - [x] Bottom detail inspector.
 - [x] Multiple resource detail tabs.
-- [ ] Overview tab.
-- [ ] YAML tab.
+- [x] Overview tab.
+- [x] YAML tab.
 - [ ] Events tab.
 - [ ] Related tab.
-- [ ] Conditions tab.
-- [ ] Metadata tab.
+- [x] Conditions tab.
+- [x] Metadata tab.
 - [ ] Containers tab for pod-like resources.
 
 ### 6.6 Tests
@@ -84,8 +86,10 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] YAML rendering tests.
 - [x] Secret redaction tests.
 - [x] YAML search indexing tests.
+- [x] Resource summary extraction tests.
+- [x] Preview UI smoke test opens resource detail overview.
 - [ ] Relationship resolver tests.
-- [ ] UI navigation tests from resource list to detail and related resource.
+- [ ] UI navigation tests for events and related resources.
 
 ## Acceptance Criteria
 

@@ -205,4 +205,48 @@ enum KubernetesJSONValue: Decodable, Equatable, Hashable {
             return nil
         }
     }
+
+    var boolValue: Bool? {
+        switch self {
+        case .bool(let value):
+            value
+        case .string(let value):
+            Bool(value)
+        default:
+            nil
+        }
+    }
+
+    var objectValue: [String: KubernetesJSONValue]? {
+        if case .object(let value) = self {
+            return value
+        }
+        return nil
+    }
+
+    var arrayValue: [KubernetesJSONValue]? {
+        if case .array(let value) = self {
+            return value
+        }
+        return nil
+    }
+
+    var displayValue: String {
+        switch self {
+        case .string(let value):
+            value
+        case .number(let value):
+            if value.rounded() == value {
+                String(Int(value))
+            } else {
+                String(value)
+            }
+        case .bool(let value):
+            value ? "true" : "false"
+        case .null:
+            "null"
+        case .object, .array:
+            "-"
+        }
+    }
 }

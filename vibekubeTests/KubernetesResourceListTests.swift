@@ -193,6 +193,86 @@ struct KubernetesResourceListTests {
         #expect(detail.yaml.contains("phase: Running"))
     }
 
+    @Test func extractsResourceDetailSummary() throws {
+        let detail = try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "Pod",
+                  "metadata": {
+                    "name": "web-0",
+                    "namespace": "vibekube-demo",
+                    "uid": "pod-uid",
+                    "resourceVersion": "42",
+                    "creationTimestamp": "2026-06-15T10:00:00Z",
+                    "labels": {
+                      "app": "web"
+                    },
+                    "annotations": {
+                      "vibekube.io/demo": "true",
+                      "kubectl.kubernetes.io/last-applied-configuration": "{\\"data\\":{\\"password\\":\\"secret\\"}}"
+                    },
+                    "ownerReferences": [
+                      {
+                        "kind": "ReplicaSet",
+                        "name": "web-74fbd884",
+                        "controller": true
+                      }
+                    ]
+                  },
+                  "spec": {
+                    "containers": [
+                      {
+                        "name": "web",
+                        "image": "nginx:1.27"
+                      }
+                    ]
+                  },
+                  "status": {
+                    "phase": "Running",
+                    "conditions": [
+                      {
+                        "type": "Ready",
+                        "status": "True",
+                        "reason": "ContainersReady",
+                        "message": "All containers are ready.",
+                        "lastTransitionTime": "2026-06-15T10:01:00Z"
+                      }
+                    ],
+                    "containerStatuses": [
+                      {
+                        "name": "web",
+                        "ready": true,
+                        "restartCount": 1
+                      }
+                    ]
+                  }
+                }
+                """.utf8
+            )
+        )
+
+        let summary = detail.summary
+        #expect(summary.apiVersion == "v1")
+        #expect(summary.kind == "Pod")
+        #expect(summary.name == "web-0")
+        #expect(summary.namespace == "vibekube-demo")
+        #expect(summary.uid == "pod-uid")
+        #expect(summary.status == "Running")
+        #expect(summary.labels["app"] == "web")
+        #expect(summary.annotations["vibekube.io/demo"] == "true")
+        #expect(summary.annotations["kubectl.kubernetes.io/last-applied-configuration"] == "<redacted>")
+        #expect(summary.ownerReferences.first?.kind == "ReplicaSet")
+        #expect(summary.ownerReferences.first?.controller == true)
+        #expect(summary.conditions.first?.type == "Ready")
+        #expect(summary.conditions.first?.status == "True")
+        #expect(summary.containers.first?.name == "web")
+        #expect(summary.containers.first?.ready == true)
+        #expect(summary.containers.first?.restartCount == 1)
+    }
+
     @Test func redactsSecretDetailYAML() throws {
         let detail = try JSONDecoder().decode(
             KubernetesResourceDetail.self,

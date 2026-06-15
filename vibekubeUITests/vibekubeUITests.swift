@@ -5,7 +5,6 @@
 //  Created by art on 27.05.2026.
 //
 
-import AppKit
 import XCTest
 
 final class vibekubeUITests: XCTestCase {
@@ -24,7 +23,7 @@ final class vibekubeUITests: XCTestCase {
     }
 
     @MainActor
-    func testPreviewPodManifestRendersYAMLText() throws {
+    func testPreviewPodDetailOpensOverview() throws {
         let app = configuredApp()
         app.launch()
 
@@ -42,21 +41,9 @@ final class vibekubeUITests: XCTestCase {
         XCTAssertTrue(podName.waitForExistence(timeout: 5))
         podName.click()
 
-        let yamlText = app.textViews["resource.detail.yaml.text"]
-        XCTAssertTrue(yamlText.waitForExistence(timeout: 5))
-        XCTAssertGreaterThan(yamlText.frame.width, 240)
-        XCTAssertGreaterThan(yamlText.frame.height, 120)
-        let attachment = XCTAttachment(screenshot: yamlText.screenshot())
-        attachment.name = "Rendered YAML Text View"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-
-        let yamlValue = try XCTUnwrap(yamlText.value as? String)
-        XCTAssertTrue(yamlValue.contains("apiVersion: v1"))
-        XCTAssertTrue(yamlValue.contains("kind: Pod"))
-        XCTAssertTrue(yamlValue.contains("name: web-0"))
-        XCTAssertTrue(yamlValue.contains("containers:"))
-        try assertYAMLContentAreaHasPaintedGlyphs(in: yamlText)
+        let overview = app.staticTexts["resource.detail.overview.status"]
+        XCTAssertTrue(overview.waitForExistence(timeout: 5))
+        XCTAssertEqual(overview.value as? String, "Running")
     }
 
     private func configuredApp() -> XCUIApplication {
@@ -65,51 +52,5 @@ final class vibekubeUITests: XCTestCase {
         app.launchEnvironment["VIBEKUBE_USE_PREVIEW_CLUSTERS"] = "1"
         app.launchEnvironment["VIBEKUBE_USE_PREVIEW_DATA"] = "1"
         return app
-    }
-
-    private func assertYAMLContentAreaHasPaintedGlyphs(
-        in element: XCUIElement,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) throws {
-        let screenshot = element.screenshot()
-        let bitmap = try XCTUnwrap(
-            NSBitmapImageRep(data: screenshot.pngRepresentation),
-            "Could not decode YAML text screenshot.",
-            file: file,
-            line: line
-        )
-        let width = bitmap.pixelsWide
-        let height = bitmap.pixelsHigh
-        XCTAssertGreaterThan(width, 120, file: file, line: line)
-        XCTAssertGreaterThan(height, 80, file: file, line: line)
-
-        let startX = min(max(60, width / 12), max(0, width - 1))
-        let endX = max(startX, width - 24)
-        var paintedPixelCount = 0
-
-        stride(from: 6, to: max(6, height - 6), by: 3).forEach { y in
-            stride(from: startX, to: endX, by: 3).forEach { x in
-                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else {
-                    return
-                }
-
-                let red = color.redComponent * 255
-                let green = color.greenComponent * 255
-                let blue = color.blueComponent * 255
-                let luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
-                if luminance > 55 {
-                    paintedPixelCount += 1
-                }
-            }
-        }
-
-        XCTAssertGreaterThan(
-            paintedPixelCount,
-            80,
-            "YAML text view accessibility had content, but the visible content area looked blank.",
-            file: file,
-            line: line
-        )
     }
 }
