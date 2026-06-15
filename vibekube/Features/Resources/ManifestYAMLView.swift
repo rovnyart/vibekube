@@ -15,24 +15,26 @@ struct ManifestYAMLView: View {
             Divider()
 
             ScrollViewReader { proxy in
-                ScrollView([.vertical, .horizontal]) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                            ManifestYAMLLineView(
-                                lineNumber: index + 1,
-                                lineNumberWidth: lineNumberWidth,
-                                text: line,
-                                matches: matchesByLine[index + 1] ?? [],
-                                selectedMatchOrdinal: selectedMatch?.ordinal
-                            )
-                            .id(index + 1)
+                GeometryReader { geometry in
+                    ScrollView([.vertical, .horizontal]) {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                                ManifestYAMLLineView(
+                                    lineNumber: index + 1,
+                                    lineNumberWidth: lineNumberWidth,
+                                    text: line,
+                                    matches: matchesByLine[index + 1] ?? [],
+                                    selectedMatchOrdinal: selectedMatch?.ordinal
+                                )
+                                .id(index + 1)
+                            }
                         }
+                        .padding(.vertical, 6)
+                        .padding(.trailing, 10)
+                        .frame(minWidth: geometry.size.width, alignment: .leading)
                     }
-                    .padding(.vertical, 6)
-                    .padding(.trailing, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(nsColor: .textBackgroundColor))
                 }
-                .background(Color(nsColor: .textBackgroundColor))
                 .onChange(of: selectedMatch?.id) {
                     scrollToSelectedMatch(with: proxy)
                 }
@@ -40,7 +42,9 @@ struct ManifestYAMLView: View {
                     scrollToSelectedMatch(with: proxy)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onChange(of: yaml) {
             searchText = ""
             selectedMatchIndex = 0
@@ -109,6 +113,7 @@ struct ManifestYAMLView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(.bar)
     }
 
@@ -190,7 +195,7 @@ struct ManifestYAMLView: View {
         }
 
         withAnimation(.easeInOut(duration: 0.16)) {
-            proxy.scrollTo(selectedMatch.lineNumber, anchor: .center)
+            proxy.scrollTo(selectedMatch.lineNumber, anchor: UnitPoint(x: 0, y: 0.5))
         }
     }
 }
@@ -270,10 +275,7 @@ private struct ManifestYAMLLineView: View {
             .font(.system(.caption, design: .monospaced))
             .textSelection(.enabled)
             .fixedSize(horizontal: true, vertical: false)
-
-            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 6)
         .padding(.trailing, 10)
         .padding(.vertical, 1)
