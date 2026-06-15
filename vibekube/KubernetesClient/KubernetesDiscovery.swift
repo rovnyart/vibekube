@@ -187,6 +187,10 @@ struct KubernetesDiscoveredResource: Identifiable, Equatable, Hashable, Comparab
         return "\(basePath)/\(name.kubernetesPathSegment)"
     }
 
+    func itemPath(namespace: String?, name itemName: String) -> String {
+        "\(listPath(namespace: namespace))/\(itemName.kubernetesPathSegment)"
+    }
+
     init(groupVersion: String, resource: KubernetesAPIResource) {
         self.groupVersion = groupVersion
         let parts = groupVersion.split(separator: "/", maxSplits: 1).map(String.init)

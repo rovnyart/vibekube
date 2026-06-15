@@ -1,24 +1,33 @@
 # Phase 6: Resource Detail, YAML, Events, And Relationships
 
-Status: Not started.
+Status: Started.
 
 Goal: inspect any Kubernetes resource deeply, including readable YAML, conditions, events, metadata, and related resources.
 
 ## Current Progress
 
 - [x] Phase plan exists.
-- [ ] Resource detail route exists.
-- [ ] YAML viewer exists.
+- [x] Read-only resource detail inspector exists from list selection.
+- [ ] Dedicated resource detail route exists.
+- [x] Basic YAML viewer exists.
 - [ ] Event panel exists.
 - [ ] Relationship resolver exists.
 - [ ] Conditions/metadata views exist.
+
+## Checkpoint Notes
+
+- Resource table row selection now opens a side inspector.
+- The inspector fetches the full object through generic discovery-derived `get` endpoints.
+- The manifest view is read-only and selectable.
+- Secret manifests redact top-level `data`, `stringData`, and `binaryData`.
+- The richer Phase 6 detail experience still needs dedicated tabs, search/copy/save YAML tools, conditions, events, relationships, and custom metadata sections.
 
 ## Implementation Slices
 
 ### 6.1 Detail Data Model
 
-- [ ] Define `ResourceDetailSnapshot`.
-- [ ] Load full resource object by identity.
+- [x] Define `ResourceDetailSnapshot`.
+- [x] Load full resource object by identity.
 - [ ] Extract metadata.
 - [ ] Extract labels and annotations.
 - [ ] Extract owner references.
@@ -27,13 +36,13 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 
 ### 6.2 YAML Viewer
 
-- [ ] Convert resource object to readable YAML.
+- [x] Convert resource object to readable YAML.
 - [ ] Add syntax highlighting.
 - [ ] Add find-in-YAML.
 - [ ] Add copy YAML.
 - [ ] Add save YAML.
-- [ ] Keep YAML read-only in this phase.
-- [ ] Redact secret data by default or require explicit reveal.
+- [x] Keep YAML read-only in this phase.
+- [x] Redact secret data by default or require explicit reveal.
 
 Checkpoint: stop for feedback on YAML readability and secret display policy.
 
@@ -68,14 +77,14 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 
 ### 6.6 Tests
 
-- [ ] YAML rendering tests.
-- [ ] Secret redaction tests.
+- [x] YAML rendering tests.
+- [x] Secret redaction tests.
 - [ ] Relationship resolver tests.
 - [ ] UI navigation tests from resource list to detail and related resource.
 
 ## Acceptance Criteria
 
-- [ ] User can open any listed resource.
+- [x] User can open any listed get-capable resource from a table row.
 - [ ] YAML is readable, searchable, copyable, and safe for secrets.
 - [ ] Events and conditions explain resource state.
 - [ ] Related resources are navigable.

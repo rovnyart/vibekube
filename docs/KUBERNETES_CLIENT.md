@@ -1,6 +1,6 @@
 # Kubernetes Client Design
 
-Status: Draft, updated during Phase 2.
+Status: Draft, updated during Phase 5.
 
 This document captures client behavior that should stay true across implementation phases. The most important rule: Vibekube should behave like `kubectl` and established clients wherever kubeconfig semantics already define the right thing.
 
@@ -31,14 +31,16 @@ Implemented:
 - per-group/version API resource discovery
 - namespace loading with a toolbar namespace selector
 - generic resource list endpoints from discovery metadata
+- generic resource detail endpoints from discovery metadata
 - native read-only resource tables for common built-ins
+- native read-only manifest inspector for selected resource rows
 - basic HTTP status and Kubernetes `Status` error mapping
 - connected/connecting/error UI states
 - opt-in kind integration test through `VIBEKUBE_RUN_KIND_INTEGRATION=1`
 
 Not implemented yet:
 
-- YAML detail loading
+- syntax-highlighted/searchable YAML detail tools
 - watch/streaming updates
 - pagination follow-up requests for large resource lists
 - dedicated signing-in UI for long-running exec auth
@@ -118,6 +120,25 @@ Current list behavior:
 - Table rows decode metadata plus safe summary fields from `spec`, `status`, event reason/type, and object type.
 - Secret payload fields such as `data` and `stringData` are not decoded into row models, displayed, or searchable.
 - Kubernetes list `metadata.continue` is decoded but not followed yet; pagination belongs in the next hardening slice.
+
+## Resource Details
+
+Resource detail URLs are built from the same discovery metadata:
+
+- core namespaced: `GET /api/{version}/namespaces/{namespace}/{resource}/{name}`
+- core cluster-scoped: `GET /api/{version}/{resource}/{name}`
+- grouped namespaced: `GET /apis/{group}/{version}/namespaces/{namespace}/{resource}/{name}`
+- grouped cluster-scoped: `GET /apis/{group}/{version}/{resource}/{name}`
+
+Current detail behavior:
+
+- Selecting a resource table row loads the full object if the discovered resource advertises the `get` verb.
+- Detail requests are cached in memory by context, resource, namespace, and name.
+- Namespaced detail requests prefer the row's `metadata.namespace`, which keeps `All Namespaces` list results accurate.
+- If a namespaced row has no namespace while `All Namespaces` is selected, Vibekube does not guess and leaves the detail state idle.
+- The manifest viewer is read-only and renders a deterministic YAML-like view from the returned object.
+- Secret manifests redact top-level `data`, `stringData`, and `binaryData` by default.
+- Syntax highlighting, find, copy, save, events, and relationships belong to the dedicated detail phase.
 
 ## References
 

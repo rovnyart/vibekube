@@ -12,16 +12,18 @@ Goal: browse Kubernetes resources by group with sortable, filterable, namespace-
 - [ ] Generic discovered custom resource browsing exists.
 - [x] Tables support sorting/filtering.
 - [x] Namespace scope works.
+- [x] Selecting a row opens a read-only manifest inspector.
 
 ## Checkpoint Notes
 
 - The app can now list discovered resources through generic Kubernetes list endpoints.
 - Built-in navigation items route to a native table once their API resource is discovered.
 - The table currently shows safe generic columns: name, namespace, kind, status, age, and labels.
+- Selecting a table row opens a side inspector and loads the full Kubernetes object manifest.
 - Toolbar search filters the current table.
 - New cluster connections default to `All Namespaces` so workload lists are cluster-wide unless narrowed.
 - Toolbar namespace selection reloads namespaced resources for the selected namespace or all namespaces.
-- Secret payload fields are not decoded into list rows and are not searchable/displayed.
+- Secret payload fields are not decoded into list rows and are not searchable/displayed; Secret manifests redact top-level `data`, `stringData`, and `binaryData`.
 - Pagination tokens are decoded but follow-up page loading is not implemented yet.
 - Custom/discovered resources are visible in the API catalog, but dynamic custom-resource table navigation is still pending.
 
@@ -82,6 +84,8 @@ Goal: browse Kubernetes resources by group with sortable, filterable, namespace-
 - [ ] Row context menu.
 - [ ] Copy name, namespace/name, UID, labels, and JSON path.
 - [x] Loading/empty/error states.
+- [x] Row selection.
+- [x] Side manifest inspector.
 
 Checkpoint: stop after Pods, Deployments, Services, ConfigMaps, Secrets, and Events browse correctly.
 
@@ -89,6 +93,9 @@ Checkpoint: stop after Pods, Deployments, Services, ConfigMaps, Secrets, and Eve
 
 - [x] Metadata extraction tests.
 - [x] Resource list URL tests.
+- [x] Resource detail URL tests.
+- [x] Manifest rendering tests.
+- [x] Secret manifest redaction tests.
 - [ ] Filter/sort tests.
 - [ ] Fixtures for common kinds.
 - [ ] UI smoke test for resource table.

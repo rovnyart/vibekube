@@ -89,8 +89,47 @@ struct vibekubeTests {
         }
 
         #expect(snapshot.items.map(\.displayName) == ["web-0"])
-        #expect(snapshot.items.first?.displayNamespace == "all")
+        #expect(snapshot.items.first?.displayNamespace == "vibekube-demo")
         #expect(snapshot.query.namespaceSelection == AppModel.allNamespacesSelection)
+    }
+
+    @MainActor
+    @Test func appModelLoadsResourceDetailForSelectedRow() async {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            resourceDetailService: SucceedingResourceDetailService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        await Task.yield()
+
+        model.selectResource(.pods)
+        await Task.yield()
+
+        guard case .loaded(let snapshot) = model.resourceListState(for: .pods),
+              let row = snapshot.items.first else {
+            Issue.record("Expected loaded resource row")
+            return
+        }
+
+        model.loadResourceDetail(for: .pods, row: row)
+        for _ in 0..<3 {
+            await Task.yield()
+        }
+
+        guard case .loaded(let detail) = model.resourceDetailState(for: .pods, row: row) else {
+            Issue.record("Expected loaded resource detail")
+            return
+        }
+
+        #expect(detail.query.name == "web-0")
+        #expect(detail.query.namespace == "vibekube-demo")
+        #expect(detail.yaml.contains("kind: Pod"))
+        #expect(detail.yaml.contains("name: web-0"))
+        #expect(detail.yaml.contains("namespace: vibekube-demo"))
     }
 
     @Test func resourceNavigationGroupsWorkloads() {
@@ -149,13 +188,46 @@ private struct SucceedingResourceListService: KubernetesResourceListServicing {
                       "kind": "Pod",
                       "metadata": {
                         "name": "web-0",
-                        "namespace": "\(namespace ?? "all")"
+                        "namespace": "\(namespace ?? "vibekube-demo")"
                       },
                       "status": {
                         "phase": "Running"
                       }
                     }
                   ]
+                }
+                """.utf8
+            )
+        )
+    }
+}
+
+private struct SucceedingResourceDetailService: KubernetesResourceDetailServicing {
+    func resourceDetail(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String
+    ) async throws -> KubernetesResourceDetail {
+        let namespaceLine = namespace.map { #""namespace": "\#($0)","# } ?? ""
+        return try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "\(resource.groupVersion)",
+                  "kind": "\(resource.kind)",
+                  "metadata": {
+                    "name": "\(name)",
+                    \(namespaceLine)
+                    "labels": {
+                      "app": "web"
+                    }
+                  },
+                  "status": {
+                    "phase": "Running"
+                  }
                 }
                 """.utf8
             )

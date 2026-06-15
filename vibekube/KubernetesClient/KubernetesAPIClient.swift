@@ -10,6 +10,11 @@ protocol KubernetesAPIClient {
         resource: KubernetesDiscoveredResource,
         namespace: String?
     ) async throws -> KubernetesUnstructuredResourceList
+    func resourceDetail(
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String
+    ) async throws -> KubernetesResourceDetail
 }
 
 struct KubernetesVersion: Decodable, Equatable {

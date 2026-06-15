@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import vibekube
 
+@MainActor
 struct KubernetesResourceListTests {
 
     @Test func buildsNamespacedCoreResourceListPath() {
@@ -20,6 +21,7 @@ struct KubernetesResourceListTests {
 
         #expect(pods.listPath(namespace: "vibekube-demo") == "/api/v1/namespaces/vibekube-demo/pods")
         #expect(pods.listPath(namespace: nil) == "/api/v1/pods")
+        #expect(pods.itemPath(namespace: "vibekube-demo", name: "web-0") == "/api/v1/namespaces/vibekube-demo/pods/web-0")
     }
 
     @Test func buildsGroupedClusterScopedResourceListPath() {
@@ -37,6 +39,7 @@ struct KubernetesResourceListTests {
         )
 
         #expect(storageClasses.listPath(namespace: "ignored") == "/apis/storage.k8s.io/v1/storageclasses")
+        #expect(storageClasses.itemPath(namespace: "ignored", name: "fast") == "/apis/storage.k8s.io/v1/storageclasses/fast")
     }
 
     @Test func decodesResourceListMetadataAndRows() throws {
@@ -142,5 +145,82 @@ struct KubernetesResourceListTests {
         )
 
         #expect(list.items.first?.displayStatus == "2/3 ready")
+    }
+
+    @Test func rendersResourceDetailYAML() throws {
+        let detail = try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "Pod",
+                  "metadata": {
+                    "name": "web-0",
+                    "namespace": "vibekube-demo",
+                    "labels": {
+                      "app": "web"
+                    }
+                  },
+                  "spec": {
+                    "containers": [
+                      {
+                        "name": "web",
+                        "image": "nginx:1.27",
+                        "ports": [
+                          {
+                            "containerPort": 8080
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "status": {
+                    "phase": "Running"
+                  }
+                }
+                """.utf8
+            )
+        )
+
+        #expect(detail.yaml.contains("apiVersion: v1"))
+        #expect(detail.yaml.contains("kind: Pod"))
+        #expect(detail.yaml.contains("name: web-0"))
+        #expect(detail.yaml.contains("namespace: vibekube-demo"))
+        #expect(detail.yaml.contains("containers:"))
+        #expect(detail.yaml.contains("image: nginx:1.27"))
+        #expect(detail.yaml.contains("containerPort: 8080"))
+        #expect(detail.yaml.contains("phase: Running"))
+    }
+
+    @Test func redactsSecretDetailYAML() throws {
+        let detail = try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "Secret",
+                  "metadata": {
+                    "name": "db-password",
+                    "namespace": "vibekube-demo"
+                  },
+                  "data": {
+                    "password": "c2VjcmV0"
+                  },
+                  "stringData": {
+                    "token": "plain-token"
+                  },
+                  "type": "Opaque"
+                }
+                """.utf8
+            )
+        )
+
+        #expect(detail.yaml.contains("kind: Secret"))
+        #expect(detail.yaml.contains("data: <redacted>"))
+        #expect(detail.yaml.contains("stringData: <redacted>"))
+        #expect(!detail.yaml.contains("c2VjcmV0"))
+        #expect(!detail.yaml.contains("plain-token"))
     }
 }
