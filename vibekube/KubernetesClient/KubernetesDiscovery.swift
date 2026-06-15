@@ -178,6 +178,15 @@ struct KubernetesDiscoveredResource: Identifiable, Equatable, Hashable, Comparab
         namespaced ? "Namespaced" : "Cluster"
     }
 
+    func listPath(namespace: String?) -> String {
+        let basePath = group.isEmpty ? "/api/\(version)" : "/apis/\(group)/\(version)"
+        if namespaced, let namespace, !namespace.isEmpty {
+            return "\(basePath)/namespaces/\(namespace.kubernetesPathSegment)/\(name.kubernetesPathSegment)"
+        }
+
+        return "\(basePath)/\(name.kubernetesPathSegment)"
+    }
+
     init(groupVersion: String, resource: KubernetesAPIResource) {
         self.groupVersion = groupVersion
         let parts = groupVersion.split(separator: "/", maxSplits: 1).map(String.init)
@@ -205,6 +214,14 @@ struct KubernetesDiscoveredResource: Identifiable, Equatable, Hashable, Comparab
     }
 }
 
+private extension String {
+    var kubernetesPathSegment: String {
+        var allowedCharacters = CharacterSet.urlPathAllowed
+        allowedCharacters.remove(charactersIn: "/")
+        return addingPercentEncoding(withAllowedCharacters: allowedCharacters) ?? self
+    }
+}
+
 struct KubernetesNamespaceList: Decodable, Equatable {
     var items: [KubernetesNamespace]
 
@@ -227,11 +244,13 @@ struct KubernetesNamespace: Decodable, Equatable {
     var status: KubernetesNamespaceStatus?
 }
 
-struct KubernetesObjectMetadata: Decodable, Equatable {
+struct KubernetesObjectMetadata: Decodable, Equatable, Hashable {
     var name: String?
+    var namespace: String?
     var uid: String?
     var resourceVersion: String?
     var creationTimestamp: String?
+    var deletionTimestamp: String?
     var labels: [String: String]?
 }
 

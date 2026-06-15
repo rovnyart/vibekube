@@ -6,6 +6,10 @@ protocol KubernetesAPIClient {
     func apiGroups() async throws -> KubernetesAPIGroupList
     func resources(groupVersion: String) async throws -> KubernetesAPIResourceList
     func namespaces() async throws -> KubernetesNamespaceList
+    func resourceList(
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList
 }
 
 struct KubernetesVersion: Decodable, Equatable {

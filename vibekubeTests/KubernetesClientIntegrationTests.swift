@@ -20,5 +20,14 @@ struct KubernetesClientIntegrationTests {
         #expect(snapshot.discovery.coreVersions.contains("v1"))
         #expect(snapshot.discovery.resourceCount > 0)
         #expect(!snapshot.discovery.namespaceDiscovery.items.isEmpty || snapshot.discovery.namespaceDiscovery.errorMessage != nil)
+
+        let pods = try #require(snapshot.discovery.discoveredResources.first { $0.name == "pods" && $0.group.isEmpty })
+        let podList = try await KubernetesResourceListService().listResources(
+            contextName: contextName,
+            kubeconfig: result.kubeconfig,
+            resource: pods,
+            namespace: nil
+        )
+        #expect(podList.items.allSatisfy { $0.displayKind == "Pod" })
     }
 }

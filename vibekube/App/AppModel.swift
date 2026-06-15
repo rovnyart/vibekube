@@ -11,12 +11,15 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastRefreshedAt: Date?
     @Published private(set) var connectionErrorMessage: String?
     @Published private(set) var discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot]
+    @Published private(set) var resourceListStateByQuery: [ResourceListQuery: ResourceListLoadState]
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
     private let kubeconfigLoader: KubeconfigLoader?
     private let connectionService: KubernetesConnectionServicing?
+    private let resourceListService: KubernetesResourceListServicing?
     private var loadedKubeconfig: Kubeconfig
     private var connectionTask: Task<Void, Never>?
+    private var resourceListTask: Task<Void, Never>?
 
     static let allNamespacesSelection = "__vibekube_all_namespaces__"
 
@@ -30,11 +33,13 @@ final class AppModel: ObservableObject {
                 connectionService: nil
             )
         } else {
+            let execCredentialProvider = DefaultKubernetesExecCredentialProvider()
             self.init(
                 clusters: [],
                 kubeconfigState: .notLoaded,
                 kubeconfigLoader: KubeconfigLoader(environment: environment),
-                connectionService: KubernetesConnectionService()
+                connectionService: KubernetesConnectionService(execCredentialProvider: execCredentialProvider),
+                resourceListService: KubernetesResourceListService(execCredentialProvider: execCredentialProvider)
             )
             reloadKubeconfig()
         }
@@ -45,8 +50,10 @@ final class AppModel: ObservableObject {
         kubeconfigState: KubeconfigDiscoveryState? = nil,
         kubeconfigLoader: KubeconfigLoader? = nil,
         connectionService: KubernetesConnectionServicing? = nil,
+        resourceListService: KubernetesResourceListServicing? = nil,
         loadedKubeconfig: Kubeconfig? = nil,
         discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot] = [:],
+        resourceListStateByQuery: [ResourceListQuery: ResourceListLoadState]? = nil,
         selectedNamespaceByContextID: [ClusterSummary.ID: String] = [:]
     ) {
         self.clusters = clusters
@@ -55,8 +62,10 @@ final class AppModel: ObservableObject {
         self.kubeconfigState = kubeconfigState ?? .loaded(contextCount: clusters.count, sourceCount: 1)
         self.kubeconfigLoader = kubeconfigLoader
         self.connectionService = connectionService
+        self.resourceListService = resourceListService
         self.loadedKubeconfig = loadedKubeconfig ?? .empty
         self.discoveryByContextID = discoveryByContextID
+        self.resourceListStateByQuery = resourceListStateByQuery ?? [:]
         self.selectedNamespaceByContextID = selectedNamespaceByContextID
     }
 
@@ -110,6 +119,7 @@ final class AppModel: ObservableObject {
 
     func selectCluster(id: ClusterSummary.ID?) {
         connectionTask?.cancel()
+        resourceListTask?.cancel()
         selectedClusterID = id
         selectedResource = .dashboard
         connectionErrorMessage = nil
@@ -117,6 +127,7 @@ final class AppModel: ObservableObject {
 
     func selectResource(_ resource: ResourceNavigationItem) {
         selectedResource = resource
+        loadResourceList(for: resource)
     }
 
     func selectNamespace(_ namespace: String) {
@@ -125,6 +136,9 @@ final class AppModel: ObservableObject {
         }
 
         selectedNamespaceByContextID[selectedClusterID] = namespace
+        if let selectedResource {
+            loadResourceList(for: selectedResource, force: true)
+        }
     }
 
     func namespaceTitle(for namespace: String) -> String {
@@ -132,7 +146,14 @@ final class AppModel: ObservableObject {
     }
 
     func refresh() {
-        reloadKubeconfig()
+        if let selectedResource,
+           selectedConnectionState == .connected,
+           selectedResource.discoveredResource(in: selectedDiscovery) != nil {
+            loadResourceList(for: selectedResource, force: true)
+        } else {
+            reloadKubeconfig()
+        }
+
         lastRefreshedAt = Date()
     }
 
@@ -147,6 +168,7 @@ final class AppModel: ObservableObject {
         connectionErrorMessage = nil
         let validContextIDs = Set(discoveredClusters.map(\.id))
         discoveryByContextID = discoveryByContextID.filter { validContextIDs.contains($0.key) }
+        resourceListStateByQuery = resourceListStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
         selectedNamespaceByContextID = selectedNamespaceByContextID.filter { validContextIDs.contains($0.key) }
 
         if discoveredClusters.isEmpty {
@@ -176,6 +198,7 @@ final class AppModel: ObservableObject {
         guard let selectedClusterID else { return }
 
         connectionTask?.cancel()
+        resourceListTask?.cancel()
         connectionErrorMessage = nil
 
         guard let connectionService else {
@@ -184,6 +207,9 @@ final class AppModel: ObservableObject {
                 cluster.lastSeenAt = Date()
             }
             discoveryByContextID[selectedClusterID] = .preview
+            if let selectedResource {
+                loadResourceList(for: selectedResource)
+            }
             return
         }
 
@@ -194,6 +220,7 @@ final class AppModel: ObservableObject {
             cluster.lastSeenAt = nil
         }
         discoveryByContextID[selectedClusterID] = nil
+        resourceListStateByQuery = resourceListStateByQuery.filter { $0.key.contextID != selectedClusterID }
 
         connectionTask = Task { [weak self] in
             do {
@@ -214,7 +241,9 @@ final class AppModel: ObservableObject {
 
     func disconnectSelectedCluster() {
         connectionTask?.cancel()
+        resourceListTask?.cancel()
         connectionTask = nil
+        resourceListTask = nil
         connectionErrorMessage = nil
 
         updateSelectedCluster { cluster in
@@ -225,6 +254,72 @@ final class AppModel: ObservableObject {
 
         if let selectedClusterID {
             discoveryByContextID[selectedClusterID] = nil
+            resourceListStateByQuery = resourceListStateByQuery.filter { $0.key.contextID != selectedClusterID }
+        }
+    }
+
+    func resourceListState(for resource: ResourceNavigationItem) -> ResourceListLoadState {
+        guard let query = resourceListQuery(for: resource) else {
+            return .idle
+        }
+
+        return resourceListStateByQuery[query] ?? .idle
+    }
+
+    func resourceListTaskID(for resource: ResourceNavigationItem) -> String {
+        resourceListQuery(for: resource)?.id ?? "\(selectedClusterID ?? "none")|\(resource.id)|\(selectedConnectionState.rawValue)"
+    }
+
+    func loadResourceList(for resource: ResourceNavigationItem, force: Bool = false) {
+        guard selectedConnectionState == .connected,
+              let query = resourceListQuery(for: resource),
+              query.resource.verbs.contains("list") else {
+            return
+        }
+
+        if !force {
+            switch resourceListStateByQuery[query] {
+            case .some(.loaded), .some(.loading):
+                return
+            case .some(.idle), .some(.failed), .none:
+                break
+            }
+        }
+
+        resourceListTask?.cancel()
+        resourceListStateByQuery[query] = .loading
+
+        guard let resourceListService else {
+            finishResourceList(
+                query: query,
+                response: KubernetesUnstructuredResourceList(
+                    apiVersion: query.resource.groupVersion,
+                    kind: "\(query.resource.kind)List",
+                    metadata: nil,
+                    items: []
+                )
+            )
+            return
+        }
+
+        let kubeconfig = loadedKubeconfig
+        let namespace = namespaceForRequest(query)
+        resourceListTask = Task { [weak self] in
+            do {
+                let response = try await resourceListService.listResources(
+                    contextName: query.contextID,
+                    kubeconfig: kubeconfig,
+                    resource: query.resource,
+                    namespace: namespace
+                )
+
+                try Task.checkCancellation()
+                self?.finishResourceList(query: query, response: response)
+            } catch is CancellationError {
+                self?.cancelResourceList(query: query)
+            } catch {
+                self?.failResourceList(query: query, error: error)
+            }
         }
     }
 
@@ -254,6 +349,10 @@ final class AppModel: ObservableObject {
         if selectedClusterID == contextID {
             connectionErrorMessage = nil
         }
+
+        if selectedClusterID == contextID, let selectedResource {
+            loadResourceList(for: selectedResource)
+        }
     }
 
     private func failConnection(contextID: ClusterSummary.ID, error: Error) {
@@ -268,6 +367,32 @@ final class AppModel: ObservableObject {
             connectionErrorMessage = error.localizedDescription
         }
         discoveryByContextID[contextID] = nil
+        resourceListStateByQuery = resourceListStateByQuery.filter { $0.key.contextID != contextID }
+    }
+
+    private func finishResourceList(
+        query: ResourceListQuery,
+        response: KubernetesUnstructuredResourceList
+    ) {
+        resourceListStateByQuery[query] = .loaded(
+            ResourceListSnapshot(
+                query: query,
+                items: response.items,
+                resourceVersion: response.metadata?.resourceVersion,
+                continueToken: response.metadata?.continueToken,
+                loadedAt: Date()
+            )
+        )
+    }
+
+    private func cancelResourceList(query: ResourceListQuery) {
+        if resourceListStateByQuery[query] == .loading {
+            resourceListStateByQuery[query] = .idle
+        }
+    }
+
+    private func failResourceList(query: ResourceListQuery, error: Error) {
+        resourceListStateByQuery[query] = .failed(error.localizedDescription)
     }
 
     private func updateSelectedCluster(_ update: (inout ClusterSummary) -> Void) {
@@ -296,6 +421,28 @@ final class AppModel: ObservableObject {
         }
 
         return discovery.namespaceDiscovery.items.first?.name ?? Self.allNamespacesSelection
+    }
+
+    private func resourceListQuery(for resource: ResourceNavigationItem) -> ResourceListQuery? {
+        guard let selectedClusterID,
+              let discoveredResource = resource.discoveredResource(in: selectedDiscovery) else {
+            return nil
+        }
+
+        return ResourceListQuery(
+            contextID: selectedClusterID,
+            resource: discoveredResource,
+            namespaceSelection: selectedNamespaceSelection
+        )
+    }
+
+    private func namespaceForRequest(_ query: ResourceListQuery) -> String? {
+        guard query.resource.namespaced,
+              query.namespaceSelection != Self.allNamespacesSelection else {
+            return nil
+        }
+
+        return query.namespaceSelection
     }
 
     private func orderedUnique(_ values: [String]) -> [String] {

@@ -11,7 +11,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 2 | [Kubernetes API Connectivity](PHASE2.md) | Review checkpoint | Native client connects, runs exec auth, discovers API resources, and loads namespaces |
 | 3 | [Main App Shell](PHASE3.md) | Not started | Waiting for foundation/navigation model |
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Not started | Waiting for API client/resource store |
-| 5 | [Resource Browsing](PHASE5.md) | Not started | Discovery is ready; waiting for resource list APIs and tables |
+| 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
 | 6 | [Resource Detail And YAML](PHASE6.md) | Not started | Waiting for resource browsing |
 | 7 | [Logs](PHASE7.md) | Not started | Waiting for pod/resource detail support |
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Not started | Waiting for stable resource list model |
@@ -32,7 +32,7 @@ This file tracks implementation status across all phases. Keep this updated when
 - [x] Connect to demo cluster.
 - [x] Discover Kubernetes API groups/resources.
 - [x] Load namespaces and expose namespace scope.
-- [ ] Browse resources.
+- [x] Browse resources.
 - [ ] Inspect YAML.
 - [ ] Stream logs.
 - [ ] Add real-time updates.

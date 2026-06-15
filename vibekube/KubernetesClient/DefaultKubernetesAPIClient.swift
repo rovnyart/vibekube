@@ -48,6 +48,13 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         try await get(path: "/api/v1/namespaces")
     }
 
+    func resourceList(
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        try await get(path: resource.listPath(namespace: namespace))
+    }
+
     private func get<Response: Decodable>(path: String) async throws -> Response {
         var request = URLRequest(url: configuration.url(path: path))
         request.httpMethod = "GET"

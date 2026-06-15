@@ -1,0 +1,208 @@
+import Foundation
+
+struct KubernetesUnstructuredResourceList: Decodable, Equatable {
+    var apiVersion: String?
+    var kind: String?
+    var metadata: KubernetesListMetadata?
+    var items: [KubernetesUnstructuredResource]
+}
+
+struct KubernetesListMetadata: Decodable, Equatable {
+    var resourceVersion: String?
+    var continueToken: String?
+    var remainingItemCount: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case resourceVersion
+        case continueToken = "continue"
+        case remainingItemCount
+    }
+}
+
+struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hashable {
+    var apiVersion: String?
+    var kind: String?
+    var metadata: KubernetesObjectMetadata
+    var spec: KubernetesJSONValue?
+    var status: KubernetesJSONValue?
+    var reason: String?
+    var type: String?
+    var message: String?
+    var note: String?
+    var count: Int?
+
+    var id: String {
+        metadata.uid ?? "\(displayKind)/\(displayNamespace)/\(displayName)"
+    }
+
+    var displayName: String {
+        metadata.name ?? "Unknown"
+    }
+
+    var displayNamespace: String {
+        metadata.namespace ?? "-"
+    }
+
+    var displayKind: String {
+        kind ?? "Unknown"
+    }
+
+    var displayStatus: String {
+        if isEvent {
+            if let type, let reason {
+                return "\(type) \(reason)"
+            }
+            return reason ?? type ?? "-"
+        }
+
+        if let deletionTimestamp = metadata.deletionTimestamp, !deletionTimestamp.isEmpty {
+            return "Terminating"
+        }
+
+        if let phase = status?["phase"]?.stringValue, !phase.isEmpty {
+            return phase
+        }
+
+        if let ready = readyReplicas, let desired = desiredReplicas {
+            return "\(ready)/\(desired) ready"
+        }
+
+        if let ready = readyReplicas {
+            return "\(ready) ready"
+        }
+
+        return type ?? "-"
+    }
+
+    var labelsSummary: String {
+        guard let labels = metadata.labels, !labels.isEmpty else {
+            return "-"
+        }
+
+        return labels
+            .sorted { lhs, rhs in lhs.key.localizedStandardCompare(rhs.key) == .orderedAscending }
+            .prefix(3)
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: ", ")
+    }
+
+    var searchBlob: String {
+        [
+            displayName,
+            displayNamespace,
+            displayKind,
+            displayStatus,
+            labelsSummary,
+            reason,
+            type
+        ]
+        .compactMap { $0 }
+        .joined(separator: " ")
+        .lowercased()
+    }
+
+    func ageDescription(now: Date = Date()) -> String {
+        guard let creationDate else {
+            return "-"
+        }
+
+        let seconds = max(0, Int(now.timeIntervalSince(creationDate)))
+        switch seconds {
+        case ..<60:
+            return "\(seconds)s"
+        case ..<3_600:
+            return "\(seconds / 60)m"
+        case ..<86_400:
+            return "\(seconds / 3_600)h"
+        default:
+            return "\(seconds / 86_400)d"
+        }
+    }
+
+    var creationDate: Date? {
+        guard let creationTimestamp = metadata.creationTimestamp else {
+            return nil
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: creationTimestamp) {
+            return date
+        }
+
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: creationTimestamp)
+    }
+
+    private var isEvent: Bool {
+        displayKind == "Event" || reason != nil && (message != nil || note != nil)
+    }
+
+    private var desiredReplicas: Int? {
+        spec?["replicas"]?.intValue ??
+            status?["desiredNumberScheduled"]?.intValue ??
+            status?["replicas"]?.intValue
+    }
+
+    private var readyReplicas: Int? {
+        status?["readyReplicas"]?.intValue ??
+            status?["availableReplicas"]?.intValue ??
+            status?["numberReady"]?.intValue
+    }
+}
+
+enum KubernetesJSONValue: Decodable, Equatable, Hashable {
+    case string(String)
+    case number(Double)
+    case bool(Bool)
+    case object([String: KubernetesJSONValue])
+    case array([KubernetesJSONValue])
+    case null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+
+        if container.decodeNil() {
+            self = .null
+        } else if let bool = try? container.decode(Bool.self) {
+            self = .bool(bool)
+        } else if let int = try? container.decode(Int.self) {
+            self = .number(Double(int))
+        } else if let double = try? container.decode(Double.self) {
+            self = .number(double)
+        } else if let string = try? container.decode(String.self) {
+            self = .string(string)
+        } else if let object = try? container.decode([String: KubernetesJSONValue].self) {
+            self = .object(object)
+        } else if let array = try? container.decode([KubernetesJSONValue].self) {
+            self = .array(array)
+        } else {
+            self = .null
+        }
+    }
+
+    subscript(key: String) -> KubernetesJSONValue? {
+        guard case .object(let object) = self else {
+            return nil
+        }
+        return object[key]
+    }
+
+    var stringValue: String? {
+        if case .string(let value) = self {
+            return value
+        }
+        return nil
+    }
+
+    var intValue: Int? {
+        switch self {
+        case .number(let value):
+            return Int(value)
+        case .string(let value):
+            return Int(value)
+        default:
+            return nil
+        }
+    }
+}

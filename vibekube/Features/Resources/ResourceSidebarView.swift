@@ -4,7 +4,7 @@ struct ResourceSidebarView: View {
     @EnvironmentObject private var appModel: AppModel
 
     var body: some View {
-        List(selection: $appModel.selectedResource) {
+        List(selection: selectedResource) {
             ForEach(ResourceNavigationSection.allCases) { section in
                 Section(section.title) {
                     ForEach(ResourceNavigationItem.items(in: section)) { item in
@@ -21,6 +21,18 @@ struct ResourceSidebarView: View {
         .listStyle(.sidebar)
         .navigationTitle("Resources")
         .background(.bar)
+    }
+
+    private var selectedResource: Binding<ResourceNavigationItem?> {
+        Binding(
+            get: { appModel.selectedResource },
+            set: { resource in
+                guard let resource else {
+                    return
+                }
+                appModel.selectResource(resource)
+            }
+        )
     }
 }
 

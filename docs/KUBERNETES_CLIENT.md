@@ -30,15 +30,17 @@ Implemented:
 - `/apis` group discovery
 - per-group/version API resource discovery
 - namespace loading with a toolbar namespace selector
+- generic resource list endpoints from discovery metadata
+- native read-only resource tables for common built-ins
 - basic HTTP status and Kubernetes `Status` error mapping
 - connected/connecting/error UI states
 - opt-in kind integration test through `VIBEKUBE_RUN_KIND_INTEGRATION=1`
 
 Not implemented yet:
 
-- resource object list APIs
 - YAML detail loading
 - watch/streaming updates
+- pagination follow-up requests for large resource lists
 - dedicated signing-in UI for long-running exec auth
 - manual validation against a real Teleport-backed corporate kubeconfig
 
@@ -97,6 +99,24 @@ Discovery metadata is held in memory per context for now. It powers dashboard co
 Per-group resource discovery is lenient: if one aggregated API group is unavailable, Vibekube keeps the rest of discovery results instead of failing the whole connection. Cancellation still stops discovery immediately when the user switches context or disconnects.
 
 Namespace loading is also soft-fail. If the user can connect and discover APIs but cannot list namespaces, Vibekube keeps the cluster connected, records the namespace access error, and leaves the selector with `All Namespaces` plus the kubeconfig context namespace.
+
+## Resource Lists
+
+Resource list URLs are built from discovery metadata:
+
+- core namespaced: `GET /api/{version}/namespaces/{namespace}/{resource}`
+- core all-namespaces: `GET /api/{version}/{resource}`
+- grouped namespaced: `GET /apis/{group}/{version}/namespaces/{namespace}/{resource}`
+- grouped all-namespaces or cluster-scoped: `GET /apis/{group}/{version}/{resource}`
+
+Current list behavior:
+
+- The selected namespace controls namespaced list requests.
+- `All Namespaces` omits the namespace path segment for namespaced resources.
+- Cluster-scoped resources ignore namespace selection.
+- Table rows decode metadata plus safe summary fields from `spec`, `status`, event reason/type, and object type.
+- Secret payload fields such as `data` and `stringData` are not decoded into row models, displayed, or searchable.
+- Kubernetes list `metadata.continue` is decoded but not followed yet; pagination belongs in the next hardening slice.
 
 ## References
 

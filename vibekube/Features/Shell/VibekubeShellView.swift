@@ -33,7 +33,7 @@ struct VibekubeShellView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .help("Reload kubeconfig")
+                .help("Refresh")
                 .accessibilityIdentifier("toolbar.refresh")
 
                 Button {
@@ -56,6 +56,8 @@ struct VibekubeShellView: View {
             LogsPlaceholderView()
         case .customResources:
             ResourceCatalogView()
+        case let resource where resource.discoveredResource(in: appModel.selectedDiscovery) != nil:
+            ResourceListView(item: resource)
         default:
             ResourcePlaceholderView(item: appModel.selectedResource ?? .dashboard)
         }

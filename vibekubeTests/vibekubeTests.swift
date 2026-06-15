@@ -5,6 +5,7 @@
 //  Created by art on 27.05.2026.
 //
 
+import Foundation
 import Testing
 @testable import vibekube
 
@@ -65,6 +66,30 @@ struct vibekubeTests {
         #expect(model.connectionErrorMessage == "Nope")
     }
 
+    @MainActor
+    @Test func appModelLoadsResourceListForSelectedResource() async {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        await Task.yield()
+
+        model.selectResource(.pods)
+        await Task.yield()
+
+        guard case .loaded(let snapshot) = model.resourceListState(for: .pods) else {
+            Issue.record("Expected loaded resource list")
+            return
+        }
+
+        #expect(snapshot.items.map(\.displayName) == ["web-0"])
+        #expect(snapshot.query.namespaceSelection == "vibekube-demo")
+    }
+
     @Test func resourceNavigationGroupsWorkloads() {
         #expect(ResourceNavigationItem.pods.section == .workloads)
         #expect(ResourceNavigationItem.deployments.section == .workloads)
@@ -98,6 +123,38 @@ private struct SucceedingConnectionService: KubernetesConnectionServicing {
                     KubernetesNamespaceSummary(name: "default", phase: "Active"),
                     KubernetesNamespaceSummary(name: "vibekube-demo", phase: "Active")
                 ])
+            )
+        )
+    }
+}
+
+private struct SucceedingResourceListService: KubernetesResourceListServicing {
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "web-0",
+                        "namespace": "\(namespace ?? "all")"
+                      },
+                      "status": {
+                        "phase": "Running"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
             )
         )
     }
