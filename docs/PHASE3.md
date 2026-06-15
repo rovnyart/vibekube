@@ -11,10 +11,10 @@ Goal: make the app navigation feel like a real Kubernetes client: cluster, dashb
 - [x] Sidebar uses real cluster/namespace state.
 - [x] Resource groups are navigable.
 - [x] Toolbar exposes cluster, namespace, search, refresh, and settings controls.
-- [x] Basic keyboard shortcuts exist for dashboard, pods, logs, and refresh.
+- [x] Keyboard shortcuts exist for search, common routes, detail tabs, YAML, logs handoff, and refresh.
 - [x] Formal top-level app route model with selected cluster/resource restoration exists.
-- [ ] Toolbar is fully route-aware for resource detail/YAML/log actions.
-- [ ] Keyboard shortcut coverage is complete.
+- [x] Menus expose route-aware resource detail/YAML/log actions.
+- [ ] Full keyboard navigation and focus traversal coverage is complete.
 
 ## Checkpoint Notes
 
@@ -23,7 +23,7 @@ Goal: make the app navigation feel like a real Kubernetes client: cluster, dashb
 - Resource navigation is grouped into Overview, Workloads, Network, Config, Storage, Access Control, Cluster, and Custom.
 - Built-in resource groups route to live list views when discovery finds the matching API resource.
 - Dashboard, Logs, Settings, Custom Resources, resource lists, bottom detail inspector tabs, and placeholder states are reachable without dead ends.
-- The current shell has a persisted top-level `AppRoute` for selected cluster and resource. Deep links, resource-detail routes, quick-open, and route-aware detail commands remain future work.
+- The current shell has a persisted top-level `AppRoute` for selected cluster and resource, plus focused commands for the active resource detail inspector. Deep links, full resource-detail routes, and a true quick-open palette remain future work.
 
 ## Implementation Slices
 
@@ -51,11 +51,12 @@ Goal: make the app navigation feel like a real Kubernetes client: cluster, dashb
 ### 3.3 Toolbar And Commands
 
 - [x] Add refresh command.
-- [ ] Add search/quick-open command.
+- [x] Add search command.
+- [ ] Add true quick-open palette.
 - [x] Add namespace switching control.
-- [ ] Add copy resource identity commands.
-- [ ] Add open YAML command.
-- [ ] Add open logs command where applicable.
+- [x] Add copy resource identity commands.
+- [x] Add open YAML command for active detail inspector.
+- [x] Add open logs command where applicable.
 - [x] Add settings command.
 
 ### 3.4 Detail Placeholders
@@ -81,9 +82,9 @@ Checkpoint: stop when navigation is complete even if data is still placeholder/m
 
 - [x] User can move through the app without dead ends.
 - [x] Top-level selected cluster/resource route state survives app relaunch.
-- [ ] Toolbar actions fully reflect the current screen.
+- [x] Menus expose route-aware actions for current shell/detail context.
 - [x] Main navigation works with pointer.
-- [ ] Main navigation works comprehensively with keyboard.
+- [ ] Main navigation works comprehensively with keyboard and focus traversal.
 
 ## Validation Commands
 

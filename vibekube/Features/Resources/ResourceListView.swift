@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ResourceListView: View {
@@ -398,56 +399,9 @@ private struct ResourceDetailTabButton: View {
     }
 }
 
-private enum ResourceDetailPanelTab: String, CaseIterable, Identifiable {
-    case overview
-    case events
-    case environment
-    case yaml
-    case metadata
-    case conditions
-
-    var id: String {
-        rawValue
-    }
-
-    var title: String {
-        switch self {
-        case .overview:
-            "Overview"
-        case .events:
-            "Events"
-        case .environment:
-            "Env"
-        case .yaml:
-            "YAML"
-        case .metadata:
-            "Metadata"
-        case .conditions:
-            "Conditions"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .overview:
-            "list.bullet.rectangle"
-        case .events:
-            "waveform.path.ecg"
-        case .environment:
-            "switch.2"
-        case .yaml:
-            "doc.plaintext"
-        case .metadata:
-            "tag"
-        case .conditions:
-            "checklist"
-        }
-    }
-}
-
 private struct ResourceDetailView: View {
     @EnvironmentObject private var appModel: AppModel
-    @State private var selectedPanelTab: ResourceDetailPanelTab = .overview
+    @State private var selectedPanel: ResourceDetailPanel = .overview
 
     let item: ResourceNavigationItem
     let row: KubernetesUnstructuredResource
@@ -465,8 +419,9 @@ private struct ResourceDetailView: View {
             appModel.loadResourceDetail(for: item, row: row)
         }
         .onChange(of: row.id) {
-            selectedPanelTab = .overview
+            selectedPanel = .overview
         }
+        .focusedSceneValue(\.resourceDetailCommandContext, detailCommandContext)
         .accessibilityIdentifier("resource.detail.\(item.id)")
     }
 
@@ -488,7 +443,7 @@ private struct ResourceDetailView: View {
             Spacer()
 
             ResourceDetailPanelTabBar(
-                selection: $selectedPanelTab,
+                selection: $selectedPanel,
                 isEnabled: isLoaded
             )
 
@@ -543,7 +498,7 @@ private struct ResourceDetailView: View {
 
     @ViewBuilder
     private func loadedContent(_ snapshot: ResourceDetailSnapshot) -> some View {
-        switch selectedPanelTab {
+        switch selectedPanel {
         case .overview:
             ResourceDetailOverviewView(
                 row: row,
@@ -570,6 +525,24 @@ private struct ResourceDetailView: View {
         return false
     }
 
+    private var detailCommandContext: ResourceDetailCommandContext {
+        ResourceDetailCommandContext(
+            title: "\(row.displayKind)/\(row.displayName)",
+            isLoaded: isLoaded,
+            selectPanel: { panel in
+                selectedPanel = panel
+            },
+            copyIdentity: {
+                copyToPasteboard(resourceIdentityText)
+            },
+            copyYAML: {
+                if case .loaded(let snapshot) = appModel.resourceDetailState(for: item, row: row) {
+                    copyToPasteboard(snapshot.yaml)
+                }
+            }
+        )
+    }
+
     private var detailSubtitle: String {
         if row.displayNamespace == "-" {
             return row.displayKind
@@ -577,15 +550,30 @@ private struct ResourceDetailView: View {
 
         return "\(row.displayKind) · \(row.displayNamespace)"
     }
+
+    private var resourceIdentityText: String {
+        [
+            "Kind: \(row.displayKind)",
+            "Name: \(row.displayName)",
+            "Namespace: \(row.displayNamespace == "-" ? "Cluster scoped" : row.displayNamespace)",
+            "Resource: \(item.title)",
+            "Cluster: \(appModel.selectedClusterID ?? "-")"
+        ].joined(separator: "\n")
+    }
+
+    private func copyToPasteboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
 }
 
 private struct ResourceDetailPanelTabBar: View {
-    @Binding var selection: ResourceDetailPanelTab
+    @Binding var selection: ResourceDetailPanel
     var isEnabled: Bool
 
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(ResourceDetailPanelTab.allCases) { tab in
+            ForEach(ResourceDetailPanel.allCases) { tab in
                 ResourceDetailPanelTabButton(
                     tab: tab,
                     isSelected: selection == tab,
@@ -606,7 +594,7 @@ private struct ResourceDetailPanelTabBar: View {
 }
 
 private struct ResourceDetailPanelTabButton: View {
-    let tab: ResourceDetailPanelTab
+    let tab: ResourceDetailPanel
     let isSelected: Bool
     let isEnabled: Bool
     let action: () -> Void

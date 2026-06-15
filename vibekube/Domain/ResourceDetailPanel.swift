@@ -1,0 +1,48 @@
+import Foundation
+
+enum ResourceDetailPanel: String, CaseIterable, Identifiable {
+    case overview
+    case events
+    case environment
+    case yaml
+    case metadata
+    case conditions
+
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .overview:
+            "Overview"
+        case .events:
+            "Events"
+        case .environment:
+            "Env"
+        case .yaml:
+            "YAML"
+        case .metadata:
+            "Metadata"
+        case .conditions:
+            "Conditions"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .overview:
+            "list.bullet.rectangle"
+        case .events:
+            "waveform.path.ecg"
+        case .environment:
+            "switch.2"
+        case .yaml:
+            "doc.plaintext"
+        case .metadata:
+            "tag"
+        case .conditions:
+            "checklist"
+        }
+    }
+}

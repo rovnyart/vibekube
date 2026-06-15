@@ -3,6 +3,7 @@ import SwiftUI
 struct VibekubeShellView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @FocusState private var focusedField: ShellFocusedField?
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -26,6 +27,7 @@ struct VibekubeShellView: View {
                 TextField("Search", text: $appModel.searchText)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 220)
+                    .focused($focusedField, equals: .search)
                     .accessibilityIdentifier("toolbar.search")
 
                 Button {
@@ -43,6 +45,9 @@ struct VibekubeShellView: View {
                 }
                 .accessibilityIdentifier("toolbar.settings")
             }
+        }
+        .onChange(of: appModel.searchFocusRequestID) {
+            focusedField = .search
         }
         .accessibilityIdentifier("vibekube.shell")
     }
@@ -63,6 +68,10 @@ struct VibekubeShellView: View {
             ResourcePlaceholderView(item: appModel.selectedResource ?? .dashboard)
         }
     }
+}
+
+private enum ShellFocusedField {
+    case search
 }
 
 private struct ClusterPicker: View {

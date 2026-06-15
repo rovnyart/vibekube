@@ -213,6 +213,15 @@ enum ResourceNavigationItem: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    var supportsLogs: Bool {
+        switch self {
+        case .pods, .deployments, .replicaSets, .statefulSets, .daemonSets, .jobs, .cronJobs:
+            true
+        default:
+            false
+        }
+    }
+
     static func items(in section: ResourceNavigationSection) -> [ResourceNavigationItem] {
         allCases.filter { $0.section == section }
     }

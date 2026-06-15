@@ -61,6 +61,52 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelRequestsSearchFocusForCommands() {
+        let model = AppModel(clusters: ClusterSummary.preview)
+
+        #expect(model.searchFocusRequestID == 0)
+        model.focusSearchField()
+
+        #expect(model.searchFocusRequestID == 1)
+    }
+
+    @MainActor
+    @Test func appModelBuildsCopyableRouteIdentity() async {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        await Task.yield()
+        model.selectResource(.pods)
+
+        let identity = model.selectedRouteIdentityText ?? ""
+        #expect(identity.contains("Context: kind-vibekube-dev"))
+        #expect(identity.contains("Route: Pods"))
+        #expect(identity.contains("API: v1/pods"))
+        #expect(identity.contains("Namespace: All Namespaces"))
+    }
+
+    @MainActor
+    @Test func appModelOnlyOpensLogsForConnectedWorkloadRoutes() {
+        let model = AppModel(clusters: ClusterSummary.preview)
+
+        model.selectResource(.pods)
+        #expect(model.canOpenLogsForSelectedRoute == false)
+
+        model.connectSelectedCluster()
+        #expect(model.canOpenLogsForSelectedRoute == true)
+
+        model.openLogsForSelectedRoute()
+        #expect(model.selectedResource == .logs)
+
+        model.selectResource(.services)
+        #expect(model.canOpenLogsForSelectedRoute == false)
+    }
+
+    @MainActor
     @Test func appModelConnectsAndDisconnectsSelectedCluster() {
         let model = AppModel(clusters: ClusterSummary.preview)
 

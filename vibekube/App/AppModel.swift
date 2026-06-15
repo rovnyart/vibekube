@@ -14,6 +14,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var resourceDetailStateByQuery: [ResourceDetailQuery: ResourceDetailLoadState]
     @Published private(set) var resourceEventsStateByQuery: [ResourceEventsQuery: ResourceEventsLoadState]
     @Published private(set) var envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]
+    @Published private(set) var searchFocusRequestID = 0
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
     private let kubeconfigLoader: KubeconfigLoader?
@@ -169,6 +170,49 @@ final class AppModel: ObservableObject {
         return selectedCluster.connectionState.canAttemptConnection
     }
 
+    var selectedClusterIdentityText: String? {
+        guard let selectedCluster else {
+            return nil
+        }
+
+        return [
+            "Context: \(selectedCluster.contextName)",
+            "Cluster: \(selectedCluster.name)",
+            "Server: \(selectedCluster.server)",
+            "Namespace: \(selectedNamespaceTitle)",
+            "Auth: \(selectedCluster.authDescription)",
+            "Source: \(selectedCluster.sourceName)"
+        ].joined(separator: "\n")
+    }
+
+    var selectedRouteIdentityText: String? {
+        guard let selectedCluster else {
+            return nil
+        }
+
+        var lines = [
+            "Context: \(selectedCluster.contextName)",
+            "Route: \(route.resource.title)"
+        ]
+
+        if let discoveredResource = route.resource.discoveredResource(in: selectedDiscovery) {
+            lines.append("API: \(discoveredResource.groupVersion)/\(discoveredResource.name)")
+            lines.append("Kind: \(discoveredResource.kind)")
+            lines.append("Scope: \(discoveredResource.scopeTitle)")
+            if discoveredResource.namespaced {
+                lines.append("Namespace: \(selectedNamespaceTitle)")
+            }
+        } else if route.resource.requiresDiscoveredResource {
+            lines.append("API: Not discovered")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    var canOpenLogsForSelectedRoute: Bool {
+        selectedConnectionState == .connected && route.resource.supportsLogs
+    }
+
     func selectCluster(id: ClusterSummary.ID?) {
         guard route.clusterID != id else {
             return
@@ -208,6 +252,22 @@ final class AppModel: ObservableObject {
 
     func namespaceTitle(for namespace: String) -> String {
         namespace == Self.allNamespacesSelection ? "All Namespaces" : namespace
+    }
+
+    func focusSearchField() {
+        searchFocusRequestID += 1
+    }
+
+    func clearSearch() {
+        searchText = ""
+    }
+
+    func openLogsForSelectedRoute() {
+        guard canOpenLogsForSelectedRoute else {
+            return
+        }
+
+        selectResource(.logs)
     }
 
     func refresh() {
