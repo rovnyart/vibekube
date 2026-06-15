@@ -45,7 +45,7 @@ struct vibekubeTests {
 
         #expect(model.selectedConnectionState == .connected)
         #expect(model.selectedCluster?.kubernetesVersion == "v1.30.0")
-        #expect(model.selectedDiscovery?.resourceCount == 1)
+        #expect(model.selectedDiscovery?.resourceCount == 2)
         #expect(model.selectedNamespaceSelection == AppModel.allNamespacesSelection)
         #expect(model.selectedNamespaceTitle == "All Namespaces")
         #expect(model.namespaceSelectionOptions.contains(AppModel.allNamespacesSelection))
@@ -132,6 +132,39 @@ struct vibekubeTests {
         #expect(detail.yaml.contains("namespace: vibekube-demo"))
     }
 
+    @MainActor
+    @Test func appModelRevealsEnvSecretValue() async {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceDetailService: SucceedingResourceDetailService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        await Task.yield()
+
+        model.revealEnvSecretValue(
+            namespace: "vibekube-demo",
+            secretName: "web-secrets",
+            key: "db-password"
+        )
+        for _ in 0..<3 {
+            await Task.yield()
+        }
+
+        guard case .loaded(let value) = model.envSecretValueState(
+            namespace: "vibekube-demo",
+            secretName: "web-secrets",
+            key: "db-password"
+        ) else {
+            Issue.record("Expected revealed secret env value")
+            return
+        }
+
+        #expect(value == "test-password")
+    }
+
     @Test func resourceNavigationGroupsWorkloads() {
         #expect(ResourceNavigationItem.pods.section == .workloads)
         #expect(ResourceNavigationItem.deployments.section == .workloads)
@@ -157,7 +190,8 @@ private struct SucceedingConnectionService: KubernetesConnectionServicing {
                     KubernetesAPIResourceList(
                         groupVersion: "v1",
                         resources: [
-                            KubernetesAPIResource(name: "pods", singularName: "", namespaced: true, kind: "Pod", verbs: ["get", "list"], shortNames: nil, categories: nil)
+                            KubernetesAPIResource(name: "pods", singularName: "", namespaced: true, kind: "Pod", verbs: ["get", "list"], shortNames: nil, categories: nil),
+                            KubernetesAPIResource(name: "secrets", singularName: "", namespaced: true, kind: "Secret", verbs: ["get"], shortNames: nil, categories: nil)
                         ]
                     )
                 ],
@@ -210,6 +244,28 @@ private struct SucceedingResourceDetailService: KubernetesResourceDetailServicin
         namespace: String?,
         name: String
     ) async throws -> KubernetesResourceDetail {
+        if resource.name == "secrets" {
+            return try JSONDecoder().decode(
+                KubernetesResourceDetail.self,
+                from: Data(
+                    """
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Secret",
+                      "metadata": {
+                        "name": "\(name)",
+                        "namespace": "\(namespace ?? "vibekube-demo")"
+                      },
+                      "data": {
+                        "db-password": "dGVzdC1wYXNzd29yZA=="
+                      },
+                      "type": "Opaque"
+                    }
+                    """.utf8
+                )
+            )
+        }
+
         let namespaceLine = namespace.map { #""namespace": "\#($0)","# } ?? ""
         return try JSONDecoder().decode(
             KubernetesResourceDetail.self,

@@ -18,6 +18,23 @@ struct KubernetesResourceDetail: Decodable, Equatable {
         )
     }
 
+    func decodedSecretValue(forKey key: String) -> String? {
+        guard isSecret else {
+            return nil
+        }
+
+        if let value = value["stringData"]?[key]?.stringValue {
+            return value
+        }
+
+        guard let encodedValue = value["data"]?[key]?.stringValue,
+              let data = Data(base64Encoded: encodedValue) else {
+            return nil
+        }
+
+        return String(decoding: data, as: UTF8.self)
+    }
+
     var summary: KubernetesResourceDetailSummary {
         KubernetesResourceDetailSummary(value: value)
     }
@@ -43,6 +60,7 @@ struct KubernetesResourceDetailSummary: Equatable {
     var ownerReferences: [KubernetesOwnerReferenceSummary]
     var conditions: [KubernetesConditionSummary]
     var containers: [KubernetesContainerSummary]
+    var environment: [KubernetesContainerEnvironmentSummary]
 
     init(value: KubernetesJSONValue) {
         let metadata = value["metadata"]
@@ -65,9 +83,10 @@ struct KubernetesResourceDetailSummary: Equatable {
         self.ownerReferences = Self.ownerReferences(in: metadata)
         self.conditions = Self.conditions(in: statusObject)
         self.containers = Self.containers(in: spec, status: statusObject)
+        self.environment = Self.environment(in: spec)
     }
 
-    private static func statusText(value: KubernetesJSONValue) -> String? {
+    nonisolated private static func statusText(value: KubernetesJSONValue) -> String? {
         if let phase = value["status"]?["phase"]?.stringValue, !phase.isEmpty {
             return phase
         }
@@ -94,7 +113,7 @@ struct KubernetesResourceDetailSummary: Equatable {
         return nil
     }
 
-    private static func stringMap(
+    nonisolated private static func stringMap(
         _ value: KubernetesJSONValue?,
         redactingValues: Bool,
         kind: String?
@@ -113,7 +132,7 @@ struct KubernetesResourceDetailSummary: Equatable {
         return result
     }
 
-    private static func shouldRedactMetadataValue(key: String, kind: String?) -> Bool {
+    nonisolated private static func shouldRedactMetadataValue(key: String, kind: String?) -> Bool {
         if kind == "Secret" {
             return true
         }
@@ -132,7 +151,7 @@ struct KubernetesResourceDetailSummary: Equatable {
         return sensitiveFragments.contains { lowercasedKey.contains($0) }
     }
 
-    private static func ownerReferences(in metadata: KubernetesJSONValue?) -> [KubernetesOwnerReferenceSummary] {
+    nonisolated private static func ownerReferences(in metadata: KubernetesJSONValue?) -> [KubernetesOwnerReferenceSummary] {
         metadata?["ownerReferences"]?.arrayValue?.compactMap { value in
             guard let object = value.objectValue else {
                 return nil
@@ -146,7 +165,7 @@ struct KubernetesResourceDetailSummary: Equatable {
         } ?? []
     }
 
-    private static func conditions(in status: KubernetesJSONValue?) -> [KubernetesConditionSummary] {
+    nonisolated private static func conditions(in status: KubernetesJSONValue?) -> [KubernetesConditionSummary] {
         status?["conditions"]?.arrayValue?.compactMap { value in
             guard let object = value.objectValue else {
                 return nil
@@ -163,7 +182,7 @@ struct KubernetesResourceDetailSummary: Equatable {
         } ?? []
     }
 
-    private static func containers(
+    nonisolated private static func containers(
         in spec: KubernetesJSONValue?,
         status: KubernetesJSONValue?
     ) -> [KubernetesContainerSummary] {
@@ -191,6 +210,128 @@ struct KubernetesResourceDetailSummary: Equatable {
                 restartCount: status?["restartCount"]?.intValue
             )
         } ?? []
+    }
+
+    nonisolated private static func environment(in spec: KubernetesJSONValue?) -> [KubernetesContainerEnvironmentSummary] {
+        spec?["containers"]?.arrayValue?.compactMap { value -> KubernetesContainerEnvironmentSummary? in
+            guard let object = value.objectValue,
+                  let name = object["name"]?.stringValue else {
+                return nil
+            }
+
+            let variables = object["env"]?.arrayValue?.compactMap(environmentVariable) ?? []
+            let envFrom = object["envFrom"]?.arrayValue?.compactMap(environmentFromSource) ?? []
+
+            guard !variables.isEmpty || !envFrom.isEmpty else {
+                return nil
+            }
+
+            return KubernetesContainerEnvironmentSummary(
+                containerName: name,
+                variables: variables,
+                envFrom: envFrom
+            )
+        } ?? []
+    }
+
+    nonisolated private static func environmentVariable(_ value: KubernetesJSONValue) -> KubernetesEnvVarSummary? {
+        guard let object = value.objectValue,
+              let name = object["name"]?.stringValue else {
+            return nil
+        }
+
+        return KubernetesEnvVarSummary(
+            name: name,
+            literalValue: object["value"]?.stringValue,
+            source: environmentVariableSource(object["valueFrom"])
+        )
+    }
+
+    nonisolated private static func environmentVariableSource(_ value: KubernetesJSONValue?) -> KubernetesEnvVarSourceSummary? {
+        guard let value else {
+            return nil
+        }
+
+        if let object = value["secretKeyRef"]?.objectValue {
+            return KubernetesEnvVarSourceSummary(
+                kind: .secretKeyRef,
+                name: object["name"]?.stringValue,
+                key: object["key"]?.stringValue,
+                fieldPath: nil,
+                resource: nil,
+                isOptional: object["optional"]?.boolValue
+            )
+        }
+
+        if let object = value["configMapKeyRef"]?.objectValue {
+            return KubernetesEnvVarSourceSummary(
+                kind: .configMapKeyRef,
+                name: object["name"]?.stringValue,
+                key: object["key"]?.stringValue,
+                fieldPath: nil,
+                resource: nil,
+                isOptional: object["optional"]?.boolValue
+            )
+        }
+
+        if let object = value["fieldRef"]?.objectValue {
+            return KubernetesEnvVarSourceSummary(
+                kind: .fieldRef,
+                name: nil,
+                key: nil,
+                fieldPath: object["fieldPath"]?.stringValue,
+                resource: nil,
+                isOptional: nil
+            )
+        }
+
+        if let object = value["resourceFieldRef"]?.objectValue {
+            return KubernetesEnvVarSourceSummary(
+                kind: .resourceFieldRef,
+                name: object["containerName"]?.stringValue,
+                key: nil,
+                fieldPath: nil,
+                resource: object["resource"]?.stringValue,
+                isOptional: nil
+            )
+        }
+
+        return KubernetesEnvVarSourceSummary(
+            kind: .unknown,
+            name: nil,
+            key: nil,
+            fieldPath: nil,
+            resource: nil,
+            isOptional: nil
+        )
+    }
+
+    nonisolated private static func environmentFromSource(_ value: KubernetesJSONValue) -> KubernetesEnvFromSummary? {
+        guard let object = value.objectValue else {
+            return nil
+        }
+
+        if let secretRef = object["secretRef"]?.objectValue,
+           let name = secretRef["name"]?.stringValue {
+            return KubernetesEnvFromSummary(
+                kind: .secretRef,
+                name: name,
+                prefix: object["prefix"]?.stringValue,
+                isOptional: secretRef["optional"]?.boolValue
+            )
+        }
+
+        if let configMapRef = object["configMapRef"]?.objectValue,
+           let name = configMapRef["name"]?.stringValue {
+            return KubernetesEnvFromSummary(
+                kind: .configMapRef,
+                name: name,
+                prefix: object["prefix"]?.stringValue,
+                isOptional: configMapRef["optional"]?.boolValue
+            )
+        }
+
+        return nil
     }
 }
 
@@ -225,6 +366,77 @@ struct KubernetesContainerSummary: Equatable, Identifiable {
     var id: String {
         name
     }
+}
+
+struct KubernetesContainerEnvironmentSummary: Equatable, Identifiable {
+    var containerName: String
+    var variables: [KubernetesEnvVarSummary]
+    var envFrom: [KubernetesEnvFromSummary]
+
+    var id: String {
+        containerName
+    }
+}
+
+struct KubernetesEnvVarSummary: Equatable, Identifiable {
+    var name: String
+    var literalValue: String?
+    var source: KubernetesEnvVarSourceSummary?
+
+    var id: String {
+        [
+            name,
+            literalValue ?? "",
+            source?.id ?? ""
+        ].joined(separator: "|")
+    }
+}
+
+struct KubernetesEnvVarSourceSummary: Equatable {
+    var kind: KubernetesEnvVarSourceKind
+    var name: String?
+    var key: String?
+    var fieldPath: String?
+    var resource: String?
+    var isOptional: Bool?
+
+    var id: String {
+        [
+            kind.rawValue,
+            name ?? "",
+            key ?? "",
+            fieldPath ?? "",
+            resource ?? ""
+        ].joined(separator: "|")
+    }
+}
+
+enum KubernetesEnvVarSourceKind: String, Equatable {
+    case secretKeyRef
+    case configMapKeyRef
+    case fieldRef
+    case resourceFieldRef
+    case unknown
+}
+
+struct KubernetesEnvFromSummary: Equatable, Identifiable {
+    var kind: KubernetesEnvFromSourceKind
+    var name: String
+    var prefix: String?
+    var isOptional: Bool?
+
+    var id: String {
+        [
+            kind.rawValue,
+            name,
+            prefix ?? ""
+        ].joined(separator: "|")
+    }
+}
+
+enum KubernetesEnvFromSourceKind: String, Equatable {
+    case secretRef
+    case configMapRef
 }
 
 enum KubernetesYAMLRenderer {

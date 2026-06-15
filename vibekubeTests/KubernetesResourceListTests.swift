@@ -226,7 +226,44 @@ struct KubernetesResourceListTests {
                     "containers": [
                       {
                         "name": "web",
-                        "image": "nginx:1.27"
+                        "image": "nginx:1.27",
+                        "env": [
+                          {
+                            "name": "APP_ENV",
+                            "value": "demo"
+                          },
+                          {
+                            "name": "DB_PASSWORD",
+                            "valueFrom": {
+                              "secretKeyRef": {
+                                "name": "web-secrets",
+                                "key": "db-password"
+                              }
+                            }
+                          },
+                          {
+                            "name": "POD_NAME",
+                            "valueFrom": {
+                              "fieldRef": {
+                                "fieldPath": "metadata.name"
+                              }
+                            }
+                          }
+                        ],
+                        "envFrom": [
+                          {
+                            "configMapRef": {
+                              "name": "web-config"
+                            }
+                          },
+                          {
+                            "prefix": "EXTRA_",
+                            "secretRef": {
+                              "name": "web-extra-secrets",
+                              "optional": true
+                            }
+                          }
+                        ]
                       }
                     ]
                   },
@@ -271,6 +308,19 @@ struct KubernetesResourceListTests {
         #expect(summary.containers.first?.name == "web")
         #expect(summary.containers.first?.ready == true)
         #expect(summary.containers.first?.restartCount == 1)
+        #expect(summary.environment.first?.containerName == "web")
+        #expect(summary.environment.first?.variables.first?.name == "APP_ENV")
+        #expect(summary.environment.first?.variables.first?.literalValue == "demo")
+        #expect(summary.environment.first?.variables[1].source?.kind == .secretKeyRef)
+        #expect(summary.environment.first?.variables[1].source?.name == "web-secrets")
+        #expect(summary.environment.first?.variables[1].source?.key == "db-password")
+        #expect(summary.environment.first?.variables[2].source?.kind == .fieldRef)
+        #expect(summary.environment.first?.variables[2].source?.fieldPath == "metadata.name")
+        #expect(summary.environment.first?.envFrom.first?.kind == .configMapRef)
+        #expect(summary.environment.first?.envFrom.first?.name == "web-config")
+        #expect(summary.environment.first?.envFrom[1].kind == .secretRef)
+        #expect(summary.environment.first?.envFrom[1].prefix == "EXTRA_")
+        #expect(summary.environment.first?.envFrom[1].isOptional == true)
     }
 
     @Test func redactsSecretDetailYAML() throws {
@@ -302,6 +352,8 @@ struct KubernetesResourceListTests {
         #expect(detail.yaml.contains("stringData: <redacted>"))
         #expect(!detail.yaml.contains("c2VjcmV0"))
         #expect(!detail.yaml.contains("plain-token"))
+        #expect(detail.decodedSecretValue(forKey: "password") == "secret")
+        #expect(detail.decodedSecretValue(forKey: "token") == "plain-token")
     }
 
     @Test func indexesManifestSearchMatchesAcrossLines() {

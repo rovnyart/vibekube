@@ -85,6 +85,29 @@ enum ResourceDetailLoadState: Equatable {
     case failed(String)
 }
 
+struct ResourceEnvSecretValueQuery: Identifiable, Hashable {
+    var contextID: ClusterSummary.ID
+    var namespace: String
+    var secretName: String
+    var key: String
+
+    var id: String {
+        [
+            contextID,
+            namespace,
+            secretName,
+            key
+        ].joined(separator: "|")
+    }
+}
+
+enum ResourceEnvSecretValueLoadState: Equatable {
+    case idle
+    case loading
+    case loaded(String)
+    case failed(String)
+}
+
 extension KubernetesDiscoveredResource {
     var identity: ResourceIdentity {
         ResourceIdentity(

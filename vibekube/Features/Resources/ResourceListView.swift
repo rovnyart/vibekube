@@ -400,6 +400,7 @@ private struct ResourceDetailTabButton: View {
 
 private enum ResourceDetailPanelTab: String, CaseIterable, Identifiable {
     case overview
+    case environment
     case yaml
     case metadata
     case conditions
@@ -412,6 +413,8 @@ private enum ResourceDetailPanelTab: String, CaseIterable, Identifiable {
         switch self {
         case .overview:
             "Overview"
+        case .environment:
+            "Env"
         case .yaml:
             "YAML"
         case .metadata:
@@ -425,6 +428,8 @@ private enum ResourceDetailPanelTab: String, CaseIterable, Identifiable {
         switch self {
         case .overview:
             "list.bullet.rectangle"
+        case .environment:
+            "switch.2"
         case .yaml:
             "doc.plaintext"
         case .metadata:
@@ -540,6 +545,8 @@ private struct ResourceDetailView: View {
                 summary: snapshot.summary,
                 loadedAt: snapshot.loadedAt
             )
+        case .environment:
+            ResourceDetailEnvironmentView(summary: snapshot.summary)
         case .yaml:
             ManifestYAMLView(yaml: snapshot.yaml)
         case .metadata:
@@ -801,6 +808,281 @@ private struct ResourceDetailConditionsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(Color(nsColor: .textBackgroundColor))
+        }
+    }
+}
+
+private struct ResourceDetailEnvironmentView: View {
+    let summary: KubernetesResourceDetailSummary
+
+    var body: some View {
+        Group {
+            if summary.environment.isEmpty {
+                EmptyStateView(
+                    title: "No Environment",
+                    subtitle: "This resource does not define container environment variables.",
+                    systemImage: "switch.2"
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .textBackgroundColor))
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        ForEach(summary.environment) { container in
+                            SectionSurface(title: container.containerName, systemImage: "shippingbox") {
+                                VStack(spacing: 0) {
+                                    ForEach(Array(container.variables.enumerated()), id: \.element.id) { index, variable in
+                                        ResourceEnvironmentVariableRow(
+                                            variable: variable,
+                                            namespace: summary.namespace
+                                        )
+
+                                        if index < container.variables.count - 1 || !container.envFrom.isEmpty {
+                                            Divider()
+                                        }
+                                    }
+
+                                    ForEach(Array(container.envFrom.enumerated()), id: \.element.id) { index, source in
+                                        ResourceEnvironmentFromRow(source: source)
+
+                                        if index < container.envFrom.count - 1 {
+                                            Divider()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .background(Color(nsColor: .textBackgroundColor))
+            }
+        }
+        .accessibilityIdentifier("resource.detail.environment")
+    }
+}
+
+private struct ResourceEnvironmentVariableRow: View {
+    @EnvironmentObject private var appModel: AppModel
+    @State private var isRevealed = false
+
+    let variable: KubernetesEnvVarSummary
+    let namespace: String?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(variable.name)
+                    .font(.callout.weight(.semibold))
+                    .textSelection(.enabled)
+
+                Text(sourceDescription)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            }
+            .frame(width: 220, alignment: .leading)
+
+            valueView
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if hasRevealControl {
+                Button {
+                    toggleReveal()
+                } label: {
+                    Label(revealTitle, systemImage: isRevealed ? "eye.slash" : "eye")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .disabled(!canReveal)
+                .help(revealTitle)
+            }
+        }
+        .padding(.vertical, 9)
+    }
+
+    @ViewBuilder
+    private var valueView: some View {
+        if let source = variable.source, source.kind == .secretKeyRef {
+            secretValueView(source)
+        } else if let literalValue = variable.literalValue {
+            Text(isRevealed ? literalValue : maskedValue)
+                .font(.callout.monospaced())
+                .lineLimit(3)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+        } else {
+            Text(sourceValuePlaceholder)
+                .font(.callout.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .textSelection(.enabled)
+        }
+    }
+
+    @ViewBuilder
+    private func secretValueView(_ source: KubernetesEnvVarSourceSummary) -> some View {
+        if isRevealed {
+            switch appModel.envSecretValueState(
+                namespace: namespace,
+                secretName: source.name,
+                key: source.key
+            ) {
+            case .idle:
+                Text(maskedValue)
+                    .font(.callout.monospaced())
+                    .foregroundStyle(.secondary)
+            case .loading:
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            case .loaded(let value):
+                Text(value)
+                    .font(.callout.monospaced())
+                    .lineLimit(3)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            case .failed(let message):
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+                    .lineLimit(3)
+                    .textSelection(.enabled)
+            }
+        } else {
+            Text(maskedValue)
+                .font(.callout.monospaced())
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var sourceDescription: String {
+        guard let source = variable.source else {
+            return "Literal"
+        }
+
+        switch source.kind {
+        case .secretKeyRef:
+            return "Secret \(source.name ?? "-") · \(source.key ?? "-")"
+        case .configMapKeyRef:
+            return "ConfigMap \(source.name ?? "-") · \(source.key ?? "-")"
+        case .fieldRef:
+            return "Field \(source.fieldPath ?? "-")"
+        case .resourceFieldRef:
+            return "Resource \(source.resource ?? "-")"
+        case .unknown:
+            return "Value reference"
+        }
+    }
+
+    private var sourceValuePlaceholder: String {
+        guard let source = variable.source else {
+            return "-"
+        }
+
+        switch source.kind {
+        case .configMapKeyRef:
+            return "from ConfigMap"
+        case .fieldRef:
+            return source.fieldPath ?? "from field"
+        case .resourceFieldRef:
+            return source.resource ?? "from resource"
+        case .secretKeyRef:
+            return maskedValue
+        case .unknown:
+            return "from reference"
+        }
+    }
+
+    private var hasRevealControl: Bool {
+        variable.literalValue != nil || variable.source?.kind == .secretKeyRef
+    }
+
+    private var canReveal: Bool {
+        guard let source = variable.source, source.kind == .secretKeyRef else {
+            return variable.literalValue != nil
+        }
+
+        return namespace?.isEmpty == false &&
+            source.name?.isEmpty == false &&
+            source.key?.isEmpty == false
+    }
+
+    private var revealTitle: String {
+        isRevealed ? "Hide Value" : "Reveal Value"
+    }
+
+    private var maskedValue: String {
+        "••••••••"
+    }
+
+    private func toggleReveal() {
+        if isRevealed {
+            isRevealed = false
+            return
+        }
+
+        isRevealed = true
+        guard let source = variable.source, source.kind == .secretKeyRef else {
+            return
+        }
+
+        appModel.revealEnvSecretValue(
+            namespace: namespace,
+            secretName: source.name,
+            key: source.key
+        )
+    }
+}
+
+private struct ResourceEnvironmentFromRow: View {
+    let source: KubernetesEnvFromSummary
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(source.prefix.map { "\($0)*" } ?? "*")
+                    .font(.callout.weight(.semibold))
+                    .textSelection(.enabled)
+
+                Text(sourceDescription)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            .frame(width: 220, alignment: .leading)
+
+            Text(valueDescription)
+                .font(.callout.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 9)
+    }
+
+    private var sourceDescription: String {
+        switch source.kind {
+        case .secretRef:
+            return "Secret \(source.name)"
+        case .configMapRef:
+            return "ConfigMap \(source.name)"
+        }
+    }
+
+    private var valueDescription: String {
+        switch source.kind {
+        case .secretRef:
+            return "all secret keys"
+        case .configMapRef:
+            return "all config keys"
         }
     }
 }

@@ -13,6 +13,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot]
     @Published private(set) var resourceListStateByQuery: [ResourceListQuery: ResourceListLoadState]
     @Published private(set) var resourceDetailStateByQuery: [ResourceDetailQuery: ResourceDetailLoadState]
+    @Published private(set) var envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
     private let kubeconfigLoader: KubeconfigLoader?
@@ -23,6 +24,7 @@ final class AppModel: ObservableObject {
     private var connectionTask: Task<Void, Never>?
     private var resourceListTask: Task<Void, Never>?
     private var resourceDetailTask: Task<Void, Never>?
+    private var envSecretValueTasksByQuery: [ResourceEnvSecretValueQuery: Task<Void, Never>]
 
     static let allNamespacesSelection = "__vibekube_all_namespaces__"
 
@@ -63,6 +65,7 @@ final class AppModel: ObservableObject {
         discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot] = [:],
         resourceListStateByQuery: [ResourceListQuery: ResourceListLoadState]? = nil,
         resourceDetailStateByQuery: [ResourceDetailQuery: ResourceDetailLoadState]? = nil,
+        envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]? = nil,
         selectedNamespaceByContextID: [ClusterSummary.ID: String] = [:]
     ) {
         self.clusters = clusters
@@ -77,7 +80,9 @@ final class AppModel: ObservableObject {
         self.discoveryByContextID = discoveryByContextID
         self.resourceListStateByQuery = resourceListStateByQuery ?? [:]
         self.resourceDetailStateByQuery = resourceDetailStateByQuery ?? [:]
+        self.envSecretValueStateByQuery = envSecretValueStateByQuery ?? [:]
         self.selectedNamespaceByContextID = selectedNamespaceByContextID
+        self.envSecretValueTasksByQuery = [:]
     }
 
     var selectedCluster: ClusterSummary? {
@@ -132,6 +137,7 @@ final class AppModel: ObservableObject {
         connectionTask?.cancel()
         resourceListTask?.cancel()
         resourceDetailTask?.cancel()
+        cancelEnvSecretValueTasks()
         selectedClusterID = id
         selectedResource = .dashboard
         connectionErrorMessage = nil
@@ -183,6 +189,7 @@ final class AppModel: ObservableObject {
         discoveryByContextID = discoveryByContextID.filter { validContextIDs.contains($0.key) }
         resourceListStateByQuery = resourceListStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
         resourceDetailStateByQuery = resourceDetailStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
+        envSecretValueStateByQuery = envSecretValueStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
         selectedNamespaceByContextID = selectedNamespaceByContextID.filter { validContextIDs.contains($0.key) }
 
         if discoveredClusters.isEmpty {
@@ -214,6 +221,7 @@ final class AppModel: ObservableObject {
         connectionTask?.cancel()
         resourceListTask?.cancel()
         resourceDetailTask?.cancel()
+        cancelEnvSecretValueTasks()
         connectionErrorMessage = nil
 
         guard let connectionService else {
@@ -237,6 +245,7 @@ final class AppModel: ObservableObject {
         discoveryByContextID[selectedClusterID] = nil
         resourceListStateByQuery = resourceListStateByQuery.filter { $0.key.contextID != selectedClusterID }
         resourceDetailStateByQuery = resourceDetailStateByQuery.filter { $0.key.contextID != selectedClusterID }
+        envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != selectedClusterID }
 
         connectionTask = Task { [weak self] in
             do {
@@ -259,6 +268,7 @@ final class AppModel: ObservableObject {
         connectionTask?.cancel()
         resourceListTask?.cancel()
         resourceDetailTask?.cancel()
+        cancelEnvSecretValueTasks()
         connectionTask = nil
         resourceListTask = nil
         resourceDetailTask = nil
@@ -274,6 +284,7 @@ final class AppModel: ObservableObject {
             discoveryByContextID[selectedClusterID] = nil
             resourceListStateByQuery = resourceListStateByQuery.filter { $0.key.contextID != selectedClusterID }
             resourceDetailStateByQuery = resourceDetailStateByQuery.filter { $0.key.contextID != selectedClusterID }
+            envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != selectedClusterID }
         }
     }
 
@@ -409,6 +420,78 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func envSecretValueState(
+        namespace: String?,
+        secretName: String?,
+        key: String?
+    ) -> ResourceEnvSecretValueLoadState {
+        guard let query = envSecretValueQuery(namespace: namespace, secretName: secretName, key: key) else {
+            return .idle
+        }
+
+        return envSecretValueStateByQuery[query] ?? .idle
+    }
+
+    func revealEnvSecretValue(
+        namespace: String?,
+        secretName: String?,
+        key: String?,
+        force: Bool = false
+    ) {
+        guard selectedConnectionState == .connected,
+              let query = envSecretValueQuery(namespace: namespace, secretName: secretName, key: key) else {
+            return
+        }
+
+        if !force {
+            switch envSecretValueStateByQuery[query] {
+            case .some(.loaded), .some(.loading):
+                return
+            case .some(.idle), .some(.failed), .none:
+                break
+            }
+        }
+
+        guard let secretResource = ResourceNavigationItem.secrets.discoveredResource(in: selectedDiscovery),
+              secretResource.verbs.contains("get") else {
+            envSecretValueStateByQuery[query] = .failed("Secrets are not discoverable for this cluster.")
+            return
+        }
+
+        envSecretValueTasksByQuery[query]?.cancel()
+        envSecretValueStateByQuery[query] = .loading
+
+        guard let resourceDetailService else {
+            failEnvSecretValue(query: query, message: "Resource detail service is unavailable.")
+            return
+        }
+
+        let kubeconfig = loadedKubeconfig
+        envSecretValueTasksByQuery[query] = Task { [weak self] in
+            do {
+                let detail = try await resourceDetailService.resourceDetail(
+                    contextName: query.contextID,
+                    kubeconfig: kubeconfig,
+                    resource: secretResource,
+                    namespace: query.namespace,
+                    name: query.secretName
+                )
+
+                try Task.checkCancellation()
+
+                if let value = detail.decodedSecretValue(forKey: query.key) {
+                    self?.finishEnvSecretValue(query: query, value: value)
+                } else {
+                    self?.failEnvSecretValue(query: query, message: "Secret key was not found.")
+                }
+            } catch is CancellationError {
+                self?.cancelEnvSecretValue(query: query)
+            } catch {
+                self?.failEnvSecretValue(query: query, message: error.localizedDescription)
+            }
+        }
+    }
+
     private func cancelConnection(contextID: ClusterSummary.ID) {
         updateCluster(id: contextID) { cluster in
             if cluster.connectionState == .connecting {
@@ -452,6 +535,7 @@ final class AppModel: ObservableObject {
         discoveryByContextID[contextID] = nil
         resourceListStateByQuery = resourceListStateByQuery.filter { $0.key.contextID != contextID }
         resourceDetailStateByQuery = resourceDetailStateByQuery.filter { $0.key.contextID != contextID }
+        envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != contextID }
     }
 
     private func finishResourceList(
@@ -501,6 +585,28 @@ final class AppModel: ObservableObject {
 
     private func failResourceDetail(query: ResourceDetailQuery, error: Error) {
         resourceDetailStateByQuery[query] = .failed(error.localizedDescription)
+    }
+
+    private func finishEnvSecretValue(query: ResourceEnvSecretValueQuery, value: String) {
+        envSecretValueTasksByQuery[query] = nil
+        envSecretValueStateByQuery[query] = .loaded(value)
+    }
+
+    private func cancelEnvSecretValue(query: ResourceEnvSecretValueQuery) {
+        envSecretValueTasksByQuery[query] = nil
+        if envSecretValueStateByQuery[query] == .loading {
+            envSecretValueStateByQuery[query] = .idle
+        }
+    }
+
+    private func failEnvSecretValue(query: ResourceEnvSecretValueQuery, message: String) {
+        envSecretValueTasksByQuery[query] = nil
+        envSecretValueStateByQuery[query] = .failed(message)
+    }
+
+    private func cancelEnvSecretValueTasks() {
+        envSecretValueTasksByQuery.values.forEach { $0.cancel() }
+        envSecretValueTasksByQuery.removeAll()
     }
 
     private func updateSelectedCluster(_ update: (inout ClusterSummary) -> Void) {
@@ -582,6 +688,29 @@ final class AppModel: ObservableObject {
         }
 
         return selectedNamespaceSelection
+    }
+
+    private func envSecretValueQuery(
+        namespace: String?,
+        secretName: String?,
+        key: String?
+    ) -> ResourceEnvSecretValueQuery? {
+        guard let selectedClusterID,
+              let namespace,
+              let secretName,
+              let key,
+              !namespace.isEmpty,
+              !secretName.isEmpty,
+              !key.isEmpty else {
+            return nil
+        }
+
+        return ResourceEnvSecretValueQuery(
+            contextID: selectedClusterID,
+            namespace: namespace,
+            secretName: secretName,
+            key: key
+        )
     }
 
     private func orderedUnique(_ values: [String]) -> [String] {
@@ -668,7 +797,29 @@ private struct PreviewKubernetesResourceDetailService: KubernetesResourceDetailS
         namespace: String?,
         name: String
     ) async throws -> KubernetesResourceDetail {
-        try JSONDecoder().decode(
+        if resource.name == "secrets" {
+            return try JSONDecoder().decode(
+                KubernetesResourceDetail.self,
+                from: Data(
+                    """
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Secret",
+                      "metadata": {
+                        "name": "\(name)",
+                        "namespace": "\(namespace ?? "vibekube-demo")"
+                      },
+                      "type": "Opaque",
+                      "data": {
+                        "db-password": "cHJldmlldy1wYXNzd29yZA=="
+                      }
+                    }
+                    """.utf8
+                )
+            )
+        }
+
+        return try JSONDecoder().decode(
             KubernetesResourceDetail.self,
             from: Data(
                 """
@@ -703,6 +854,42 @@ private struct PreviewKubernetesResourceDetailService: KubernetesResourceDetailS
                       {
                         "name": "web",
                         "image": "nginx:1.27",
+                        "env": [
+                          {
+                            "name": "APP_ENV",
+                            "value": "demo"
+                          },
+                          {
+                            "name": "POD_NAME",
+                            "valueFrom": {
+                              "fieldRef": {
+                                "fieldPath": "metadata.name"
+                              }
+                            }
+                          },
+                          {
+                            "name": "DB_PASSWORD",
+                            "valueFrom": {
+                              "secretKeyRef": {
+                                "name": "web-secrets",
+                                "key": "db-password"
+                              }
+                            }
+                          }
+                        ],
+                        "envFrom": [
+                          {
+                            "configMapRef": {
+                              "name": "web-config"
+                            }
+                          },
+                          {
+                            "prefix": "EXTRA_",
+                            "secretRef": {
+                              "name": "web-extra-secrets"
+                            }
+                          }
+                        ],
                         "ports": [
                           {
                             "containerPort": 8080

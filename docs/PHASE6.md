@@ -24,7 +24,9 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - Secret manifests redact top-level `data`, `stringData`, and `binaryData`.
 - Resource detail now has Overview, YAML, Metadata, and Conditions tabs.
 - The overview tab extracts status, identity, owner references, conditions, and pod-like container summaries.
-- The richer Phase 6 detail experience still needs save/export YAML tools, events, relationships, and custom metadata sections.
+- Pod details now include an Environment tab for `env`, `envFrom`, ConfigMap refs, field refs, resource refs, and Secret key refs.
+- Secret-backed env values are masked by default and fetched/decoded on demand through an eye reveal button.
+- The richer Phase 6 detail experience still needs save/export YAML tools, events, relationships, ConfigMap value reveal, and custom metadata sections.
 
 ## Implementation Slices
 
@@ -37,6 +39,8 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - [x] Extract owner references.
 - [x] Extract conditions.
 - [x] Extract resource-specific status.
+- [x] Extract pod container environment variables.
+- [x] Extract pod `envFrom` ConfigMap/Secret references.
 
 ### 6.2 YAML Viewer
 
@@ -79,14 +83,26 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [ ] Related tab.
 - [x] Conditions tab.
 - [x] Metadata tab.
-- [ ] Containers tab for pod-like resources.
+- [x] Environment tab for pod-like resources.
+- [ ] Dedicated containers tab for pod-like resources.
+- [ ] ConfigMap value reveal for environment references.
 
-### 6.6 Tests
+### 6.6 Secret Reveal
+
+- [x] Keep Secret YAML redacted by default.
+- [x] Show Secret references from pod env vars.
+- [x] Reveal individual Secret key values on demand.
+- [x] Surface RBAC/fetch failures per env row.
+- [ ] Add a global setting for secret reveal confirmation policy.
+
+### 6.7 Tests
 
 - [x] YAML rendering tests.
 - [x] Secret redaction tests.
 - [x] YAML search indexing tests.
 - [x] Resource summary extraction tests.
+- [x] Pod environment extraction tests.
+- [x] Secret env reveal tests.
 - [x] Preview UI smoke test opens resource detail overview.
 - [ ] Relationship resolver tests.
 - [ ] UI navigation tests for events and related resources.
@@ -95,6 +111,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 
 - [x] User can open any listed get-capable resource from a table row.
 - [x] YAML is readable, searchable, copyable, and safe for secrets.
+- [x] Pod env vars and Secret refs are visible without exposing secret values by default.
 - [ ] Events and conditions explain resource state.
 - [ ] Related resources are navigable.
 

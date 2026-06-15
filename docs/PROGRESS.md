@@ -12,7 +12,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 3 | [Main App Shell](PHASE3.md) | Not started | Waiting for foundation/navigation model |
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Not started | Waiting for API client/resource store |
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
-| 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, YAML, Metadata, and Conditions tabs with extracted resource summaries |
+| 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Environment, YAML, Metadata, and Conditions tabs with masked Secret env reveal |
 | 7 | [Logs](PHASE7.md) | Not started | Waiting for pod/resource detail support |
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Not started | Waiting for stable resource list model |
 | 9 | [Workload Debugging Basics](PHASE9.md) | Not started | Waiting for logs/detail foundations |
