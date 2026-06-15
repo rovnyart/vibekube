@@ -14,34 +14,11 @@ struct ManifestYAMLView: View {
 
             Divider()
 
-            ScrollViewReader { proxy in
-                GeometryReader { geometry in
-                    ScrollView([.vertical, .horizontal]) {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                                ManifestYAMLLineView(
-                                    lineNumber: index + 1,
-                                    lineNumberWidth: lineNumberWidth,
-                                    text: line,
-                                    matches: matchesByLine[index + 1] ?? [],
-                                    selectedMatchOrdinal: selectedMatch?.ordinal
-                                )
-                                .id(index + 1)
-                            }
-                        }
-                        .padding(.vertical, 6)
-                        .padding(.trailing, 10)
-                        .frame(minWidth: geometry.size.width, alignment: .leading)
-                    }
-                    .background(Color(nsColor: .textBackgroundColor))
-                }
-                .onChange(of: selectedMatch?.id) {
-                    scrollToSelectedMatch(with: proxy)
-                }
-                .onAppear {
-                    scrollToSelectedMatch(with: proxy)
-                }
-            }
+            ManifestYAMLTextView(
+                yaml: displayYAML,
+                matches: matches,
+                selectedMatch: selectedMatch
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -117,28 +94,12 @@ struct ManifestYAMLView: View {
         .background(.bar)
     }
 
-    private var lines: [String] {
-        guard !displayYAML.isEmpty else {
-            return [""]
-        }
-
-        return displayYAML.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-    }
-
     private var displayYAML: String {
         yaml.trimmingTrailingNewlines()
     }
 
-    private var lineNumberWidth: CGFloat {
-        max(24, CGFloat(String(lines.count).count) * 7 + 10)
-    }
-
     private var matches: [ManifestSearchMatch] {
         ManifestSearchIndex.matches(in: displayYAML, query: searchText)
-    }
-
-    private var matchesByLine: [Int: [ManifestSearchMatch]] {
-        Dictionary(grouping: matches, by: \.lineNumber)
     }
 
     private var selectedMatch: ManifestSearchMatch? {
@@ -186,16 +147,6 @@ struct ManifestYAMLView: View {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.2))
             copiedToClipboard = false
-        }
-    }
-
-    private func scrollToSelectedMatch(with proxy: ScrollViewProxy) {
-        guard let selectedMatch else {
-            return
-        }
-
-        withAnimation(.easeInOut(duration: 0.16)) {
-            proxy.scrollTo(selectedMatch.lineNumber, anchor: UnitPoint(x: 0, y: 0.5))
         }
     }
 }
@@ -250,65 +201,295 @@ enum ManifestSearchIndex {
     }
 }
 
-private struct ManifestYAMLLineView: View {
-    let lineNumber: Int
-    let lineNumberWidth: CGFloat
-    let text: String
+private struct ManifestYAMLTextView: NSViewRepresentable {
+    let yaml: String
     let matches: [ManifestSearchMatch]
-    let selectedMatchOrdinal: Int?
+    let selectedMatch: ManifestSearchMatch?
 
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("\(lineNumber)")
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.tertiary)
-                .frame(width: lineNumberWidth, alignment: .trailing)
-                .textSelection(.disabled)
-
-            Text(
-                ManifestYAMLHighlighter.attributedLine(
-                    text,
-                    matches: matches,
-                    selectedMatchOrdinal: selectedMatchOrdinal
-                )
-            )
-            .font(.system(.caption, design: .monospaced))
-            .textSelection(.enabled)
-            .fixedSize(horizontal: true, vertical: false)
-        }
-        .padding(.leading, 6)
-        .padding(.trailing, 10)
-        .padding(.vertical, 1)
-        .background(lineContainsSelectedMatch ? Color.accentColor.opacity(0.08) : Color.clear)
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
     }
 
-    private var lineContainsSelectedMatch: Bool {
-        guard let selectedMatchOrdinal else {
-            return false
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = .textBackgroundColor
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = true
+        scrollView.autohidesScrollers = true
+
+        let textView = NSTextView(frame: .zero)
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isRichText = true
+        textView.allowsUndo = false
+        textView.drawsBackground = true
+        textView.backgroundColor = .textBackgroundColor
+        textView.insertionPointColor = .labelColor
+        textView.textContainerInset = NSSize(width: 8, height: 6)
+        textView.font = ManifestYAMLAttributedRenderer.font
+        textView.textColor = .labelColor
+        textView.minSize = NSSize(width: 0, height: scrollView.contentSize.height)
+        textView.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = true
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.containerSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.setAccessibilityIdentifier("resource.detail.yaml.text")
+
+        scrollView.documentView = textView
+        let rulerView = ManifestLineNumberRulerView(textView: textView, scrollView: scrollView)
+        scrollView.verticalRulerView = rulerView
+        scrollView.hasVerticalRuler = true
+        scrollView.rulersVisible = true
+
+        context.coordinator.textView = textView
+        context.coordinator.rulerView = rulerView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = context.coordinator.textView else {
+            return
         }
 
-        return matches.contains { $0.ordinal == selectedMatchOrdinal }
+        let renderState = Coordinator.RenderState(
+            yaml: yaml,
+            matches: matches,
+            selectedMatchID: selectedMatch?.id
+        )
+
+        if context.coordinator.renderState != renderState {
+            let selectedRange = textView.selectedRange()
+            textView.textStorage?.setAttributedString(
+                ManifestYAMLAttributedRenderer.attributedString(
+                    yaml: yaml,
+                    matches: matches,
+                    selectedMatch: selectedMatch
+                )
+            )
+            textView.selectedRange = selectedRange.clamped(to: textView.string.utf16.count)
+            context.coordinator.renderState = renderState
+        }
+
+        context.coordinator.rulerView?.lineStarts = ManifestYAMLAttributedRenderer.lineStarts(in: yaml)
+
+        if context.coordinator.scrolledMatchID != selectedMatch?.id {
+            context.coordinator.scrolledMatchID = selectedMatch?.id
+            if let selectedMatch,
+               let range = ManifestYAMLAttributedRenderer.range(for: selectedMatch, in: yaml) {
+                textView.scrollRangeToVisible(range)
+            }
+        }
+
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        context.coordinator.rulerView?.needsDisplay = true
+    }
+
+    final class Coordinator {
+        struct RenderState: Equatable {
+            var yaml: String
+            var matches: [ManifestSearchMatch]
+            var selectedMatchID: String?
+        }
+
+        weak var textView: NSTextView?
+        weak var rulerView: ManifestLineNumberRulerView?
+        var renderState: RenderState?
+        var scrolledMatchID: String?
     }
 }
 
-private enum ManifestYAMLHighlighter {
-    static func attributedLine(
-        _ line: String,
-        matches: [ManifestSearchMatch],
-        selectedMatchOrdinal: Int?
-    ) -> AttributedString {
-        var attributed = AttributedString(line.isEmpty ? " " : line)
-        attributed.foregroundColor = .primary
-        applySyntax(to: &attributed, source: line)
-        applySearchHighlights(
-            to: &attributed,
-            matches: matches,
-            selectedMatchOrdinal: selectedMatchOrdinal
+private final class ManifestLineNumberRulerView: NSRulerView {
+    weak var textView: NSTextView?
+    var lineStarts: [Int] = [0] {
+        didSet {
+            ruleThickness = Self.thickness(forLineCount: lineStarts.count)
+            needsDisplay = true
+        }
+    }
+
+    init(textView: NSTextView, scrollView: NSScrollView) {
+        self.textView = textView
+        super.init(scrollView: scrollView, orientation: .verticalRuler)
+        clientView = textView
+        ruleThickness = Self.thickness(forLineCount: lineStarts.count)
+    }
+
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func drawHashMarksAndLabels(in rect: NSRect) {
+        NSColor.textBackgroundColor.setFill()
+        rect.fill()
+
+        guard let textView,
+              let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer,
+              !lineStarts.isEmpty else {
+            return
+        }
+
+        layoutManager.ensureLayout(for: textContainer)
+
+        let visibleRect = textView.visibleRect
+        let glyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: textContainer)
+        let firstCharacter = layoutManager.characterIndexForGlyph(at: glyphRange.location)
+        let lastGlyphIndex = max(glyphRange.location, NSMaxRange(glyphRange) - 1)
+        let lastCharacter = layoutManager.characterIndexForGlyph(at: lastGlyphIndex)
+
+        let firstLine = max(0, lineIndex(forUTF16Location: firstCharacter) - 1)
+        let lastLine = min(lineStarts.count - 1, lineIndex(forUTF16Location: lastCharacter) + 1)
+        guard firstLine <= lastLine else {
+            return
+        }
+
+        for lineIndex in firstLine...lastLine {
+            drawLineNumber(lineIndex + 1, forLineStart: lineStarts[lineIndex], layoutManager: layoutManager)
+        }
+    }
+
+    private func drawLineNumber(
+        _ lineNumber: Int,
+        forLineStart lineStart: Int,
+        layoutManager: NSLayoutManager
+    ) {
+        guard let textView else {
+            return
+        }
+
+        let stringLength = max((textView.string as NSString).length, 1)
+        let characterIndex = min(lineStart, stringLength - 1)
+        let glyphIndex = layoutManager.glyphIndexForCharacter(at: characterIndex)
+        let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
+        let textPoint = NSPoint(
+            x: 0,
+            y: lineRect.minY + textView.textContainerOrigin.y
         )
+        let rulerPoint = convert(textPoint, from: textView)
+
+        let text = "\(lineNumber)" as NSString
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+            .foregroundColor: NSColor.tertiaryLabelColor
+        ]
+        let size = text.size(withAttributes: attributes)
+        let x = ruleThickness - size.width - 7
+        let y = rulerPoint.y + max(0, (lineRect.height - size.height) / 2)
+        text.draw(at: NSPoint(x: x, y: y), withAttributes: attributes)
+    }
+
+    private func lineIndex(forUTF16Location location: Int) -> Int {
+        var lowerBound = 0
+        var upperBound = lineStarts.count
+        while lowerBound < upperBound {
+            let middle = (lowerBound + upperBound) / 2
+            if lineStarts[middle] <= location {
+                lowerBound = middle + 1
+            } else {
+                upperBound = middle
+            }
+        }
+        return max(0, lowerBound - 1)
+    }
+
+    private static func thickness(forLineCount lineCount: Int) -> CGFloat {
+        let digits = max(2, String(max(lineCount, 1)).count)
+        return CGFloat(digits) * 7 + 18
+    }
+}
+
+private enum ManifestYAMLAttributedRenderer {
+    static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+
+    static func attributedString(
+        yaml: String,
+        matches: [ManifestSearchMatch],
+        selectedMatch: ManifestSearchMatch?
+    ) -> NSAttributedString {
+        let displayText = yaml.isEmpty ? " " : yaml
+        let attributed = NSMutableAttributedString(
+            string: displayText,
+            attributes: [
+                .font: font,
+                .foregroundColor: NSColor.labelColor
+            ]
+        )
+
+        for line in lineInfos(in: yaml) {
+            applySyntax(to: attributed, line: line.text, baseUTF16Offset: line.startUTF16)
+        }
+
+        for match in matches {
+            guard let range = range(for: match, in: yaml) else {
+                continue
+            }
+
+            let color = match.ordinal == selectedMatch?.ordinal
+                ? NSColor.controlAccentColor.withAlphaComponent(0.42)
+                : NSColor.systemYellow.withAlphaComponent(0.28)
+            attributed.addAttribute(.backgroundColor, value: color, range: range)
+        }
+
         return attributed
     }
 
-    private static func applySyntax(to attributed: inout AttributedString, source line: String) {
+    static func lineStarts(in yaml: String) -> [Int] {
+        lineInfos(in: yaml).map(\.startUTF16)
+    }
+
+    static func range(for match: ManifestSearchMatch, in yaml: String) -> NSRange? {
+        let infos = lineInfos(in: yaml)
+        guard infos.indices.contains(match.lineNumber - 1) else {
+            return nil
+        }
+
+        let line = infos[match.lineNumber - 1]
+        return nsRange(
+            in: line.text,
+            start: match.lowerBound,
+            length: match.length,
+            baseUTF16Offset: line.startUTF16
+        )
+    }
+
+    private struct LineInfo {
+        var text: String
+        var startUTF16: Int
+    }
+
+    private static func lineInfos(in yaml: String) -> [LineInfo] {
+        let lines = yaml.isEmpty
+            ? [""]
+            : yaml.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+
+        var infos: [LineInfo] = []
+        var startUTF16 = 0
+        for (index, line) in lines.enumerated() {
+            infos.append(LineInfo(text: line, startUTF16: startUTF16))
+            startUTF16 += line.utf16.count
+            if index < lines.count - 1 {
+                startUTF16 += 1
+            }
+        }
+        return infos
+    }
+
+    private static func applySyntax(
+        to attributed: NSMutableAttributedString,
+        line: String,
+        baseUTF16Offset: Int
+    ) {
         guard !line.isEmpty else {
             return
         }
@@ -323,35 +504,63 @@ private enum ManifestYAMLHighlighter {
         }
 
         if line.character(at: firstTextOffset) == "-" {
-            setForeground(.secondary, start: firstTextOffset, length: 1, in: &attributed)
+            setForeground(
+                .secondaryLabelColor,
+                start: firstTextOffset,
+                length: 1,
+                in: attributed,
+                line: line,
+                baseUTF16Offset: baseUTF16Offset
+            )
         }
 
         guard let colonOffset = yamlColonOffset(in: line) else {
-            applySequenceScalarSyntax(to: &attributed, source: line, firstTextOffset: firstTextOffset)
+            applySequenceScalarSyntax(
+                to: attributed,
+                line: line,
+                firstTextOffset: firstTextOffset,
+                baseUTF16Offset: baseUTF16Offset
+            )
             return
         }
 
         let keyStart = keyStartOffset(in: line, firstTextOffset: firstTextOffset)
         if keyStart < colonOffset {
-            setForeground(.cyan, start: keyStart, length: colonOffset - keyStart, in: &attributed)
+            setForeground(
+                .systemCyan,
+                start: keyStart,
+                length: colonOffset - keyStart,
+                in: attributed,
+                line: line,
+                baseUTF16Offset: baseUTF16Offset
+            )
         }
-        setForeground(.secondary, start: colonOffset, length: 1, in: &attributed)
+        setForeground(
+            .secondaryLabelColor,
+            start: colonOffset,
+            length: 1,
+            in: attributed,
+            line: line,
+            baseUTF16Offset: baseUTF16Offset
+        )
 
         let valueStart = firstNonWhitespaceOffset(in: line, after: colonOffset + 1)
         if valueStart < lineLength {
             applyScalarSyntax(
-                to: &attributed,
-                source: line,
+                to: attributed,
+                line: line,
                 start: valueStart,
-                length: lineLength - valueStart
+                length: lineLength - valueStart,
+                baseUTF16Offset: baseUTF16Offset
             )
         }
     }
 
     private static func applySequenceScalarSyntax(
-        to attributed: inout AttributedString,
-        source line: String,
-        firstTextOffset: Int
+        to attributed: NSMutableAttributedString,
+        line: String,
+        firstTextOffset: Int,
+        baseUTF16Offset: Int
     ) {
         guard line.character(at: firstTextOffset) == "-" else {
             return
@@ -360,52 +569,46 @@ private enum ManifestYAMLHighlighter {
         let valueStart = firstNonWhitespaceOffset(in: line, after: firstTextOffset + 1)
         if valueStart < line.count {
             applyScalarSyntax(
-                to: &attributed,
-                source: line,
+                to: attributed,
+                line: line,
                 start: valueStart,
-                length: line.count - valueStart
+                length: line.count - valueStart,
+                baseUTF16Offset: baseUTF16Offset
             )
         }
     }
 
     private static func applyScalarSyntax(
-        to attributed: inout AttributedString,
-        source line: String,
+        to attributed: NSMutableAttributedString,
+        line: String,
         start: Int,
-        length: Int
+        length: Int,
+        baseUTF16Offset: Int
     ) {
         let value = line.substring(start: start, length: length)
-        let color: Color
+        let color: NSColor
         if value == "<redacted>" {
-            color = .red
+            color = .systemRed
         } else if value.hasPrefix("\"") {
-            color = .green
+            color = .systemGreen
         } else if ["true", "false"].contains(value.lowercased()) {
-            color = .purple
+            color = .systemPurple
         } else if ["null", "[]", "{}"].contains(value.lowercased()) {
-            color = .secondary
+            color = .secondaryLabelColor
         } else if Double(value) != nil {
-            color = .orange
+            color = .systemOrange
         } else {
-            color = .green
+            color = .systemGreen
         }
 
-        setForeground(color, start: start, length: length, in: &attributed)
-    }
-
-    private static func applySearchHighlights(
-        to attributed: inout AttributedString,
-        matches: [ManifestSearchMatch],
-        selectedMatchOrdinal: Int?
-    ) {
-        for match in matches {
-            setBackground(
-                match.ordinal == selectedMatchOrdinal ? Color.accentColor.opacity(0.42) : Color.yellow.opacity(0.28),
-                start: match.lowerBound,
-                length: match.length,
-                in: &attributed
-            )
-        }
+        setForeground(
+            color,
+            start: start,
+            length: length,
+            in: attributed,
+            line: line,
+            baseUTF16Offset: baseUTF16Offset
+        )
     }
 
     private static func keyStartOffset(in line: String, firstTextOffset: Int) -> Int {
@@ -468,48 +671,56 @@ private enum ManifestYAMLHighlighter {
     }
 
     private static func setForeground(
-        _ color: Color,
+        _ color: NSColor,
         start: Int,
         length: Int,
-        in attributed: inout AttributedString
+        in attributed: NSMutableAttributedString,
+        line: String,
+        baseUTF16Offset: Int
     ) {
-        guard let range = attributedRange(start: start, length: length, in: attributed) else {
+        guard let range = nsRange(
+            in: line,
+            start: start,
+            length: length,
+            baseUTF16Offset: baseUTF16Offset
+        ) else {
             return
         }
 
-        attributed[range].foregroundColor = color
+        attributed.addAttribute(.foregroundColor, value: color, range: range)
     }
 
-    private static func setBackground(
-        _ color: Color,
+    private static func nsRange(
+        in line: String,
         start: Int,
         length: Int,
-        in attributed: inout AttributedString
-    ) {
-        guard let range = attributedRange(start: start, length: length, in: attributed) else {
-            return
-        }
-
-        attributed[range].backgroundColor = color
-    }
-
-    private static func attributedRange(
-        start: Int,
-        length: Int,
-        in attributed: AttributedString
-    ) -> Range<AttributedString.Index>? {
+        baseUTF16Offset: Int
+    ) -> NSRange? {
         guard length > 0,
               start >= 0,
-              start < attributed.characters.count else {
+              start < line.count else {
             return nil
         }
 
-        let lower = attributed.characters.index(attributed.startIndex, offsetBy: start)
-        let upper = attributed.characters.index(
+        let lower = line.index(line.startIndex, offsetBy: start)
+        let upper = line.index(
             lower,
-            offsetBy: min(length, attributed.characters.distance(from: lower, to: attributed.endIndex))
+            offsetBy: min(length, line.distance(from: lower, to: line.endIndex))
         )
-        return lower..<upper
+        let localRange = NSRange(lower..<upper, in: line)
+        return NSRange(location: baseUTF16Offset + localRange.location, length: localRange.length)
+    }
+}
+
+private extension NSRange {
+    func clamped(to upperBound: Int) -> NSRange {
+        guard upperBound > 0 else {
+            return NSRange(location: 0, length: 0)
+        }
+
+        let location = min(max(0, self.location), upperBound)
+        let length = min(max(0, self.length), max(0, upperBound - location))
+        return NSRange(location: location, length: length)
     }
 }
 
