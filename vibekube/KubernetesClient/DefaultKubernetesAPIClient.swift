@@ -6,6 +6,10 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
     private let session: URLSession
 
     init(configuration: KubernetesClientConfiguration) throws {
+        guard !configuration.credential.requiresExecResolution else {
+            throw KubernetesClientError.unsupportedAuthentication("Exec credentials must be resolved before creating a Kubernetes API client.")
+        }
+
         self.configuration = configuration
 
         self.delegate = try KubernetesURLSessionDelegate(configuration: configuration)

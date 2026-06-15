@@ -118,7 +118,7 @@ struct KubernetesClientConfigurationTests {
         #expect(KubeAuthMethod.token(token).displayName == "Bearer token")
     }
 
-    @Test func execAuthIsAConnectionErrorUntilRunnerShips() throws {
+    @Test func buildsExecAuthConfigurationForCredentialProvider() throws {
         let kubeconfig = try parser().parse(
             """
             clusters:
@@ -141,9 +141,18 @@ struct KubernetesClientConfigurationTests {
             """
         )
 
-        #expect(throws: KubernetesClientError.self) {
-            try KubernetesClientConfiguration(contextName: "corporate", kubeconfig: kubeconfig)
+        let configuration = try KubernetesClientConfiguration(contextName: "corporate", kubeconfig: kubeconfig)
+
+        guard case .exec(let request) = configuration.credential else {
+            Issue.record("Expected exec credential request")
+            return
         }
+
+        #expect(request.contextName == "corporate")
+        #expect(request.clusterName == "corporate")
+        #expect(request.userName == "teleport-user")
+        #expect(request.exec.command == "tsh")
+        #expect(request.cluster.server == "https://teleport.example.com")
     }
 
     private func parser() -> KubeconfigParser {

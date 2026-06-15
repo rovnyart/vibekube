@@ -9,6 +9,7 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - [x] Phase plan exists.
 - [x] API client protocol exists.
 - [x] TLS/auth from kubeconfig works for CA data/path, bearer token, and client certificate/key data/path.
+- [x] Kubernetes exec credential plugins run and resolve into native credentials.
 - [x] `/version` request works.
 - [ ] API discovery works.
 - [ ] Namespaces load.
@@ -21,7 +22,8 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - The demo `kind-vibekube-dev` context has been validated through an opt-in integration test using the local kubeconfig.
 - Client certificate auth is implemented by importing the PEM certificate/key into a temporary keychain to create a `SecIdentity` for URLSession mTLS. The keychain is deleted when the request delegate is deallocated.
 - `SecKeychain` APIs are deprecated but still available on macOS; revisit a cleaner long-term identity strategy during Phase 11 hardening.
-- Exec credential plugins, including Teleport `tsh`, remain parsed and visible but are intentionally not executed yet. That is the next meaningful auth slice.
+- Exec credential plugins now run from kubeconfig, decode `ExecCredential`, and cache returned credentials until expiry.
+- Teleport-backed contexts should now invoke `tsh` through the standard exec path and can let `tsh` open browser SSO/MFA. This still needs manual validation on a real corporate Teleport kubeconfig.
 - The dashboard shows the connected Kubernetes version; discovery, stats, namespaces, and resources are still pending.
 
 ## Implementation Slices
@@ -42,8 +44,8 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - [x] Support certificate-authority file paths.
 - [x] Support bearer token auth.
 - [x] Support client certificate/key auth.
-- [ ] Support Kubernetes exec credential plugins.
-- [ ] Support Teleport `tsh` kube credentials via exec auth.
+- [x] Support Kubernetes exec credential plugins.
+- [x] Support Teleport `tsh` kube credentials via exec auth.
 - [x] Represent unsupported auth-provider cases cleanly.
 - [x] Represent exec auth as planned with clear UI.
 - [x] Ensure secrets are redacted in logs/errors.
@@ -52,19 +54,20 @@ Checkpoint: stop before adding any complex auth helper dependency.
 
 ### 2.2a Exec Credential Plugins And Teleport
 
-- [ ] Resolve exec commands from absolute paths or `PATH`.
-- [ ] Show kubeconfig `installHint` when an exec command is missing.
-- [ ] Run the configured `user.exec.command` with args and env.
-- [ ] Pass `KUBERNETES_EXEC_INFO` when `provideClusterInfo` is true.
-- [ ] Respect `interactiveMode` (`Never`, `IfAvailable`, `Always`).
-- [ ] Decode `ExecCredential` v1 and v1beta1 JSON.
-- [ ] Apply returned bearer token credentials.
-- [ ] Apply returned client certificate/key credentials if feasible.
-- [ ] Cache exec credentials until `expirationTimestamp`.
-- [ ] Re-run exec auth on expiry or `401 Unauthorized`.
-- [ ] Let Teleport `tsh` open browser SSO/MFA when credentials are missing or expired.
+- [x] Resolve exec commands from absolute paths or `PATH`.
+- [x] Search common macOS developer paths such as `/opt/homebrew/bin` for GUI-launched app sessions.
+- [x] Show kubeconfig `installHint` when an exec command is missing.
+- [x] Run the configured `user.exec.command` with args and env.
+- [x] Pass `KUBERNETES_EXEC_INFO` when `provideClusterInfo` is true.
+- [x] Respect `interactiveMode` (`Never`, `IfAvailable`, `Always`).
+- [x] Decode `ExecCredential` v1 and v1beta1 JSON.
+- [x] Apply returned bearer token credentials.
+- [x] Apply returned client certificate/key credentials if feasible.
+- [x] Cache exec credentials until `expirationTimestamp`.
+- [x] Re-run exec auth on expiry or `401 Unauthorized`.
+- [x] Let Teleport `tsh` open browser SSO/MFA when credentials are missing or expired.
 - [ ] Show signing-in/cancel/error UI for exec-auth flows.
-- [ ] Redact exec stdout/stderr and decoded credential material.
+- [x] Redact exec stdout/stderr and decoded credential material.
 
 ### 2.3 Discovery APIs
 
@@ -98,6 +101,7 @@ Checkpoint: stop before adding any complex auth helper dependency.
 ### 2.6 Tests
 
 - [x] Request URL unit tests.
+- [x] Exec credential decoding, process runner, cache, and config tests.
 - [ ] Kubernetes `Status` decoding tests.
 - [ ] Mock server tests for `/version` and discovery.
 - [x] Integration test against kind where practical.
@@ -109,7 +113,7 @@ Checkpoint: stop before adding any complex auth helper dependency.
 - [ ] API groups/resources are discovered.
 - [ ] Namespaces are available in the selector.
 - [x] Bad auth, offline server, and certificate failures are understandable.
-- [ ] Teleport-backed kubeconfigs can trigger `tsh` login/browser auth through exec credentials.
+- [ ] Teleport-backed kubeconfigs can trigger `tsh` login/browser auth through exec credentials. Implemented; awaiting manual validation on a corporate Teleport kubeconfig.
 
 ## Validation Results
 

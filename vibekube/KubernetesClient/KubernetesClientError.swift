@@ -3,6 +3,7 @@ import Foundation
 enum KubernetesClientError: LocalizedError, Equatable {
     case invalidConfiguration(String)
     case unsupportedAuthentication(String)
+    case execCredential(String)
     case unauthorized(String)
     case unavailable(String)
     case certificateError(String)
@@ -16,6 +17,8 @@ enum KubernetesClientError: LocalizedError, Equatable {
             "Invalid kubeconfig: \(message)"
         case .unsupportedAuthentication(let message):
             "Unsupported authentication: \(message)"
+        case .execCredential(let message):
+            message
         case .unauthorized(let message):
             message.isEmpty ? "The cluster rejected the credentials." : message
         case .unavailable(let message):
@@ -39,7 +42,7 @@ enum KubernetesClientError: LocalizedError, Equatable {
         switch self {
         case .unsupportedAuthentication:
             .unsupportedAuth
-        case .unauthorized:
+        case .execCredential, .unauthorized:
             .unauthorized
         case .certificateError:
             .certificateError

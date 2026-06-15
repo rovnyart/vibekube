@@ -8,7 +8,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | --- | --- | --- | --- |
 | 0 | [Project Foundation](PHASE0.md) | Review checkpoint | Native shell foundation builds; unit and UI tests pass with preview fixtures |
 | 1 | [Kubeconfig Discovery](PHASE1.md) | Review checkpoint | App loads kubeconfig contexts, including exec/Teleport metadata; parser/unit/UI tests pass |
-| 2 | [Kubernetes API Connectivity](PHASE2.md) | Review checkpoint | Native client connects to demo `/version`; discovery, namespaces, resources, and exec auth next |
+| 2 | [Kubernetes API Connectivity](PHASE2.md) | Review checkpoint | Native client connects to `/version`; exec auth implemented; discovery, namespaces, and resources next |
 | 3 | [Main App Shell](PHASE3.md) | Not started | Waiting for foundation/navigation model |
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Not started | Waiting for API client/resource store |
 | 5 | [Resource Browsing](PHASE5.md) | Not started | Waiting for discovery and list APIs |

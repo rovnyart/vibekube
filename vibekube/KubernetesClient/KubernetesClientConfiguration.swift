@@ -5,6 +5,15 @@ struct KubernetesClientConfiguration: Equatable {
         case none
         case bearerToken(String)
         case clientCertificate(certificateData: Data, keyData: Data)
+        case exec(KubernetesExecCredentialRequest)
+
+        var requiresExecResolution: Bool {
+            if case .exec = self {
+                true
+            } else {
+                false
+            }
+        }
     }
 
     var contextName: String
@@ -47,7 +56,14 @@ struct KubernetesClientConfiguration: Equatable {
 
         if let userName = namedContext.context.user,
            let namedUser = usersByName[userName] {
-            self.credential = try Self.credential(from: namedUser)
+            self.credential = try Self.credential(
+                from: namedUser,
+                contextName: namedContext.name,
+                clusterName: clusterName,
+                serverURL: serverURL,
+                certificateAuthorityData: certificateAuthorityData,
+                insecureSkipTLSVerify: insecureSkipTLSVerify
+            )
         } else {
             self.credential = .none
         }
@@ -62,7 +78,14 @@ struct KubernetesClientConfiguration: Equatable {
         return components?.url ?? serverURL.appendingPathComponent(path)
     }
 
-    private static func credential(from namedUser: KubeconfigNamedUser) throws -> Credential {
+    private static func credential(
+        from namedUser: KubeconfigNamedUser,
+        contextName: String,
+        clusterName: String,
+        serverURL: URL,
+        certificateAuthorityData: Data?,
+        insecureSkipTLSVerify: Bool
+    ) throws -> Credential {
         switch namedUser.user.authMethod {
         case .none:
             return .none
@@ -89,8 +112,19 @@ struct KubernetesClientConfiguration: Equatable {
 
             return .clientCertificate(certificateData: certificateData, keyData: keyData)
         case .exec(let exec):
-            let command = exec.commandDisplayName ?? exec.command ?? "exec plugin"
-            throw KubernetesClientError.unsupportedAuthentication("Exec credential plugins are parsed, but running '\(command)' is scheduled for the next Phase 2 slice.")
+            return .exec(
+                KubernetesExecCredentialRequest(
+                    contextName: contextName,
+                    clusterName: clusterName,
+                    userName: namedUser.name,
+                    exec: exec,
+                    cluster: KubernetesExecClusterInfo(
+                        server: serverURL.absoluteString,
+                        certificateAuthorityData: certificateAuthorityData,
+                        insecureSkipTLSVerify: insecureSkipTLSVerify
+                    )
+                )
+            )
         case .authProvider(let name):
             throw KubernetesClientError.unsupportedAuthentication("Legacy auth-provider '\(name)' is not implemented yet.")
         case .basicAuth:
