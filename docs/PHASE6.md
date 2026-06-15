@@ -16,7 +16,9 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 
 ## Checkpoint Notes
 
-- Resource table row selection now opens a side inspector.
+- Resource table row selection now opens a detail inspector.
+- Resource details now open in a bottom inspector instead of a right-side pane, which preserves table width on laptop screens.
+- The bottom inspector supports multiple open resource tabs with close controls.
 - The inspector fetches the full object through generic discovery-derived `get` endpoints.
 - The manifest view is read-only, selectable, line-numbered, searchable, copyable, and lightly syntax-highlighted.
 - Secret manifests redact top-level `data`, `stringData`, and `binaryData`.
@@ -67,6 +69,8 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 
 ### 6.5 UI
 
+- [x] Bottom detail inspector.
+- [x] Multiple resource detail tabs.
 - [ ] Overview tab.
 - [ ] YAML tab.
 - [ ] Events tab.

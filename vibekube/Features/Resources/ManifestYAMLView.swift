@@ -28,8 +28,8 @@ struct ManifestYAMLView: View {
                             .id(index + 1)
                         }
                     }
-                    .padding(.vertical, 8)
-                    .padding(.trailing, 14)
+                    .padding(.vertical, 6)
+                    .padding(.trailing, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
@@ -125,7 +125,7 @@ struct ManifestYAMLView: View {
     }
 
     private var lineNumberWidth: CGFloat {
-        max(34, CGFloat(String(lines.count).count) * 8 + 16)
+        max(24, CGFloat(String(lines.count).count) * 7 + 10)
     }
 
     private var matches: [ManifestSearchMatch] {
@@ -253,7 +253,7 @@ private struct ManifestYAMLLineView: View {
     let selectedMatchOrdinal: Int?
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text("\(lineNumber)")
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(.tertiary)
@@ -270,8 +270,12 @@ private struct ManifestYAMLLineView: View {
             .font(.system(.caption, design: .monospaced))
             .textSelection(.enabled)
             .fixedSize(horizontal: true, vertical: false)
+
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, 6)
+        .padding(.trailing, 10)
         .padding(.vertical, 1)
         .background(lineContainsSelectedMatch ? Color.accentColor.opacity(0.08) : Color.clear)
     }

@@ -58,6 +58,7 @@ struct VibekubeShellView: View {
             ResourceCatalogView()
         case let resource where resource.discoveredResource(in: appModel.selectedDiscovery) != nil:
             ResourceListView(item: resource)
+                .id(resource.id)
         default:
             ResourcePlaceholderView(item: appModel.selectedResource ?? .dashboard)
         }
