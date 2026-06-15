@@ -1,6 +1,6 @@
 # Phase 4: Dashboard And Cluster Stats
 
-Status: Not started.
+Status: Started.
 
 Goal: show a useful operational overview for the selected cluster.
 
@@ -9,9 +9,27 @@ Goal: show a useful operational overview for the selected cluster.
 - [x] Phase plan exists.
 - [ ] Dashboard data model exists.
 - [ ] Node/pod/workload summaries load.
-- [ ] Recent warning events load.
+- [x] Recent events load.
 - [ ] Metrics API availability is detected.
-- [ ] Dashboard UI handles loading, empty, healthy, warning, and error states.
+- [x] Dashboard UI handles event loading, empty, and error states.
+- [ ] Dashboard UI handles full healthy, warning, and error states.
+
+## Checkpoint Notes
+
+- Dashboard Recent Events now loads the same Kubernetes Event resources used by the resource inspector, but without per-object filtering.
+- Resource detail Events are object-specific; Dashboard Recent Events are cluster/namespace-scope operational feed.
+- The current dashboard still has placeholder-level cluster stats. The intended dashboard should become a dense operational view closer to OpenLens/Aptakube, with charts and drill-downs instead of generic API counters.
+
+## Planned Dashboard Shape
+
+- Health strip: cluster status, node readiness, pod health, warning events, restart pressure.
+- Workload readiness: Deployments, StatefulSets, DaemonSets, Jobs, and CronJobs with ready/desired/current counts.
+- Pod phase chart: Running, Pending, Failed, Succeeded, Unknown across selected scope.
+- Warning trend: recent warnings by reason/source and noisy objects.
+- Node capacity: readiness, pressure conditions, allocatable CPU/memory, and usage when Metrics API is available.
+- Storage summary: PV/PVC bound/pending/lost states.
+- Metrics fallback: graceful "metrics unavailable" state that does not look like a cluster failure.
+- Drill-down: dashboard rows should open the relevant resource list or filtered detail route when available.
 
 ## Implementation Slices
 
@@ -21,7 +39,8 @@ Goal: show a useful operational overview for the selected cluster.
 - [ ] Define `NodeHealthSummary`.
 - [ ] Define `PodHealthSummary`.
 - [ ] Define `WorkloadHealthSummary`.
-- [ ] Define `EventSummary`.
+- [x] Reuse Kubernetes event summaries for current Recent Events feed.
+- [ ] Define dashboard-specific event aggregation summary.
 - [ ] Define `MetricsAvailability`.
 
 ### 4.2 Data Loading
@@ -31,7 +50,7 @@ Goal: show a useful operational overview for the selected cluster.
 - [ ] Load namespaces.
 - [ ] Load pods across selected namespace scope.
 - [ ] Load deployments, statefulsets, daemonsets, jobs, and cronjobs.
-- [ ] Load recent events.
+- [x] Load recent events.
 - [ ] Load PV/PVC summary.
 - [ ] Try metrics API and gracefully degrade.
 
@@ -51,7 +70,8 @@ Goal: show a useful operational overview for the selected cluster.
 - [ ] Node card/table.
 - [ ] Workload summary.
 - [ ] Pod health summary.
-- [ ] Recent warnings list.
+- [x] Recent events list.
+- [ ] Recent warnings list with aggregation.
 - [ ] Storage summary.
 - [ ] Metrics unavailable state.
 - [ ] Last updated indicator.
@@ -62,11 +82,13 @@ Checkpoint: stop for visual review once demo cluster dashboard renders real data
 
 - [ ] Health computation unit tests.
 - [ ] Dashboard view model tests.
+- [x] Event list decoding coverage through resource list tests.
 - [ ] UI test for demo cluster dashboard if integration setup is available.
 
 ## Acceptance Criteria
 
 - [ ] Demo cluster dashboard shows version, nodes, pods, workloads, and warning events.
+- [x] Demo cluster dashboard shows recent events.
 - [ ] Dashboard links into related resources where routes exist.
 - [ ] Missing metrics does not look like a failure.
 - [ ] Refresh updates dashboard data.

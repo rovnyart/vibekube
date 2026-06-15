@@ -30,12 +30,17 @@ struct DashboardView: View {
                 }
 
                 SectionSurface(title: "Recent Events", systemImage: "waveform.path.ecg") {
-                    EmptyStateView(
-                        title: "No Events Loaded",
-                        subtitle: "Disconnected",
-                        systemImage: "waveform.path.ecg"
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 120)
+                    DashboardRecentEventsView(
+                        state: appModel.resourceListState(for: .events),
+                        canLoadEvents: canLoadEvents,
+                        unavailableMessage: eventsUnavailableMessage
+                    ) {
+                        appModel.loadResourceList(for: .events, force: true)
+                    }
+                    .task(id: appModel.resourceListTaskID(for: .events)) {
+                        appModel.loadResourceList(for: .events)
+                    }
+                    .accessibilityIdentifier("dashboard.recentEvents")
                 }
             }
             .padding(24)
@@ -43,6 +48,19 @@ struct DashboardView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("dashboard.view")
+    }
+
+    private var canLoadEvents: Bool {
+        appModel.selectedConnectionState == .connected &&
+            ResourceNavigationItem.events.discoveredResource(in: appModel.selectedDiscovery) != nil
+    }
+
+    private var eventsUnavailableMessage: String {
+        if appModel.selectedConnectionState != .connected {
+            return "Connect to a cluster to load recent events."
+        }
+
+        return "The Events API was not discovered for this cluster."
     }
 
     private var header: some View {
@@ -96,6 +114,181 @@ struct DashboardView: View {
                 .textSelection(.enabled)
                 .accessibilityIdentifier("dashboard.connectionError")
         }
+    }
+}
+
+private struct DashboardRecentEventsView: View {
+    let state: ResourceListLoadState
+    let canLoadEvents: Bool
+    let unavailableMessage: String
+    let reload: () -> Void
+
+    var body: some View {
+        switch state {
+        case .idle:
+            if canLoadEvents {
+                ProgressView("Loading Events")
+                    .frame(maxWidth: .infinity, minHeight: 120)
+            } else {
+                EmptyStateView(
+                    title: "No Events Loaded",
+                    subtitle: unavailableMessage,
+                    systemImage: "waveform.path.ecg"
+                )
+                .frame(maxWidth: .infinity, minHeight: 120)
+            }
+        case .loading:
+            ProgressView("Loading Events")
+                .frame(maxWidth: .infinity, minHeight: 120)
+        case .loaded(let snapshot):
+            loadedContent(snapshot)
+        case .failed(let message):
+            VStack(spacing: 12) {
+                EmptyStateView(
+                    title: "Could Not Load Events",
+                    subtitle: message,
+                    systemImage: "exclamationmark.triangle"
+                )
+
+                Button(action: reload) {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, minHeight: 120)
+        }
+    }
+
+    @ViewBuilder
+    private func loadedContent(_ snapshot: ResourceListSnapshot) -> some View {
+        let events = sortedEvents(snapshot.items)
+
+        if events.isEmpty {
+            EmptyStateView(
+                title: "No Recent Events",
+                subtitle: "Kubernetes has not reported events for this scope.",
+                systemImage: "waveform.path.ecg"
+            )
+            .frame(maxWidth: .infinity, minHeight: 120)
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("\(events.count) recent events")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Text("Loaded \(snapshot.loadedAt.formatted(date: .omitted, time: .standard))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+
+                    Button(action: reload) {
+                        Label("Refresh Events", systemImage: "arrow.clockwise")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Refresh Events")
+                }
+
+                VStack(spacing: 0) {
+                    ForEach(Array(events.prefix(8).enumerated()), id: \.element.id) { index, event in
+                        DashboardEventRow(event: event)
+
+                        if index < min(events.count, 8) - 1 {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func sortedEvents(_ events: [KubernetesUnstructuredResource]) -> [KubernetesUnstructuredResource] {
+        events.sorted { lhs, rhs in
+            switch (lhs.eventLastObservedDate, rhs.eventLastObservedDate) {
+            case (.some(let lhsDate), .some(let rhsDate)):
+                lhsDate > rhsDate
+            case (.some, .none):
+                true
+            case (.none, .some):
+                false
+            case (.none, .none):
+                lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
+            }
+        }
+    }
+}
+
+private struct DashboardEventRow: View {
+    let event: KubernetesUnstructuredResource
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            DashboardEventTypePill(type: event.type ?? "-")
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(event.reason ?? event.displayName)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+
+                    if let count = event.eventCount, count > 1 {
+                        Text("\(count)x")
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(.orange)
+                    }
+
+                    Spacer()
+
+                    Text(event.eventAgeDescription())
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+
+                if let message = event.eventMessage, !message.isEmpty {
+                    Text(message)
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                }
+
+                HStack(spacing: 8) {
+                    if let source = event.eventSourceDescription, !source.isEmpty {
+                        Label(source, systemImage: "antenna.radiowaves.left.and.right")
+                    }
+
+                    if let involved = event.eventInvolvedObjectDescription, !involved.isEmpty {
+                        Label(involved, systemImage: "scope")
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .textSelection(.enabled)
+            }
+        }
+        .padding(.vertical, 9)
+    }
+}
+
+private struct DashboardEventTypePill: View {
+    let type: String
+
+    var body: some View {
+        Text(type.isEmpty ? "-" : type)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(tint.opacity(0.12), in: Capsule())
+    }
+
+    private var tint: Color {
+        type.localizedCaseInsensitiveContains("warning") ? .orange : .green
     }
 }
 

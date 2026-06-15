@@ -10,7 +10,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 1 | [Kubeconfig Discovery](PHASE1.md) | Review checkpoint | App loads kubeconfig contexts, including exec/Teleport metadata; parser/unit/UI tests pass |
 | 2 | [Kubernetes API Connectivity](PHASE2.md) | Review checkpoint | Native client connects, runs exec auth, discovers API resources, and loads namespaces |
 | 3 | [Main App Shell](PHASE3.md) | Not started | Waiting for foundation/navigation model |
-| 4 | [Dashboard And Cluster Stats](PHASE4.md) | Not started | Waiting for API client/resource store |
+| 4 | [Dashboard And Cluster Stats](PHASE4.md) | Started | Dashboard Recent Events loads real Kubernetes events; full health summaries and charts are planned |
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
 | 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, Environment, YAML, Metadata, and Conditions tabs with masked Secret env reveal |
 | 7 | [Logs](PHASE7.md) | Not started | Waiting for pod/resource detail support |

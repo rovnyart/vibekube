@@ -30,6 +30,20 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
     var message: String?
     var note: String?
     var count: Int?
+    var eventTime: String?
+    var firstTimestamp: String?
+    var lastTimestamp: String?
+    var deprecatedFirstTimestamp: String?
+    var deprecatedLastTimestamp: String?
+    var deprecatedCount: Int?
+    var reportingComponent: String?
+    var reportingController: String?
+    var reportingInstance: String?
+    var source: KubernetesJSONValue?
+    var deprecatedSource: KubernetesJSONValue?
+    var regarding: KubernetesJSONValue?
+    var involvedObject: KubernetesJSONValue?
+    var series: KubernetesJSONValue?
 
     var id: String {
         metadata.uid ?? "\(displayKind)/\(displayNamespace)/\(displayName)"
@@ -94,7 +108,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             displayStatus,
             labelsSummary,
             reason,
-            type
+            type,
+            eventMessage,
+            eventSourceDescription,
+            eventInvolvedObjectDescription
         ]
         .compactMap { $0 }
         .joined(separator: " ")
@@ -124,14 +141,100 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             return nil
         }
 
+        return Self.iso8601Date(from: creationTimestamp)
+    }
+
+    var eventMessage: String? {
+        note ?? message
+    }
+
+    var eventCount: Int? {
+        series?["count"]?.intValue ?? deprecatedCount ?? count
+    }
+
+    var eventLastObservedDate: Date? {
+        [
+            series?["lastObservedTime"]?.stringValue,
+            deprecatedLastTimestamp,
+            lastTimestamp,
+            eventTime,
+            metadata.creationTimestamp
+        ]
+        .compactMap { $0 }
+        .compactMap(Self.iso8601Date(from:))
+        .first
+    }
+
+    var eventSourceDescription: String? {
+        let controller = reportingController ??
+            reportingComponent ??
+            source?["component"]?.stringValue ??
+            deprecatedSource?["component"]?.stringValue
+        let instance = reportingInstance ??
+            source?["host"]?.stringValue ??
+            deprecatedSource?["host"]?.stringValue
+
+        switch (controller, instance) {
+        case (.some(let controller), .some(let instance)) where !instance.isEmpty:
+            return "\(controller) / \(instance)"
+        case (.some(let controller), _):
+            return controller
+        case (_, .some(let instance)) where !instance.isEmpty:
+            return instance
+        default:
+            return nil
+        }
+    }
+
+    var eventInvolvedObjectDescription: String? {
+        let object = regarding ?? involvedObject
+        let parts = [
+            object?["kind"]?.stringValue,
+            object?["namespace"]?.stringValue,
+            object?["name"]?.stringValue
+        ]
+        .compactMap { value -> String? in
+            guard let value, !value.isEmpty else {
+                return nil
+            }
+            return value
+        }
+
+        let objectText = parts.joined(separator: " / ")
+        if let fieldPath = object?["fieldPath"]?.stringValue, !fieldPath.isEmpty {
+            return objectText.isEmpty ? fieldPath : "\(objectText) / \(fieldPath)"
+        }
+
+        return objectText.isEmpty ? nil : objectText
+    }
+
+    func eventAgeDescription(now: Date = Date()) -> String {
+        guard let eventLastObservedDate else {
+            return "-"
+        }
+
+        let seconds = max(0, Int(now.timeIntervalSince(eventLastObservedDate)))
+        switch seconds {
+        case ..<60:
+            return "\(seconds)s ago"
+        case ..<3_600:
+            return "\(seconds / 60)m ago"
+        case ..<86_400:
+            return "\(seconds / 3_600)h ago"
+        default:
+            return "\(seconds / 86_400)d ago"
+        }
+    }
+
+    private static func iso8601Date(from string: String) -> Date? {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: creationTimestamp) {
+        if let date = formatter.date(from: string) {
             return date
         }
 
         formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: creationTimestamp)
+        return formatter.date(from: string)
     }
 
     private var isEvent: Bool {

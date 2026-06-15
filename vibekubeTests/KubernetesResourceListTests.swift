@@ -117,6 +117,51 @@ struct KubernetesResourceListTests {
         #expect(!secret.searchBlob.contains("c2VjcmV0"))
     }
 
+    @Test func decodesDashboardEventRowDetails() throws {
+        let list = try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "events.k8s.io/v1",
+                      "kind": "Event",
+                      "metadata": {
+                        "name": "web.18b95677",
+                        "namespace": "vibekube-demo",
+                        "uid": "event-uid",
+                        "creationTimestamp": "2026-06-15T10:00:00Z"
+                      },
+                      "type": "Normal",
+                      "reason": "Started",
+                      "note": "Started container web",
+                      "deprecatedCount": 3,
+                      "deprecatedLastTimestamp": "2026-06-15T10:01:00Z",
+                      "reportingController": "kubelet",
+                      "reportingInstance": "kind-control-plane",
+                      "regarding": {
+                        "kind": "Pod",
+                        "name": "web-0",
+                        "namespace": "vibekube-demo",
+                        "fieldPath": "spec.containers{web}"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        let event = try #require(list.items.first)
+        #expect(event.displayStatus == "Normal Started")
+        #expect(event.eventMessage == "Started container web")
+        #expect(event.eventCount == 3)
+        #expect(event.eventSourceDescription == "kubelet / kind-control-plane")
+        #expect(event.eventInvolvedObjectDescription == "Pod / vibekube-demo / web-0 / spec.containers{web}")
+        #expect(event.searchBlob.contains("started container web"))
+    }
+
     @Test func summarizesDeploymentReadiness() throws {
         let list = try JSONDecoder().decode(
             KubernetesUnstructuredResourceList.self,
