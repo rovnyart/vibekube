@@ -25,13 +25,34 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
     }
 
     func version() async throws -> KubernetesVersion {
-        var request = URLRequest(url: configuration.url(path: "/version"))
+        try await get(path: "/version")
+    }
+
+    func apiVersions() async throws -> KubernetesAPIVersions {
+        try await get(path: "/api")
+    }
+
+    func apiGroups() async throws -> KubernetesAPIGroupList {
+        try await get(path: "/apis")
+    }
+
+    func resources(groupVersion: String) async throws -> KubernetesAPIResourceList {
+        if groupVersion.contains("/") {
+            try await get(path: "/apis/\(groupVersion)")
+        } else {
+            try await get(path: "/api/\(groupVersion)")
+        }
+    }
+
+    func namespaces() async throws -> KubernetesNamespaceList {
+        try await get(path: "/api/v1/namespaces")
+    }
+
+    private func get<Response: Decodable>(path: String) async throws -> Response {
+        var request = URLRequest(url: configuration.url(path: path))
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-
-        if case .bearerToken(let token) = configuration.credential {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        applyAuthentication(to: &request)
 
         do {
             let (data, response) = try await session.data(for: request)
@@ -44,14 +65,22 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
             }
 
             do {
-                return try JSONDecoder().decode(KubernetesVersion.self, from: data)
+                return try JSONDecoder().decode(Response.self, from: data)
             } catch {
                 throw KubernetesClientError.decoding(error.localizedDescription)
             }
         } catch let error as KubernetesClientError {
             throw error
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw KubernetesClientError.unavailable(error.localizedDescription)
+        }
+    }
+
+    private func applyAuthentication(to request: inout URLRequest) {
+        if case .bearerToken(let token) = configuration.credential {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
     }
 

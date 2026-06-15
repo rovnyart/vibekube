@@ -2,6 +2,10 @@ import Foundation
 
 protocol KubernetesAPIClient {
     func version() async throws -> KubernetesVersion
+    func apiVersions() async throws -> KubernetesAPIVersions
+    func apiGroups() async throws -> KubernetesAPIGroupList
+    func resources(groupVersion: String) async throws -> KubernetesAPIResourceList
+    func namespaces() async throws -> KubernetesNamespaceList
 }
 
 struct KubernetesVersion: Decodable, Equatable {

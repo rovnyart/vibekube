@@ -208,3 +208,85 @@ enum ResourceNavigationItem: String, CaseIterable, Identifiable, Hashable {
         allCases.filter { $0.section == section }
     }
 }
+
+extension ResourceNavigationItem {
+    func discoveredResource(in snapshot: KubernetesDiscoverySnapshot?) -> KubernetesDiscoveredResource? {
+        guard let snapshot else {
+            return nil
+        }
+
+        for target in discoveryTargets {
+            if let resource = snapshot.discoveredResources.first(where: { target.matches($0) }) {
+                return resource
+            }
+        }
+
+        return nil
+    }
+
+    private var discoveryTargets: [ResourceDiscoveryTarget] {
+        switch self {
+        case .pods:
+            [ResourceDiscoveryTarget(group: "", name: "pods")]
+        case .deployments:
+            [ResourceDiscoveryTarget(group: "apps", name: "deployments")]
+        case .replicaSets:
+            [ResourceDiscoveryTarget(group: "apps", name: "replicasets")]
+        case .statefulSets:
+            [ResourceDiscoveryTarget(group: "apps", name: "statefulsets")]
+        case .daemonSets:
+            [ResourceDiscoveryTarget(group: "apps", name: "daemonsets")]
+        case .jobs:
+            [ResourceDiscoveryTarget(group: "batch", name: "jobs")]
+        case .cronJobs:
+            [ResourceDiscoveryTarget(group: "batch", name: "cronjobs")]
+        case .services:
+            [ResourceDiscoveryTarget(group: "", name: "services")]
+        case .ingresses:
+            [
+                ResourceDiscoveryTarget(group: "networking.k8s.io", name: "ingresses"),
+                ResourceDiscoveryTarget(group: "extensions", name: "ingresses")
+            ]
+        case .configMaps:
+            [ResourceDiscoveryTarget(group: "", name: "configmaps")]
+        case .secrets:
+            [ResourceDiscoveryTarget(group: "", name: "secrets")]
+        case .persistentVolumes:
+            [ResourceDiscoveryTarget(group: "", name: "persistentvolumes")]
+        case .persistentVolumeClaims:
+            [ResourceDiscoveryTarget(group: "", name: "persistentvolumeclaims")]
+        case .storageClasses:
+            [ResourceDiscoveryTarget(group: "storage.k8s.io", name: "storageclasses")]
+        case .serviceAccounts:
+            [ResourceDiscoveryTarget(group: "", name: "serviceaccounts")]
+        case .roles:
+            [ResourceDiscoveryTarget(group: "rbac.authorization.k8s.io", name: "roles")]
+        case .roleBindings:
+            [ResourceDiscoveryTarget(group: "rbac.authorization.k8s.io", name: "rolebindings")]
+        case .clusterRoles:
+            [ResourceDiscoveryTarget(group: "rbac.authorization.k8s.io", name: "clusterroles")]
+        case .clusterRoleBindings:
+            [ResourceDiscoveryTarget(group: "rbac.authorization.k8s.io", name: "clusterrolebindings")]
+        case .nodes:
+            [ResourceDiscoveryTarget(group: "", name: "nodes")]
+        case .namespaces:
+            [ResourceDiscoveryTarget(group: "", name: "namespaces")]
+        case .events:
+            [
+                ResourceDiscoveryTarget(group: "events.k8s.io", name: "events"),
+                ResourceDiscoveryTarget(group: "", name: "events")
+            ]
+        case .dashboard, .customResources, .logs, .aiAssistant, .settings:
+            []
+        }
+    }
+}
+
+private struct ResourceDiscoveryTarget {
+    var group: String
+    var name: String
+
+    func matches(_ resource: KubernetesDiscoveredResource) -> Bool {
+        resource.group == group && resource.name == name
+    }
+}

@@ -17,7 +17,7 @@ This document captures client behavior that should stay true across implementati
 
 ## Current Phase 2 Checkpoint
 
-Vibekube now builds a native client configuration from the selected kubeconfig context and calls `/version` with `URLSession`.
+Vibekube now builds a native client configuration from the selected kubeconfig context, calls `/version`, discovers APIs, and loads namespaces with `URLSession`.
 
 Implemented:
 
@@ -26,14 +26,19 @@ Implemented:
 - client certificate/key data and file paths
 - exec credential plugin execution
 - Teleport `tsh` support through the kubeconfig exec path
+- `/api` core version discovery
+- `/apis` group discovery
+- per-group/version API resource discovery
+- namespace loading with a toolbar namespace selector
 - basic HTTP status and Kubernetes `Status` error mapping
 - connected/connecting/error UI states
 - opt-in kind integration test through `VIBEKUBE_RUN_KIND_INTEGRATION=1`
 
 Not implemented yet:
 
-- `/api` and `/apis` discovery
-- namespace/resource list APIs
+- resource object list APIs
+- YAML detail loading
+- watch/streaming updates
 - dedicated signing-in UI for long-running exec auth
 - manual validation against a real Teleport-backed corporate kubeconfig
 
@@ -76,6 +81,22 @@ Expected UX:
 - If `tsh` is missing, show the kubeconfig `installHint` or a concise install message.
 
 Manual validation still needed: test this on a machine with a real Teleport kubeconfig and expired/missing `tsh` credentials to confirm browser SSO/MFA opens from the GUI app process.
+
+## API Discovery
+
+Vibekube discovers the selected cluster after a successful `/version` call:
+
+- `GET /api` for core API versions
+- `GET /apis` for grouped APIs
+- `GET /api/{version}` for core resources
+- `GET /apis/{group}/{version}` for grouped resources
+- `GET /api/v1/namespaces` for namespace scope
+
+Discovery metadata is held in memory per context for now. It powers dashboard counts, namespace selection, the grouped API resource catalog, and scope hints in the resource sidebar.
+
+Per-group resource discovery is lenient: if one aggregated API group is unavailable, Vibekube keeps the rest of discovery results instead of failing the whole connection. Cancellation still stops discovery immediately when the user switches context or disconnects.
+
+Namespace loading is also soft-fail. If the user can connect and discover APIs but cannot list namespaces, Vibekube keeps the cluster connected, records the namespace access error, and leaves the selector with `All Namespaces` plus the kubeconfig context namespace.
 
 ## References
 

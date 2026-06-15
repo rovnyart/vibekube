@@ -14,14 +14,19 @@ struct DashboardView: View {
                 connectionMessage
 
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                    MetricTile(title: "Nodes", value: "0", systemImage: "server.rack", tint: .indigo)
-                    MetricTile(title: "Namespaces", value: "0", systemImage: "folder", tint: .teal)
-                    MetricTile(title: "Pods", value: "0", systemImage: "shippingbox", tint: .blue)
-                    MetricTile(title: "Warnings", value: "0", systemImage: "exclamationmark.triangle", tint: .orange)
+                    MetricTile(title: "API Groups", value: discoveryValue(\.apiGroupCount), systemImage: "square.stack.3d.up", tint: .indigo)
+                    MetricTile(title: "API Resources", value: discoveryValue(\.resourceCount), systemImage: "shippingbox", tint: .blue)
+                    MetricTile(title: "Namespaces", value: namespaceCount, systemImage: "folder", tint: .teal)
+                    MetricTile(title: "Cluster Scoped", value: discoveryValue(\.clusterScopedResourceCount), systemImage: "globe", tint: .orange)
                 }
 
                 SectionSurface(title: "Cluster Snapshot", systemImage: "chart.bar.xaxis") {
-                    DashboardRows(cluster: appModel.selectedCluster)
+                    DashboardRows(
+                        cluster: appModel.selectedCluster,
+                        discovery: appModel.selectedDiscovery,
+                        selectedNamespace: appModel.selectedNamespaceTitle,
+                        namespaceAccessError: appModel.namespaceAccessErrorMessage
+                    )
                 }
 
                 SectionSurface(title: "Recent Events", systemImage: "waveform.path.ecg") {
@@ -58,6 +63,26 @@ struct DashboardView: View {
         }
     }
 
+    private var namespaceCount: String {
+        guard let discovery = appModel.selectedDiscovery else {
+            return "-"
+        }
+
+        if discovery.namespaceDiscovery.errorMessage != nil {
+            return "!"
+        }
+
+        return "\(discovery.namespaceDiscovery.items.count)"
+    }
+
+    private func discoveryValue(_ keyPath: KeyPath<KubernetesDiscoverySnapshot, Int>) -> String {
+        guard let discovery = appModel.selectedDiscovery else {
+            return "-"
+        }
+
+        return "\(discovery[keyPath: keyPath])"
+    }
+
     @ViewBuilder
     private var connectionMessage: some View {
         if let message = appModel.connectionErrorMessage, !message.isEmpty {
@@ -76,6 +101,9 @@ struct DashboardView: View {
 
 private struct DashboardRows: View {
     let cluster: ClusterSummary?
+    let discovery: KubernetesDiscoverySnapshot?
+    let selectedNamespace: String
+    let namespaceAccessError: String?
 
     var body: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 24, verticalSpacing: 12) {
@@ -89,7 +117,7 @@ private struct DashboardRows: View {
             GridRow {
                 Text("Namespace")
                     .foregroundStyle(.secondary)
-                Text(cluster?.namespace ?? "None")
+                Text(selectedNamespace)
                     .textSelection(.enabled)
             }
 
@@ -120,8 +148,38 @@ private struct DashboardRows: View {
                 Text(cluster?.kubernetesVersion ?? "Unknown")
                     .textSelection(.enabled)
             }
+
+            GridRow {
+                Text("API Groups")
+                    .foregroundStyle(.secondary)
+                Text(discovery.map { "\($0.apiGroupCount)" } ?? "Unknown")
+                    .textSelection(.enabled)
+            }
+
+            GridRow {
+                Text("API Resources")
+                    .foregroundStyle(.secondary)
+                Text(discovery.map { "\($0.resourceCount)" } ?? "Unknown")
+                    .textSelection(.enabled)
+            }
+
+            GridRow {
+                Text("Namespace Access")
+                    .foregroundStyle(.secondary)
+                Text(namespaceAccessText)
+                    .foregroundStyle(namespaceAccessError == nil ? Color.primary : Color.orange)
+                    .textSelection(.enabled)
+            }
         }
         .font(.callout)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var namespaceAccessText: String {
+        if let namespaceAccessError {
+            return namespaceAccessError
+        }
+
+        return discovery == nil ? "Unknown" : "Loaded"
     }
 }

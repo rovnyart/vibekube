@@ -17,5 +17,8 @@ struct KubernetesClientIntegrationTests {
         )
 
         #expect(snapshot.version.gitVersion.hasPrefix("v"))
+        #expect(snapshot.discovery.coreVersions.contains("v1"))
+        #expect(snapshot.discovery.resourceCount > 0)
+        #expect(!snapshot.discovery.namespaceDiscovery.items.isEmpty || snapshot.discovery.namespaceDiscovery.errorMessage != nil)
     }
 }

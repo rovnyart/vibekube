@@ -10,11 +10,15 @@ final class AppModel: ObservableObject {
     @Published private(set) var kubeconfigState: KubeconfigDiscoveryState
     @Published private(set) var lastRefreshedAt: Date?
     @Published private(set) var connectionErrorMessage: String?
+    @Published private(set) var discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot]
+    @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
     private let kubeconfigLoader: KubeconfigLoader?
     private let connectionService: KubernetesConnectionServicing?
     private var loadedKubeconfig: Kubeconfig
     private var connectionTask: Task<Void, Never>?
+
+    static let allNamespacesSelection = "__vibekube_all_namespaces__"
 
     convenience init() {
         let environment = ProcessInfo.processInfo.environment
@@ -41,7 +45,9 @@ final class AppModel: ObservableObject {
         kubeconfigState: KubeconfigDiscoveryState? = nil,
         kubeconfigLoader: KubeconfigLoader? = nil,
         connectionService: KubernetesConnectionServicing? = nil,
-        loadedKubeconfig: Kubeconfig? = nil
+        loadedKubeconfig: Kubeconfig? = nil,
+        discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot] = [:],
+        selectedNamespaceByContextID: [ClusterSummary.ID: String] = [:]
     ) {
         self.clusters = clusters
         self.selectedClusterID = clusters.first?.id
@@ -50,6 +56,8 @@ final class AppModel: ObservableObject {
         self.kubeconfigLoader = kubeconfigLoader
         self.connectionService = connectionService
         self.loadedKubeconfig = loadedKubeconfig ?? .empty
+        self.discoveryByContextID = discoveryByContextID
+        self.selectedNamespaceByContextID = selectedNamespaceByContextID
     }
 
     var selectedCluster: ClusterSummary? {
@@ -58,6 +66,41 @@ final class AppModel: ObservableObject {
 
     var selectedConnectionState: ConnectionState {
         selectedCluster?.connectionState ?? .disconnected
+    }
+
+    var selectedDiscovery: KubernetesDiscoverySnapshot? {
+        selectedClusterID.flatMap { discoveryByContextID[$0] }
+    }
+
+    var selectedNamespaceSelection: String {
+        guard let selectedClusterID else {
+            return Self.allNamespacesSelection
+        }
+
+        if let selectedNamespace = selectedNamespaceByContextID[selectedClusterID] {
+            return selectedNamespace
+        }
+
+        return selectedCluster?.namespace ?? Self.allNamespacesSelection
+    }
+
+    var selectedNamespaceTitle: String {
+        namespaceTitle(for: selectedNamespaceSelection)
+    }
+
+    var namespaceSelectionOptions: [String] {
+        guard let selectedCluster else {
+            return []
+        }
+
+        let discoveredNamespaces = selectedDiscovery?.namespaceDiscovery.items.map(\.name) ?? []
+        return orderedUnique(
+            [Self.allNamespacesSelection, selectedCluster.namespace] + discoveredNamespaces
+        )
+    }
+
+    var namespaceAccessErrorMessage: String? {
+        selectedDiscovery?.namespaceDiscovery.errorMessage
     }
 
     var canConnectSelectedCluster: Bool {
@@ -76,6 +119,18 @@ final class AppModel: ObservableObject {
         selectedResource = resource
     }
 
+    func selectNamespace(_ namespace: String) {
+        guard let selectedClusterID else {
+            return
+        }
+
+        selectedNamespaceByContextID[selectedClusterID] = namespace
+    }
+
+    func namespaceTitle(for namespace: String) -> String {
+        namespace == Self.allNamespacesSelection ? "All Namespaces" : namespace
+    }
+
     func refresh() {
         reloadKubeconfig()
         lastRefreshedAt = Date()
@@ -90,6 +145,9 @@ final class AppModel: ObservableObject {
         loadedKubeconfig = result.kubeconfig
         clusters = discoveredClusters
         connectionErrorMessage = nil
+        let validContextIDs = Set(discoveredClusters.map(\.id))
+        discoveryByContextID = discoveryByContextID.filter { validContextIDs.contains($0.key) }
+        selectedNamespaceByContextID = selectedNamespaceByContextID.filter { validContextIDs.contains($0.key) }
 
         if discoveredClusters.isEmpty {
             selectedClusterID = nil
@@ -125,6 +183,7 @@ final class AppModel: ObservableObject {
                 cluster.connectionState = .connected
                 cluster.lastSeenAt = Date()
             }
+            discoveryByContextID[selectedClusterID] = .preview
             return
         }
 
@@ -134,6 +193,7 @@ final class AppModel: ObservableObject {
             cluster.kubernetesVersion = nil
             cluster.lastSeenAt = nil
         }
+        discoveryByContextID[selectedClusterID] = nil
 
         connectionTask = Task { [weak self] in
             do {
@@ -162,6 +222,10 @@ final class AppModel: ObservableObject {
             cluster.kubernetesVersion = nil
             cluster.lastSeenAt = nil
         }
+
+        if let selectedClusterID {
+            discoveryByContextID[selectedClusterID] = nil
+        }
     }
 
     private func cancelConnection(contextID: ClusterSummary.ID) {
@@ -177,6 +241,14 @@ final class AppModel: ObservableObject {
             cluster.connectionState = .connected
             cluster.kubernetesVersion = snapshot.version.gitVersion
             cluster.lastSeenAt = Date()
+        }
+        discoveryByContextID[contextID] = snapshot.discovery
+
+        if selectedNamespaceByContextID[contextID] == nil {
+            selectedNamespaceByContextID[contextID] = defaultNamespaceSelection(
+                contextID: contextID,
+                discovery: snapshot.discovery
+            )
         }
 
         if selectedClusterID == contextID {
@@ -195,6 +267,7 @@ final class AppModel: ObservableObject {
         if selectedClusterID == contextID {
             connectionErrorMessage = error.localizedDescription
         }
+        discoveryByContextID[contextID] = nil
     }
 
     private func updateSelectedCluster(_ update: (inout ClusterSummary) -> Void) {
@@ -211,5 +284,24 @@ final class AppModel: ObservableObject {
         }
 
         update(&clusters[index])
+    }
+
+    private func defaultNamespaceSelection(
+        contextID: ClusterSummary.ID,
+        discovery: KubernetesDiscoverySnapshot
+    ) -> String {
+        let contextNamespace = clusters.first { $0.id == contextID }?.namespace
+        if let contextNamespace, !contextNamespace.isEmpty {
+            return contextNamespace
+        }
+
+        return discovery.namespaceDiscovery.items.first?.name ?? Self.allNamespacesSelection
+    }
+
+    private func orderedUnique(_ values: [String]) -> [String] {
+        var seen: Set<String> = []
+        return values.filter { value in
+            !value.isEmpty && seen.insert(value).inserted
+        }
     }
 }

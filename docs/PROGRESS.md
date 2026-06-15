@@ -8,10 +8,10 @@ This file tracks implementation status across all phases. Keep this updated when
 | --- | --- | --- | --- |
 | 0 | [Project Foundation](PHASE0.md) | Review checkpoint | Native shell foundation builds; unit and UI tests pass with preview fixtures |
 | 1 | [Kubeconfig Discovery](PHASE1.md) | Review checkpoint | App loads kubeconfig contexts, including exec/Teleport metadata; parser/unit/UI tests pass |
-| 2 | [Kubernetes API Connectivity](PHASE2.md) | Review checkpoint | Native client connects to `/version`; exec auth implemented; discovery, namespaces, and resources next |
+| 2 | [Kubernetes API Connectivity](PHASE2.md) | Review checkpoint | Native client connects, runs exec auth, discovers API resources, and loads namespaces |
 | 3 | [Main App Shell](PHASE3.md) | Not started | Waiting for foundation/navigation model |
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Not started | Waiting for API client/resource store |
-| 5 | [Resource Browsing](PHASE5.md) | Not started | Waiting for discovery and list APIs |
+| 5 | [Resource Browsing](PHASE5.md) | Not started | Discovery is ready; waiting for resource list APIs and tables |
 | 6 | [Resource Detail And YAML](PHASE6.md) | Not started | Waiting for resource browsing |
 | 7 | [Logs](PHASE7.md) | Not started | Waiting for pod/resource detail support |
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Not started | Waiting for stable resource list model |
@@ -30,6 +30,8 @@ This file tracks implementation status across all phases. Keep this updated when
 - [x] Parse kubeconfig and show contexts.
 - [x] Recognize exec/Teleport kubeconfig auth as a supported planned path.
 - [x] Connect to demo cluster.
+- [x] Discover Kubernetes API groups/resources.
+- [x] Load namespaces and expose namespace scope.
 - [ ] Browse resources.
 - [ ] Inspect YAML.
 - [ ] Stream logs.

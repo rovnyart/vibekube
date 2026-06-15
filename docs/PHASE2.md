@@ -11,8 +11,8 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - [x] TLS/auth from kubeconfig works for CA data/path, bearer token, and client certificate/key data/path.
 - [x] Kubernetes exec credential plugins run and resolve into native credentials.
 - [x] `/version` request works.
-- [ ] API discovery works.
-- [ ] Namespaces load.
+- [x] API discovery works.
+- [x] Namespaces load.
 - [x] Connection errors are mapped to user-facing states.
 - [x] Exec auth is documented as a first-class connection path.
 
@@ -24,7 +24,11 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - `SecKeychain` APIs are deprecated but still available on macOS; revisit a cleaner long-term identity strategy during Phase 11 hardening.
 - Exec credential plugins now run from kubeconfig, decode `ExecCredential`, and cache returned credentials until expiry.
 - Teleport-backed contexts should now invoke `tsh` through the standard exec path and can let `tsh` open browser SSO/MFA. This still needs manual validation on a real corporate Teleport kubeconfig.
-- The dashboard shows the connected Kubernetes version; discovery, stats, namespaces, and resources are still pending.
+- The dashboard now shows connected Kubernetes version plus discovered API group/resource/namespace counts.
+- Custom Resources opens a grouped API resource catalog backed by discovery metadata.
+- Static resource navigation items now show whether their API resource is namespaced or cluster-scoped after discovery.
+- Namespace selection is available in the toolbar once connected, including `All Namespaces`.
+- Real resource object tables, YAML views, logs, and rich dashboard health stats are still pending.
 
 ## Implementation Slices
 
@@ -34,7 +38,7 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - [ ] Define `KubernetesRequest`.
 - [x] Define Kubernetes client error mapping.
 - [x] Define Kubernetes `Status` decoding model.
-- [ ] Add URL builder for core and grouped APIs.
+- [x] Add URL builder for core and grouped APIs.
 - [x] Add URL builder for simple API paths.
 - [x] Add cancellation support when switching contexts.
 
@@ -72,20 +76,20 @@ Checkpoint: stop before adding any complex auth helper dependency.
 ### 2.3 Discovery APIs
 
 - [x] Implement `/version`.
-- [ ] Implement `/api`.
-- [ ] Implement `/apis`.
-- [ ] Implement resource discovery for each group/version.
-- [ ] Persist discovered resource metadata in memory.
-- [ ] Detect namespaced vs cluster-scoped resources.
-- [ ] Detect verbs available from discovery data.
+- [x] Implement `/api`.
+- [x] Implement `/apis`.
+- [x] Implement resource discovery for each group/version.
+- [x] Persist discovered resource metadata in memory.
+- [x] Detect namespaced vs cluster-scoped resources.
+- [x] Detect verbs available from discovery data.
 
 ### 2.4 Namespace Loading
 
-- [ ] Load namespaces.
-- [ ] Display namespace selector in toolbar.
-- [ ] Support `All namespaces`.
-- [ ] Persist selected namespace per context.
-- [ ] Handle permission-denied namespace list.
+- [x] Load namespaces.
+- [x] Display namespace selector in toolbar.
+- [x] Support `All namespaces`.
+- [x] Persist selected namespace per context in memory.
+- [x] Handle permission-denied namespace list.
 
 ### 2.5 UI Connection Flow
 
@@ -103,6 +107,7 @@ Checkpoint: stop before adding any complex auth helper dependency.
 - [x] Request URL unit tests.
 - [x] Exec credential decoding, process runner, cache, and config tests.
 - [ ] Kubernetes `Status` decoding tests.
+- [x] Discovery decoding and navigation mapping tests.
 - [ ] Mock server tests for `/version` and discovery.
 - [x] Integration test against kind where practical.
 
@@ -110,8 +115,8 @@ Checkpoint: stop before adding any complex auth helper dependency.
 
 - [x] Selecting the demo context connects successfully.
 - [x] Toolbar shows connected status and dashboard shows Kubernetes version.
-- [ ] API groups/resources are discovered.
-- [ ] Namespaces are available in the selector.
+- [x] API groups/resources are discovered.
+- [x] Namespaces are available in the selector.
 - [x] Bad auth, offline server, and certificate failures are understandable.
 - [ ] Teleport-backed kubeconfigs can trigger `tsh` login/browser auth through exec credentials. Implemented; awaiting manual validation on a corporate Teleport kubeconfig.
 

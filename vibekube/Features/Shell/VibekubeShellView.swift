@@ -21,6 +21,8 @@ struct VibekubeShellView: View {
             }
 
             ToolbarItemGroup(placement: .primaryAction) {
+                NamespacePicker()
+
                 TextField("Search", text: $appModel.searchText)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 220)
@@ -52,6 +54,8 @@ struct VibekubeShellView: View {
             DashboardView()
         case .logs:
             LogsPlaceholderView()
+        case .customResources:
+            ResourceCatalogView()
         default:
             ResourcePlaceholderView(item: appModel.selectedResource ?? .dashboard)
         }
@@ -121,5 +125,31 @@ private struct ClusterPicker: View {
         appModel.selectedConnectionState == .connected ||
             appModel.selectedConnectionState == .connecting ||
             appModel.canConnectSelectedCluster
+    }
+}
+
+private struct NamespacePicker: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    var body: some View {
+        if appModel.selectedConnectionState == .connected {
+            Picker("Namespace", selection: namespaceSelection) {
+                ForEach(appModel.namespaceSelectionOptions, id: \.self) { namespace in
+                    Text(appModel.namespaceTitle(for: namespace))
+                        .tag(namespace)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 170)
+            .help(appModel.namespaceAccessErrorMessage ?? "Namespace scope")
+            .accessibilityIdentifier("toolbar.namespace")
+        }
+    }
+
+    private var namespaceSelection: Binding<String> {
+        Binding(
+            get: { appModel.selectedNamespaceSelection },
+            set: { appModel.selectNamespace($0) }
+        )
     }
 }

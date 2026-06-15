@@ -44,6 +44,9 @@ struct vibekubeTests {
 
         #expect(model.selectedConnectionState == .connected)
         #expect(model.selectedCluster?.kubernetesVersion == "v1.30.0")
+        #expect(model.selectedDiscovery?.resourceCount == 1)
+        #expect(model.selectedNamespaceSelection == "vibekube-demo")
+        #expect(model.namespaceSelectionOptions.contains(AppModel.allNamespacesSelection))
         #expect(model.connectionErrorMessage == nil)
     }
 
@@ -79,6 +82,22 @@ private struct SucceedingConnectionService: KubernetesConnectionServicing {
                 gitVersion: "v1.30.0",
                 gitCommit: nil,
                 platform: nil
+            ),
+            discovery: KubernetesDiscoverySnapshot(
+                coreVersions: ["v1"],
+                groups: [],
+                resourceLists: [
+                    KubernetesAPIResourceList(
+                        groupVersion: "v1",
+                        resources: [
+                            KubernetesAPIResource(name: "pods", singularName: "", namespaced: true, kind: "Pod", verbs: ["get", "list"], shortNames: nil, categories: nil)
+                        ]
+                    )
+                ],
+                namespaceDiscovery: .loaded([
+                    KubernetesNamespaceSummary(name: "default", phase: "Active"),
+                    KubernetesNamespaceSummary(name: "vibekube-demo", phase: "Active")
+                ])
             )
         )
     }
