@@ -10,7 +10,8 @@ Goal: show a useful operational overview for the selected cluster.
 - [x] Dashboard data model exists.
 - [x] Node/pod/workload summaries load.
 - [x] Recent events load.
-- [ ] Metrics API availability is detected.
+- [x] Metrics API availability is detected.
+- [x] Dashboard shows CPU/RAM usage through the Kubernetes Metrics API when available.
 - [x] Dashboard UI handles event loading, empty, and error states.
 - [x] Dashboard UI renders live healthy/warning/failed summary states.
 - [x] Dashboard resource lists load together without cancelling sibling requests.
@@ -24,7 +25,10 @@ Goal: show a useful operational overview for the selected cluster.
 - Dashboard health now derives from real resource lists: nodes, pods, workloads, PV/PVCs, and warning events.
 - Dashboard render now computes the health snapshot once per SwiftUI pass instead of repeatedly walking the same resource arrays.
 - Leaving Dashboard cancels in-flight dashboard-only list calls, while preserving a clicked resource if it was already loading.
-- The dashboard still needs richer charts, metrics-server awareness, drill-down links, and clearer handling for partial load failures.
+- Dashboard Resource Usage now means actual CPU and memory usage from `metrics.k8s.io`, with allocatable node CPU/RAM used as capacity when node data is loaded.
+- All Namespaces uses node-level metrics for cluster CPU/RAM; a selected namespace uses summed pod metrics for that namespace and shows capacity as unavailable until request/limit summaries exist.
+- The old object-count panel is renamed Cluster Inventory so it is not confused with CPU/RAM resource usage.
+- The dashboard still needs richer historical charts, drill-down links, and clearer handling for partial load failures.
 
 ## Product Reference Notes
 
@@ -54,7 +58,7 @@ Goal: show a useful operational overview for the selected cluster.
 - [x] Define `StorageHealthSummary`.
 - [x] Reuse Kubernetes event summaries for current Recent Events feed.
 - [x] Define dashboard-specific event aggregation summary.
-- [ ] Define `MetricsAvailability`.
+- [x] Define dashboard metrics load state and availability fallback.
 
 ### 4.2 Data Loading
 
@@ -65,7 +69,7 @@ Goal: show a useful operational overview for the selected cluster.
 - [x] Load deployments, statefulsets, daemonsets, jobs, and cronjobs.
 - [x] Load recent events.
 - [x] Load PV/PVC summary.
-- [ ] Try metrics API and gracefully degrade.
+- [x] Try metrics API and gracefully degrade.
 
 ### 4.3 Health Computation
 
@@ -87,7 +91,8 @@ Goal: show a useful operational overview for the selected cluster.
 - [x] Recent events list.
 - [x] Recent warnings list with aggregation.
 - [x] Storage summary.
-- [ ] Metrics unavailable state.
+- [x] CPU/RAM resource usage panel.
+- [x] Metrics unavailable state.
 - [x] Last updated indicator.
 - [ ] Per-section load failure callouts.
 
@@ -98,6 +103,8 @@ Checkpoint: stop for visual review once demo cluster dashboard renders real data
 - [x] Health computation unit tests.
 - [x] Dashboard view model tests.
 - [x] Event list decoding coverage through resource list tests.
+- [x] CPU/memory metrics quantity parsing tests.
+- [x] Dashboard resource usage aggregation tests.
 - [ ] Visual/manual demo cluster dashboard check.
 
 ## Acceptance Criteria
@@ -105,7 +112,7 @@ Checkpoint: stop for visual review once demo cluster dashboard renders real data
 - [ ] Demo cluster dashboard visually shows version, nodes, pods, workloads, and warning events.
 - [x] Demo cluster dashboard shows recent events.
 - [ ] Dashboard links into related resources where routes exist.
-- [ ] Missing metrics does not look like a failure.
+- [x] Missing metrics does not look like a failure.
 - [x] Refresh updates dashboard data.
 
 ## Validation Commands

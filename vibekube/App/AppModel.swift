@@ -14,6 +14,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var resourceDetailStateByQuery: [ResourceDetailQuery: ResourceDetailLoadState]
     @Published private(set) var resourceEventsStateByQuery: [ResourceEventsQuery: ResourceEventsLoadState]
     @Published private(set) var envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]
+    @Published private(set) var dashboardMetricsStateByQuery: [DashboardMetricsQuery: DashboardMetricsLoadState]
     @Published private(set) var searchFocusRequestID = 0
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
@@ -22,15 +23,17 @@ final class AppModel: ObservableObject {
     private let resourceListService: KubernetesResourceListServicing?
     private let resourceDetailService: KubernetesResourceDetailServicing?
     private let resourceEventService: KubernetesResourceEventServicing?
+    private let metricsService: KubernetesMetricsServicing?
     private var userPreferences: UserPreferencesProviding
     private var loadedKubeconfig: Kubeconfig
     private var connectionTask: Task<Void, Never>?
     private var resourceListTasksByQuery: [ResourceListQuery: Task<Void, Never>]
     private var resourceDetailTask: Task<Void, Never>?
     private var resourceEventsTask: Task<Void, Never>?
+    private var dashboardMetricsTask: Task<Void, Never>?
     private var envSecretValueTasksByQuery: [ResourceEnvSecretValueQuery: Task<Void, Never>]
 
-    static let allNamespacesSelection = "__vibekube_all_namespaces__"
+    static let allNamespacesSelection = DashboardMetricsQuery.allNamespacesSelection
     static let dashboardResourceItems: [ResourceNavigationItem] = [
         .nodes,
         .pods,
@@ -56,6 +59,7 @@ final class AppModel: ObservableObject {
                 resourceListService: usePreviewData ? PreviewKubernetesResourceListService() : nil,
                 resourceDetailService: usePreviewData ? PreviewKubernetesResourceDetailService() : nil,
                 resourceEventService: usePreviewData ? PreviewKubernetesResourceEventService() : nil,
+                metricsService: usePreviewData ? PreviewKubernetesMetricsService() : nil,
                 userPreferences: InMemoryUserPreferences()
             )
         } else {
@@ -68,6 +72,7 @@ final class AppModel: ObservableObject {
                 resourceListService: KubernetesResourceListService(execCredentialProvider: execCredentialProvider),
                 resourceDetailService: KubernetesResourceDetailService(execCredentialProvider: execCredentialProvider),
                 resourceEventService: KubernetesResourceEventService(execCredentialProvider: execCredentialProvider),
+                metricsService: KubernetesMetricsService(execCredentialProvider: execCredentialProvider),
                 userPreferences: UserDefaultsUserPreferences()
             )
             reloadKubeconfig()
@@ -82,6 +87,7 @@ final class AppModel: ObservableObject {
         resourceListService: KubernetesResourceListServicing? = nil,
         resourceDetailService: KubernetesResourceDetailServicing? = nil,
         resourceEventService: KubernetesResourceEventServicing? = nil,
+        metricsService: KubernetesMetricsServicing? = nil,
         userPreferences: UserPreferencesProviding? = nil,
         loadedKubeconfig: Kubeconfig? = nil,
         discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot] = [:],
@@ -89,6 +95,7 @@ final class AppModel: ObservableObject {
         resourceDetailStateByQuery: [ResourceDetailQuery: ResourceDetailLoadState]? = nil,
         resourceEventsStateByQuery: [ResourceEventsQuery: ResourceEventsLoadState]? = nil,
         envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]? = nil,
+        dashboardMetricsStateByQuery: [DashboardMetricsQuery: DashboardMetricsLoadState]? = nil,
         selectedNamespaceByContextID: [ClusterSummary.ID: String] = [:]
     ) {
         var userPreferences = userPreferences ?? InMemoryUserPreferences()
@@ -108,6 +115,7 @@ final class AppModel: ObservableObject {
         self.resourceListService = resourceListService
         self.resourceDetailService = resourceDetailService
         self.resourceEventService = resourceEventService
+        self.metricsService = metricsService
         self.userPreferences = userPreferences
         self.loadedKubeconfig = loadedKubeconfig ?? .empty
         self.discoveryByContextID = discoveryByContextID
@@ -115,11 +123,13 @@ final class AppModel: ObservableObject {
         self.resourceDetailStateByQuery = resourceDetailStateByQuery ?? [:]
         self.resourceEventsStateByQuery = resourceEventsStateByQuery ?? [:]
         self.envSecretValueStateByQuery = envSecretValueStateByQuery ?? [:]
+        self.dashboardMetricsStateByQuery = dashboardMetricsStateByQuery ?? [:]
         self.selectedNamespaceByContextID = selectedNamespaceByContextID.isEmpty
             ? userPreferences.selectedNamespaceByContextID
             : selectedNamespaceByContextID
         self.resourceListTasksByQuery = [:]
         self.resourceEventsTask = nil
+        self.dashboardMetricsTask = nil
         self.envSecretValueTasksByQuery = [:]
 
         userPreferences.selectedContextID = initialClusterID
@@ -230,6 +240,13 @@ final class AppModel: ObservableObject {
         ClusterDashboardSnapshot.make(states: dashboardResourceStates())
     }
 
+    var selectedDashboardResourceUsageSummary: DashboardResourceUsageSummary {
+        DashboardResourceUsageSummary.make(
+            state: dashboardMetricsState(),
+            nodeItems: resourceListSnapshot(for: .nodes)?.items
+        )
+    }
+
     func selectCluster(id: ClusterSummary.ID?) {
         guard route.clusterID != id else {
             return
@@ -239,6 +256,7 @@ final class AppModel: ObservableObject {
         cancelResourceListTasks()
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
+        cancelDashboardMetricsTask()
         cancelEnvSecretValueTasks()
         navigate(clusterID: id, resource: .dashboard)
         connectionErrorMessage = nil
@@ -251,11 +269,13 @@ final class AppModel: ObservableObject {
 
         if route.resource == .dashboard, resource != .dashboard {
             cancelDashboardResourceListTasks(excluding: resource)
+            cancelDashboardMetricsTask()
         }
 
         navigate(clusterID: selectedClusterID, resource: resource)
         if resource == .dashboard {
             loadDashboardResources()
+            loadDashboardMetrics()
         } else {
             loadResourceList(for: resource)
         }
@@ -272,6 +292,7 @@ final class AppModel: ObservableObject {
         resourceEventsTask?.cancel()
         if selectedResource == .dashboard {
             loadDashboardResources(force: true)
+            loadDashboardMetrics(force: true)
         } else if let selectedResource {
             loadResourceList(for: selectedResource, force: true)
         }
@@ -300,6 +321,7 @@ final class AppModel: ObservableObject {
     func refresh() {
         if selectedResource == .dashboard, selectedConnectionState == .connected {
             loadDashboardResources(force: true)
+            loadDashboardMetrics(force: true)
         } else if let selectedResource,
            selectedConnectionState == .connected,
            selectedResource.discoveredResource(in: selectedDiscovery) != nil {
@@ -326,6 +348,7 @@ final class AppModel: ObservableObject {
         resourceDetailStateByQuery = resourceDetailStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
         resourceEventsStateByQuery = resourceEventsStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
         envSecretValueStateByQuery = envSecretValueStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
+        dashboardMetricsStateByQuery = dashboardMetricsStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
         selectedNamespaceByContextID = selectedNamespaceByContextID.filter { validContextIDs.contains($0.key) }
 
         if discoveredClusters.isEmpty {
@@ -362,6 +385,7 @@ final class AppModel: ObservableObject {
         cancelResourceListTasks()
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
+        cancelDashboardMetricsTask()
         cancelEnvSecretValueTasks()
         connectionErrorMessage = nil
 
@@ -373,6 +397,7 @@ final class AppModel: ObservableObject {
             discoveryByContextID[selectedClusterID] = .preview
             if selectedResource == .dashboard {
                 loadDashboardResources()
+                loadDashboardMetrics()
             } else if let selectedResource {
                 loadResourceList(for: selectedResource)
             }
@@ -390,6 +415,7 @@ final class AppModel: ObservableObject {
         resourceDetailStateByQuery = resourceDetailStateByQuery.filter { $0.key.contextID != selectedClusterID }
         resourceEventsStateByQuery = resourceEventsStateByQuery.filter { $0.key.contextID != selectedClusterID }
         envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != selectedClusterID }
+        dashboardMetricsStateByQuery = dashboardMetricsStateByQuery.filter { $0.key.contextID != selectedClusterID }
 
         connectionTask = Task { [weak self] in
             do {
@@ -413,10 +439,12 @@ final class AppModel: ObservableObject {
         cancelResourceListTasks()
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
+        cancelDashboardMetricsTask()
         cancelEnvSecretValueTasks()
         connectionTask = nil
         resourceDetailTask = nil
         resourceEventsTask = nil
+        dashboardMetricsTask = nil
         connectionErrorMessage = nil
 
         updateSelectedCluster { cluster in
@@ -431,6 +459,7 @@ final class AppModel: ObservableObject {
             resourceDetailStateByQuery = resourceDetailStateByQuery.filter { $0.key.contextID != selectedClusterID }
             resourceEventsStateByQuery = resourceEventsStateByQuery.filter { $0.key.contextID != selectedClusterID }
             envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != selectedClusterID }
+            dashboardMetricsStateByQuery = dashboardMetricsStateByQuery.filter { $0.key.contextID != selectedClusterID }
         }
     }
 
@@ -440,6 +469,20 @@ final class AppModel: ObservableObject {
         }
 
         return resourceListStateByQuery[query] ?? .idle
+    }
+
+    private func resourceListSnapshot(for resource: ResourceNavigationItem) -> ResourceListSnapshot? {
+        guard case .loaded(let snapshot) = resourceListState(for: resource) else {
+            return nil
+        }
+        return snapshot
+    }
+
+    private func dashboardMetricsState() -> DashboardMetricsLoadState {
+        guard let query = dashboardMetricsQuery() else {
+            return .idle
+        }
+        return dashboardMetricsStateByQuery[query] ?? .idle
     }
 
     func resourceListTaskID(for resource: ResourceNavigationItem) -> String {
@@ -458,6 +501,56 @@ final class AppModel: ObservableObject {
     func loadDashboardResources(force: Bool = false) {
         for item in Self.dashboardResourceItems {
             loadResourceList(for: item, force: force)
+        }
+    }
+
+    func loadDashboardMetrics(force: Bool = false) {
+        guard selectedConnectionState == .connected,
+              let query = dashboardMetricsQuery() else {
+            return
+        }
+
+        guard selectedDiscovery?.hasMetricsAPI == true else {
+            dashboardMetricsStateByQuery[query] = .unavailable("Metrics API was not discovered for this cluster.")
+            return
+        }
+
+        if !force {
+            switch dashboardMetricsStateByQuery[query] {
+            case .some(.loaded), .some(.loading), .some(.unavailable):
+                return
+            case .some(.idle), .some(.failed), .none:
+                break
+            }
+        }
+
+        dashboardMetricsTask?.cancel()
+        dashboardMetricsStateByQuery[query] = .loading
+
+        guard let metricsService else {
+            dashboardMetricsStateByQuery[query] = .unavailable("Metrics service is unavailable.")
+            return
+        }
+
+        let kubeconfig = loadedKubeconfig
+        let namespace = namespaceForMetricsRequest(query)
+        dashboardMetricsTask = Task { [weak self] in
+            do {
+                let metrics = try await metricsService.dashboardMetrics(
+                    contextName: query.contextID,
+                    kubeconfig: kubeconfig,
+                    namespace: namespace
+                )
+
+                try Task.checkCancellation()
+                self?.finishDashboardMetrics(query: query, metrics: metrics)
+            } catch is CancellationError {
+                self?.cancelDashboardMetrics(query: query)
+            } catch let error as KubernetesClientError {
+                self?.failDashboardMetrics(query: query, error: error)
+            } catch {
+                self?.failDashboardMetrics(query: query, error: error)
+            }
         }
     }
 
@@ -742,6 +835,7 @@ final class AppModel: ObservableObject {
 
         if selectedClusterID == contextID, selectedResource == .dashboard {
             loadDashboardResources()
+            loadDashboardMetrics()
         } else if selectedClusterID == contextID, let selectedResource {
             loadResourceList(for: selectedResource)
         }
@@ -763,6 +857,7 @@ final class AppModel: ObservableObject {
         resourceDetailStateByQuery = resourceDetailStateByQuery.filter { $0.key.contextID != contextID }
         resourceEventsStateByQuery = resourceEventsStateByQuery.filter { $0.key.contextID != contextID }
         envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != contextID }
+        dashboardMetricsStateByQuery = dashboardMetricsStateByQuery.filter { $0.key.contextID != contextID }
     }
 
     private func finishResourceList(
@@ -791,6 +886,37 @@ final class AppModel: ObservableObject {
     private func failResourceList(query: ResourceListQuery, error: Error) {
         resourceListTasksByQuery[query] = nil
         resourceListStateByQuery[query] = .failed(error.localizedDescription)
+    }
+
+    private func finishDashboardMetrics(
+        query: DashboardMetricsQuery,
+        metrics: KubernetesDashboardMetrics
+    ) {
+        dashboardMetricsTask = nil
+        dashboardMetricsStateByQuery[query] = .loaded(
+            DashboardMetricsSnapshot(
+                query: query,
+                nodeMetrics: metrics.nodeMetrics,
+                podMetrics: metrics.podMetrics,
+                loadedAt: Date()
+            )
+        )
+    }
+
+    private func cancelDashboardMetrics(query: DashboardMetricsQuery) {
+        dashboardMetricsTask = nil
+        if dashboardMetricsStateByQuery[query] == .loading {
+            dashboardMetricsStateByQuery[query] = .idle
+        }
+    }
+
+    private func failDashboardMetrics(query: DashboardMetricsQuery, error: Error) {
+        dashboardMetricsTask = nil
+        if case KubernetesClientError.statusCode(404, _) = error {
+            dashboardMetricsStateByQuery[query] = .unavailable("Metrics API is not installed on this cluster.")
+        } else {
+            dashboardMetricsStateByQuery[query] = .failed(error.localizedDescription)
+        }
     }
 
     private func finishResourceDetail(
@@ -868,6 +994,15 @@ final class AppModel: ObservableObject {
         resourceListTasksByQuery.removeAll()
     }
 
+    private func cancelDashboardMetricsTask() {
+        let query = dashboardMetricsQuery()
+        dashboardMetricsTask?.cancel()
+        dashboardMetricsTask = nil
+        if let query, dashboardMetricsStateByQuery[query] == .loading {
+            dashboardMetricsStateByQuery[query] = .idle
+        }
+    }
+
     private func cancelDashboardResourceListTasks(excluding retainedResource: ResourceNavigationItem?) {
         for item in Self.dashboardResourceItems where item != retainedResource {
             guard let query = resourceListQuery(for: item),
@@ -921,6 +1056,17 @@ final class AppModel: ObservableObject {
         return ResourceListQuery(
             contextID: selectedClusterID,
             resource: discoveredResource,
+            namespaceSelection: selectedNamespaceSelection
+        )
+    }
+
+    private func dashboardMetricsQuery() -> DashboardMetricsQuery? {
+        guard let selectedClusterID else {
+            return nil
+        }
+
+        return DashboardMetricsQuery(
+            contextID: selectedClusterID,
             namespaceSelection: selectedNamespaceSelection
         )
     }
@@ -991,6 +1137,10 @@ final class AppModel: ObservableObject {
         }
 
         return query.namespaceSelection
+    }
+
+    private func namespaceForMetricsRequest(_ query: DashboardMetricsQuery) -> String? {
+        query.namespaceSelection == Self.allNamespacesSelection ? nil : query.namespaceSelection
     }
 
     private func namespaceForDetailRequest(
@@ -1085,6 +1235,39 @@ private struct PreviewKubernetesResourceListService: KubernetesResourceListServi
         resource: KubernetesDiscoveredResource,
         namespace: String?
     ) async throws -> KubernetesUnstructuredResourceList {
+        if resource.name == "nodes" {
+            return try decodeList(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "NodeList",
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Node",
+                      "metadata": {
+                        "name": "preview-node",
+                        "uid": "preview-node"
+                      },
+                      "status": {
+                        "allocatable": {
+                          "cpu": "4",
+                          "memory": "8Gi"
+                        },
+                        "conditions": [
+                          {
+                            "type": "Ready",
+                            "status": "True"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """
+            )
+        }
+
         guard resource.name == "pods" else {
             return try decodeList(
                 """
@@ -1262,6 +1445,70 @@ private struct PreviewKubernetesResourceDetailService: KubernetesResourceDetailS
                 }
                 """.utf8
             )
+        )
+    }
+}
+
+private struct PreviewKubernetesMetricsService: KubernetesMetricsServicing {
+    func dashboardMetrics(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String?
+    ) async throws -> KubernetesDashboardMetrics {
+        let nodeMetrics = try JSONDecoder().decode(
+            KubernetesNodeMetricsList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "metadata": {
+                        "name": "preview-node"
+                      },
+                      "timestamp": "2026-06-15T10:01:00Z",
+                      "window": "30s",
+                      "usage": {
+                        "cpu": "740m",
+                        "memory": "2450Mi"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+        let podMetrics = try JSONDecoder().decode(
+            KubernetesPodMetricsList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "metadata": {
+                        "name": "web-0",
+                        "namespace": "\(namespace ?? "vibekube-demo")"
+                      },
+                      "timestamp": "2026-06-15T10:01:00Z",
+                      "window": "30s",
+                      "containers": [
+                        {
+                          "name": "web",
+                          "usage": {
+                            "cpu": "120m",
+                            "memory": "180Mi"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        return KubernetesDashboardMetrics(
+            nodeMetrics: nodeMetrics.items,
+            podMetrics: podMetrics.items
         )
     }
 }

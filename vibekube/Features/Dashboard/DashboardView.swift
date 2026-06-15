@@ -8,6 +8,7 @@ struct DashboardView: View {
 
     var body: some View {
         let snapshot = appModel.selectedDashboardSnapshot
+        let resourceUsage = appModel.selectedDashboardResourceUsageSummary
 
         return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -16,7 +17,13 @@ struct DashboardView: View {
 
                 healthStrip(snapshot: snapshot)
 
-                SectionSurface(title: "Resource Inventory", systemImage: "square.grid.3x3") {
+                SectionSurface(title: "Resource Usage", systemImage: "chart.line.uptrend.xyaxis") {
+                    DashboardResourceUsageView(summary: resourceUsage) {
+                        appModel.loadDashboardMetrics(force: true)
+                    }
+                }
+
+                SectionSurface(title: "Cluster Inventory", systemImage: "square.grid.3x3") {
                     DashboardResourceInventoryView(
                         snapshot: snapshot,
                         discovery: appModel.selectedDiscovery
@@ -62,6 +69,7 @@ struct DashboardView: View {
         }
         .task(id: appModel.dashboardTaskID) {
             appModel.loadDashboardResources()
+            appModel.loadDashboardMetrics()
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("dashboard.view")
@@ -337,6 +345,177 @@ private struct DashboardHealthTile: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(status.tint.opacity(0.22))
         }
+    }
+}
+
+private struct DashboardResourceUsageView: View {
+    let summary: DashboardResourceUsageSummary
+    let reload: () -> Void
+
+    var body: some View {
+        switch summary.state {
+        case .loading:
+            ProgressView("Loading CPU and memory metrics")
+                .frame(maxWidth: .infinity, minHeight: 130)
+        case .loaded:
+            loadedContent
+        case .idle:
+            unavailableContent("Metrics have not loaded yet.")
+        case .unavailable(let message), .failed(let message):
+            unavailableContent(message)
+        }
+    }
+
+    private var loadedContent: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 18) {
+                DashboardUsageGauge(
+                    title: "CPU",
+                    value: formatCPU(summary.cpuUsageMillicores),
+                    detail: usageDetail(
+                        fraction: summary.cpuUsageFraction,
+                        capacity: summary.cpuCapacityMillicores.map(formatCPU)
+                    ),
+                    fraction: summary.cpuUsageFraction,
+                    systemImage: "cpu",
+                    tint: .blue
+                )
+
+                DashboardUsageGauge(
+                    title: "Memory",
+                    value: formatMemory(summary.memoryUsageBytes),
+                    detail: usageDetail(
+                        fraction: summary.memoryUsageFraction,
+                        capacity: summary.memoryCapacityBytes.map(formatMemory)
+                    ),
+                    fraction: summary.memoryUsageFraction,
+                    systemImage: "memorychip",
+                    tint: .green
+                )
+            }
+
+            HStack(alignment: .firstTextBaseline) {
+                Text(metricsSourceLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                if let loadedAt = summary.loadedAt {
+                    Text("Loaded \(loadedAt.formatted(date: .omitted, time: .standard))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+
+                Button(action: reload) {
+                    Label("Refresh Metrics", systemImage: "arrow.clockwise")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("Refresh Metrics")
+            }
+        }
+    }
+
+    private func unavailableContent(_ message: String) -> some View {
+        VStack(spacing: 10) {
+            EmptyStateView(
+                title: "Metrics Unavailable",
+                subtitle: message,
+                systemImage: "chart.line.uptrend.xyaxis"
+            )
+
+            Button(action: reload) {
+                Label("Retry Metrics", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity, minHeight: 130)
+    }
+
+    private func usageDetail(fraction: Double?, capacity: String?) -> String {
+        guard let fraction, let capacity else {
+            return "Capacity unavailable"
+        }
+
+        return "\(Int((fraction * 100).rounded()))% of \(capacity)"
+    }
+
+    private var metricsSourceLabel: String {
+        if summary.usesClusterNodeMetrics {
+            return "\(summary.nodeMetricsCount) nodes and \(summary.podMetricsCount) pods reported metrics"
+        }
+
+        return "\(summary.podMetricsCount) pods reported metrics in selected namespace"
+    }
+
+    private func formatCPU(_ millicores: Double) -> String {
+        if millicores >= 1_000 {
+            return "\(formatDecimal(millicores / 1_000, digits: 1)) cores"
+        }
+
+        return "\(Int(millicores.rounded()))m"
+    }
+
+    private func formatMemory(_ bytes: Double) -> String {
+        let gib = bytes / pow(1024, 3)
+        if gib >= 1 {
+            return "\(formatDecimal(gib, digits: 1)) GiB"
+        }
+
+        let mib = bytes / pow(1024, 2)
+        return "\(Int(mib.rounded())) MiB"
+    }
+
+    private func formatDecimal(_ value: Double, digits: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = digits
+        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+}
+
+private struct DashboardUsageGauge: View {
+    let title: String
+    let value: String
+    let detail: String
+    let fraction: Double?
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(title, systemImage: systemImage)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Text(value)
+                    .font(.title3.monospacedDigit().weight(.semibold))
+                    .textSelection(.enabled)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(.quaternary)
+
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(tint)
+                        .frame(width: proxy.size.width * CGFloat(fraction ?? 0))
+                }
+            }
+            .frame(height: 8)
+
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

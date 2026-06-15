@@ -813,6 +813,173 @@ struct KubernetesResourceListTests {
         #expect(snapshot.status == .healthy)
     }
 
+    @Test func metricsQuantityParsesCPUAndMemoryUnits() {
+        #expect(KubernetesMetricsQuantity(rawValue: "750m").cpuMillicores == 750)
+        #expect(KubernetesMetricsQuantity(rawValue: "1").cpuMillicores == 1_000)
+        #expect(KubernetesMetricsQuantity(rawValue: "250000000n").cpuMillicores == 250)
+        #expect(KubernetesMetricsQuantity(rawValue: "125000u").cpuMillicores == 125)
+
+        #expect(KubernetesMetricsQuantity(rawValue: "512Mi").memoryBytes == Double(512 * 1024 * 1024))
+        #expect(KubernetesMetricsQuantity(rawValue: "2Gi").memoryBytes == Double(2 * 1024 * 1024 * 1024))
+        #expect(KubernetesMetricsQuantity(rawValue: "100M").memoryBytes == Double(100 * 1000 * 1000))
+    }
+
+    @Test func dashboardResourceUsageSummaryComputesCPUAndMemoryUsage() throws {
+        let nodes = try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Node",
+                      "metadata": { "name": "node-1" },
+                      "status": {
+                        "allocatable": {
+                          "cpu": "2",
+                          "memory": "4Gi"
+                        }
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+        let nodeMetrics = try JSONDecoder().decode(
+            KubernetesNodeMetricsList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "metadata": { "name": "node-1" },
+                      "usage": {
+                        "cpu": "500m",
+                        "memory": "1024Mi"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+        let podMetrics = try JSONDecoder().decode(
+            KubernetesPodMetricsList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "metadata": {
+                        "name": "pod-1",
+                        "namespace": "demo"
+                      },
+                      "containers": [
+                        {
+                          "name": "app",
+                          "usage": {
+                            "cpu": "250m",
+                            "memory": "256Mi"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        let summary = DashboardResourceUsageSummary.make(
+            state: .loaded(
+                DashboardMetricsSnapshot(
+                    query: DashboardMetricsQuery(contextID: "test", namespaceSelection: AppModel.allNamespacesSelection),
+                    nodeMetrics: nodeMetrics.items,
+                    podMetrics: podMetrics.items,
+                    loadedAt: Date(timeIntervalSince1970: 0)
+                )
+            ),
+            nodeItems: nodes.items
+        )
+
+        #expect(summary.cpuUsageMillicores == 500)
+        #expect(summary.cpuCapacityMillicores == 2_000)
+        #expect(summary.cpuUsageFraction == 0.25)
+        #expect(summary.memoryUsageBytes == Double(1024 * 1024 * 1024))
+        #expect(summary.memoryCapacityBytes == Double(4 * 1024 * 1024 * 1024))
+        #expect(summary.memoryUsageFraction == 0.25)
+        #expect(summary.nodeMetricsCount == 1)
+        #expect(summary.podMetricsCount == 1)
+        #expect(summary.usesClusterNodeMetrics)
+    }
+
+    @Test func dashboardResourceUsageSummaryUsesPodMetricsForNamespaceScope() throws {
+        let nodeMetrics = try JSONDecoder().decode(
+            KubernetesNodeMetricsList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "metadata": { "name": "node-1" },
+                      "usage": {
+                        "cpu": "500m",
+                        "memory": "1024Mi"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+        let podMetrics = try JSONDecoder().decode(
+            KubernetesPodMetricsList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "metadata": {
+                        "name": "pod-1",
+                        "namespace": "demo"
+                      },
+                      "containers": [
+                        {
+                          "name": "app",
+                          "usage": {
+                            "cpu": "250m",
+                            "memory": "256Mi"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        let summary = DashboardResourceUsageSummary.make(
+            state: .loaded(
+                DashboardMetricsSnapshot(
+                    query: DashboardMetricsQuery(contextID: "test", namespaceSelection: "demo"),
+                    nodeMetrics: nodeMetrics.items,
+                    podMetrics: podMetrics.items,
+                    loadedAt: Date(timeIntervalSince1970: 0)
+                )
+            ),
+            nodeItems: []
+        )
+
+        #expect(summary.cpuUsageMillicores == 250)
+        #expect(summary.cpuCapacityMillicores == nil)
+        #expect(summary.memoryUsageBytes == Double(256 * 1024 * 1024))
+        #expect(summary.memoryCapacityBytes == nil)
+        #expect(!summary.usesClusterNodeMetrics)
+    }
+
     private func loadedState(
         for item: ResourceNavigationItem,
         json: String

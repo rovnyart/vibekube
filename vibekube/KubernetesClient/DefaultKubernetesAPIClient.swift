@@ -87,6 +87,18 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         )
     }
 
+    func nodeMetrics() async throws -> KubernetesNodeMetricsList {
+        try await get(path: "/apis/metrics.k8s.io/v1beta1/nodes")
+    }
+
+    func podMetrics(namespace: String?) async throws -> KubernetesPodMetricsList {
+        if let namespace, !namespace.isEmpty {
+            return try await get(path: "/apis/metrics.k8s.io/v1beta1/namespaces/\(namespace.kubernetesPathSegment)/pods")
+        }
+
+        return try await get(path: "/apis/metrics.k8s.io/v1beta1/pods")
+    }
+
     private func get<Response: Decodable>(
         path: String,
         queryItems: [URLQueryItem] = []

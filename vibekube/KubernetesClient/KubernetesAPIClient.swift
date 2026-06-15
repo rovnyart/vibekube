@@ -22,6 +22,8 @@ protocol KubernetesAPIClient {
         involvedName: String,
         involvedUID: String?
     ) async throws -> KubernetesResourceEventList
+    func nodeMetrics() async throws -> KubernetesNodeMetricsList
+    func podMetrics(namespace: String?) async throws -> KubernetesPodMetricsList
 }
 
 struct KubernetesVersion: Decodable, Equatable {

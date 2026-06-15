@@ -42,6 +42,14 @@ struct KubernetesDiscoverySnapshot: Equatable {
     var apiGroupCount: Int {
         groups.count + (coreVersions.isEmpty ? 0 : 1)
     }
+
+    var hasMetricsAPI: Bool {
+        groups.contains { group in
+            group.name == "metrics.k8s.io"
+        } || discoveredResources.contains { resource in
+            resource.group == "metrics.k8s.io"
+        }
+    }
 }
 
 extension KubernetesDiscoverySnapshot {
@@ -61,6 +69,13 @@ extension KubernetesDiscoverySnapshot {
                     KubernetesGroupVersion(groupVersion: "batch/v1", version: "v1")
                 ],
                 preferredVersion: KubernetesGroupVersion(groupVersion: "batch/v1", version: "v1")
+            ),
+            KubernetesAPIGroup(
+                name: "metrics.k8s.io",
+                versions: [
+                    KubernetesGroupVersion(groupVersion: "metrics.k8s.io/v1beta1", version: "v1beta1")
+                ],
+                preferredVersion: KubernetesGroupVersion(groupVersion: "metrics.k8s.io/v1beta1", version: "v1beta1")
             )
         ],
         resourceLists: [
@@ -90,6 +105,13 @@ extension KubernetesDiscoverySnapshot {
                 resources: [
                     KubernetesAPIResource(name: "jobs", singularName: "", namespaced: true, kind: "Job", verbs: ["get", "list", "watch"], shortNames: nil, categories: ["all"]),
                     KubernetesAPIResource(name: "cronjobs", singularName: "", namespaced: true, kind: "CronJob", verbs: ["get", "list", "watch"], shortNames: ["cj"], categories: ["all"])
+                ]
+            ),
+            KubernetesAPIResourceList(
+                groupVersion: "metrics.k8s.io/v1beta1",
+                resources: [
+                    KubernetesAPIResource(name: "nodes", singularName: "", namespaced: false, kind: "NodeMetrics", verbs: ["get", "list"], shortNames: nil, categories: nil),
+                    KubernetesAPIResource(name: "pods", singularName: "", namespaced: true, kind: "PodMetrics", verbs: ["get", "list"], shortNames: nil, categories: nil)
                 ]
             )
         ],
@@ -221,7 +243,7 @@ struct KubernetesDiscoveredResource: Identifiable, Equatable, Hashable, Comparab
     }
 }
 
-private extension String {
+extension String {
     var kubernetesPathSegment: String {
         var allowedCharacters = CharacterSet.urlPathAllowed
         allowedCharacters.remove(charactersIn: "/")
