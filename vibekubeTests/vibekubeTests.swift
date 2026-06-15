@@ -181,6 +181,37 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelLoadsDashboardResourceListsTogether() async throws {
+        let recorder = DashboardResourceListRecorder()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: DashboardConnectionService(),
+            resourceListService: DashboardResourceListService(recorder: recorder),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+
+        for _ in 0..<20 {
+            if await recorder.count == AppModel.dashboardResourceItems.count {
+                break
+            }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+
+        let requestedNames = await recorder.resourceNames()
+        let expectedNames = Set(AppModel.dashboardResourceItems.map { dashboardAPIResource(for: $0).name })
+        #expect(Set(requestedNames) == expectedNames)
+
+        for item in AppModel.dashboardResourceItems {
+            guard case .loaded = model.resourceListState(for: item) else {
+                Issue.record("Expected \(item.title) to be loaded")
+                continue
+            }
+        }
+    }
+
+    @MainActor
     @Test func appModelLoadsResourceDetailForSelectedRow() async {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -336,6 +367,91 @@ private struct SucceedingConnectionService: KubernetesConnectionServicing {
                     KubernetesNamespaceSummary(name: "vibekube-demo", phase: "Active")
                 ])
             )
+        )
+    }
+}
+
+private struct DashboardConnectionService: KubernetesConnectionServicing {
+    func connect(contextName: String, kubeconfig: Kubeconfig) async throws -> KubernetesConnectionSnapshot {
+        KubernetesConnectionSnapshot(
+            version: KubernetesVersion(
+                major: "1",
+                minor: "30",
+                gitVersion: "v1.30.0",
+                gitCommit: nil,
+                platform: nil
+            ),
+            discovery: KubernetesDiscoverySnapshot(
+                coreVersions: ["v1"],
+                groups: [],
+                resourceLists: [
+                    KubernetesAPIResourceList(
+                        groupVersion: "v1",
+                        resources: AppModel.dashboardResourceItems
+                            .map(dashboardAPIResource(for:))
+                            .filter { resource in
+                                ["nodes", "pods", "persistentvolumes", "persistentvolumeclaims", "events"].contains(resource.name)
+                            }
+                    ),
+                    KubernetesAPIResourceList(
+                        groupVersion: "apps/v1",
+                        resources: AppModel.dashboardResourceItems
+                            .map(dashboardAPIResource(for:))
+                            .filter { resource in
+                                ["deployments", "statefulsets", "daemonsets"].contains(resource.name)
+                            }
+                    ),
+                    KubernetesAPIResourceList(
+                        groupVersion: "batch/v1",
+                        resources: AppModel.dashboardResourceItems
+                            .map(dashboardAPIResource(for:))
+                            .filter { resource in
+                                ["jobs", "cronjobs"].contains(resource.name)
+                            }
+                    )
+                ],
+                namespaceDiscovery: .loaded([
+                    KubernetesNamespaceSummary(name: "default", phase: "Active")
+                ])
+            )
+        )
+    }
+}
+
+private actor DashboardResourceListRecorder {
+    private var names: [String] = []
+
+    var count: Int {
+        names.count
+    }
+
+    func record(_ name: String) {
+        names.append(name)
+    }
+
+    func resourceNames() -> [String] {
+        names
+    }
+}
+
+private struct DashboardResourceListService: KubernetesResourceListServicing {
+    let recorder: DashboardResourceListRecorder
+
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        try await Task.sleep(nanoseconds: 2_000_000)
+        try Task.checkCancellation()
+        await recorder.record(resource.name)
+
+        return KubernetesUnstructuredResourceList(
+            apiVersion: resource.groupVersion,
+            kind: "\(resource.kind)List",
+            metadata: nil,
+            items: []
         )
     }
 }
@@ -496,5 +612,43 @@ private func kubeconfig() -> Kubeconfig {
         contexts: [],
         users: [],
         currentContext: nil
+    )
+}
+
+private func dashboardAPIResource(for item: ResourceNavigationItem) -> KubernetesAPIResource {
+    let definition: (name: String, kind: String, namespaced: Bool)
+    switch item {
+    case .nodes:
+        definition = ("nodes", "Node", false)
+    case .pods:
+        definition = ("pods", "Pod", true)
+    case .deployments:
+        definition = ("deployments", "Deployment", true)
+    case .statefulSets:
+        definition = ("statefulsets", "StatefulSet", true)
+    case .daemonSets:
+        definition = ("daemonsets", "DaemonSet", true)
+    case .jobs:
+        definition = ("jobs", "Job", true)
+    case .cronJobs:
+        definition = ("cronjobs", "CronJob", true)
+    case .persistentVolumes:
+        definition = ("persistentvolumes", "PersistentVolume", false)
+    case .persistentVolumeClaims:
+        definition = ("persistentvolumeclaims", "PersistentVolumeClaim", true)
+    case .events:
+        definition = ("events", "Event", true)
+    default:
+        definition = (item.rawValue, item.title, true)
+    }
+
+    return KubernetesAPIResource(
+        name: definition.name,
+        singularName: "",
+        namespaced: definition.namespaced,
+        kind: definition.kind,
+        verbs: ["get", "list"],
+        shortNames: nil,
+        categories: nil
     )
 }

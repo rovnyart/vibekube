@@ -2,9 +2,8 @@ import SwiftUI
 
 struct DashboardView: View {
     @EnvironmentObject private var appModel: AppModel
-
-    private let columns = [
-        GridItem(.adaptive(minimum: 160, maximum: 220), spacing: 12)
+    private let healthColumns = [
+        GridItem(.adaptive(minimum: 180, maximum: 260), spacing: 12)
     ]
 
     var body: some View {
@@ -13,12 +12,7 @@ struct DashboardView: View {
                 header
                 connectionMessage
 
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                    MetricTile(title: "API Groups", value: discoveryValue(\.apiGroupCount), systemImage: "square.stack.3d.up", tint: .indigo)
-                    MetricTile(title: "API Resources", value: discoveryValue(\.resourceCount), systemImage: "shippingbox", tint: .blue)
-                    MetricTile(title: "Namespaces", value: namespaceCount, systemImage: "folder", tint: .teal)
-                    MetricTile(title: "Cluster Scoped", value: discoveryValue(\.clusterScopedResourceCount), systemImage: "globe", tint: .orange)
-                }
+                healthStrip
 
                 SectionSurface(title: "Cluster Snapshot", systemImage: "chart.bar.xaxis") {
                     DashboardRows(
@@ -29,6 +23,20 @@ struct DashboardView: View {
                     )
                 }
 
+                HStack(alignment: .top, spacing: 18) {
+                    SectionSurface(title: "Pod Health", systemImage: "shippingbox") {
+                        DashboardPodHealthView(summary: dashboardSnapshot.podHealth)
+                    }
+
+                    SectionSurface(title: "Workloads", systemImage: "square.stack.3d.up") {
+                        DashboardWorkloadHealthView(summary: dashboardSnapshot.workloadHealth)
+                    }
+                }
+
+                SectionSurface(title: "Warning Events", systemImage: "exclamationmark.triangle") {
+                    DashboardWarningsView(summary: dashboardSnapshot.eventHealth)
+                }
+
                 SectionSurface(title: "Recent Events", systemImage: "waveform.path.ecg") {
                     DashboardRecentEventsView(
                         state: appModel.resourceListState(for: .events),
@@ -37,17 +45,73 @@ struct DashboardView: View {
                     ) {
                         appModel.loadResourceList(for: .events, force: true)
                     }
-                    .task(id: appModel.resourceListTaskID(for: .events)) {
-                        appModel.loadResourceList(for: .events)
-                    }
                     .accessibilityIdentifier("dashboard.recentEvents")
                 }
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .task(id: appModel.dashboardTaskID) {
+            appModel.loadDashboardResources()
+        }
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("dashboard.view")
+    }
+
+    private var dashboardSnapshot: ClusterDashboardSnapshot {
+        appModel.selectedDashboardSnapshot
+    }
+
+    private var healthStrip: some View {
+        LazyVGrid(columns: healthColumns, alignment: .leading, spacing: 12) {
+            DashboardHealthTile(
+                title: "Cluster",
+                value: dashboardSnapshot.status.title,
+                detail: clusterHealthDetail,
+                status: dashboardSnapshot.status,
+                systemImage: "heart.text.square"
+            )
+
+            DashboardHealthTile(
+                title: "Nodes",
+                value: nodeValue,
+                detail: nodeDetail,
+                status: dashboardSnapshot.nodeHealth.status,
+                systemImage: "server.rack"
+            )
+
+            DashboardHealthTile(
+                title: "Pods",
+                value: podValue,
+                detail: podDetail,
+                status: dashboardSnapshot.podHealth.status,
+                systemImage: "shippingbox"
+            )
+
+            DashboardHealthTile(
+                title: "Workloads",
+                value: workloadValue,
+                detail: workloadDetail,
+                status: dashboardSnapshot.workloadHealth.status,
+                systemImage: "square.stack.3d.up"
+            )
+
+            DashboardHealthTile(
+                title: "Storage",
+                value: storageValue,
+                detail: storageDetail,
+                status: dashboardSnapshot.storageHealth.status,
+                systemImage: "internaldrive"
+            )
+
+            DashboardHealthTile(
+                title: "Warnings",
+                value: warningValue,
+                detail: warningDetail,
+                status: dashboardSnapshot.eventHealth.status,
+                systemImage: "exclamationmark.triangle"
+            )
+        }
     }
 
     private var canLoadEvents: Bool {
@@ -77,28 +141,133 @@ struct DashboardView: View {
 
             Spacer()
 
-            StatusBadge(state: appModel.selectedConnectionState)
+            VStack(alignment: .trailing, spacing: 8) {
+                StatusBadge(state: appModel.selectedConnectionState)
+
+                Button {
+                    appModel.loadDashboardResources(force: true)
+                } label: {
+                    Label("Refresh Dashboard", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .disabled(appModel.selectedConnectionState != .connected)
+                .help("Refresh Dashboard")
+            }
         }
     }
 
-    private var namespaceCount: String {
-        guard let discovery = appModel.selectedDiscovery else {
-            return "-"
+    private var clusterHealthDetail: String {
+        if let loadedAt = dashboardSnapshot.loadedAt {
+            return "Updated \(loadedAt.formatted(date: .omitted, time: .standard))"
         }
 
-        if discovery.namespaceDiscovery.errorMessage != nil {
-            return "!"
-        }
-
-        return "\(discovery.namespaceDiscovery.items.count)"
+        return appModel.selectedConnectionState == .connected ? "Loading resources" : "Connect to load health"
     }
 
-    private func discoveryValue(_ keyPath: KeyPath<KubernetesDiscoverySnapshot, Int>) -> String {
-        guard let discovery = appModel.selectedDiscovery else {
-            return "-"
+    private var nodeValue: String {
+        let summary = dashboardSnapshot.nodeHealth
+        return summary.isLoaded ? "\(summary.ready)/\(summary.total)" : "-"
+    }
+
+    private var nodeDetail: String {
+        let summary = dashboardSnapshot.nodeHealth
+        guard summary.isLoaded else {
+            return "Not loaded"
         }
 
-        return "\(discovery[keyPath: keyPath])"
+        if summary.notReady > 0 {
+            return "\(summary.notReady) not ready"
+        }
+
+        if summary.unknown > 0 {
+            return "\(summary.unknown) unknown"
+        }
+
+        return "Ready nodes"
+    }
+
+    private var podValue: String {
+        let summary = dashboardSnapshot.podHealth
+        return summary.isLoaded ? "\(summary.running)/\(summary.total)" : "-"
+    }
+
+    private var podDetail: String {
+        let summary = dashboardSnapshot.podHealth
+        guard summary.isLoaded else {
+            return "Not loaded"
+        }
+
+        if summary.failed > 0 {
+            return "\(summary.failed) failed"
+        }
+
+        if summary.pending > 0 {
+            return "\(summary.pending) pending"
+        }
+
+        if summary.restartCount > 0 {
+            return "\(summary.restartCount) restarts"
+        }
+
+        return "Running pods"
+    }
+
+    private var workloadValue: String {
+        let summary = dashboardSnapshot.workloadHealth
+        return summary.isLoaded ? "\(summary.ready)/\(summary.total)" : "-"
+    }
+
+    private var workloadDetail: String {
+        let summary = dashboardSnapshot.workloadHealth
+        guard summary.isLoaded else {
+            return "Not loaded"
+        }
+
+        if summary.unavailable > 0 {
+            return "\(summary.unavailable) unavailable"
+        }
+
+        if summary.progressing > 0 {
+            return "\(summary.progressing) progressing"
+        }
+
+        return "Ready workloads"
+    }
+
+    private var storageValue: String {
+        let summary = dashboardSnapshot.storageHealth
+        return summary.isLoaded ? "\(summary.bound)/\(summary.total)" : "-"
+    }
+
+    private var storageDetail: String {
+        let summary = dashboardSnapshot.storageHealth
+        guard summary.isLoaded else {
+            return "Not loaded"
+        }
+
+        if summary.lost > 0 {
+            return "\(summary.lost) lost or failed"
+        }
+
+        if summary.pending > 0 {
+            return "\(summary.pending) pending"
+        }
+
+        return "Bound volumes"
+    }
+
+    private var warningValue: String {
+        let summary = dashboardSnapshot.eventHealth
+        return summary.isLoaded ? "\(summary.warnings)" : "-"
+    }
+
+    private var warningDetail: String {
+        let summary = dashboardSnapshot.eventHealth
+        guard summary.isLoaded else {
+            return "Not loaded"
+        }
+
+        return summary.warnings == 0 ? "No warnings" : "\(summary.total) recent events"
     }
 
     @ViewBuilder
@@ -114,6 +283,245 @@ struct DashboardView: View {
                 .textSelection(.enabled)
                 .accessibilityIdentifier("dashboard.connectionError")
         }
+    }
+}
+
+private struct DashboardHealthTile: View {
+    let title: String
+    let value: String
+    let detail: String
+    let status: DashboardHealthStatus
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                Image(systemName: systemImage)
+                    .font(.title3)
+                    .foregroundStyle(status.tint)
+
+                Spacer()
+
+                Label(status.title, systemImage: status.systemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(status.tint)
+                    .labelStyle(.iconOnly)
+                    .help(status.title)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(value)
+                    .font(.system(size: 28, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(14)
+        .frame(minHeight: 112, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(status.tint.opacity(0.22))
+        }
+    }
+}
+
+private struct DashboardPodHealthView: View {
+    let summary: PodHealthSummary
+
+    var body: some View {
+        if !summary.isLoaded {
+            DashboardMutedState(text: "Pod health has not loaded yet.")
+        } else if summary.total == 0 {
+            DashboardMutedState(text: "No pods in this scope.")
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                DashboardPhaseBar(
+                    segments: [
+                        DashboardPhaseSegment(title: "Running", count: summary.running, tint: .green),
+                        DashboardPhaseSegment(title: "Pending", count: summary.pending, tint: .orange),
+                        DashboardPhaseSegment(title: "Failed", count: summary.failed, tint: .red),
+                        DashboardPhaseSegment(title: "Succeeded", count: summary.succeeded, tint: .blue),
+                        DashboardPhaseSegment(title: "Unknown", count: summary.unknown, tint: .secondary)
+                    ]
+                )
+
+                DashboardSummaryRow(title: "Running", value: "\(summary.running)")
+                DashboardSummaryRow(title: "Pending", value: "\(summary.pending)")
+                DashboardSummaryRow(title: "Failed", value: "\(summary.failed)")
+                DashboardSummaryRow(title: "Succeeded", value: "\(summary.succeeded)")
+                DashboardSummaryRow(title: "Container Restarts", value: "\(summary.restartCount)")
+            }
+        }
+    }
+}
+
+private struct DashboardWorkloadHealthView: View {
+    let summary: WorkloadHealthSummary
+
+    var body: some View {
+        if !summary.isLoaded {
+            DashboardMutedState(text: "Workload health has not loaded yet.")
+        } else if summary.total == 0 {
+            DashboardMutedState(text: "No workloads in this scope.")
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                DashboardSummaryRow(title: "Ready", value: "\(summary.ready)")
+                DashboardSummaryRow(title: "Progressing", value: "\(summary.progressing)")
+                DashboardSummaryRow(title: "Unavailable", value: "\(summary.unavailable)")
+
+                Divider()
+
+                Text("\(summary.ready) of \(summary.total) workloads are ready.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct DashboardWarningsView: View {
+    let summary: DashboardEventHealthSummary
+
+    var body: some View {
+        if !summary.isLoaded {
+            DashboardMutedState(text: "Warning events have not loaded yet.")
+        } else if summary.topWarnings.isEmpty {
+            DashboardMutedState(text: "No warning events in the current event window.")
+        } else {
+            VStack(spacing: 0) {
+                ForEach(Array(summary.topWarnings.prefix(6).enumerated()), id: \.element.id) { index, warning in
+                    DashboardWarningRow(warning: warning)
+
+                    if index < min(summary.topWarnings.count, 6) - 1 {
+                        Divider()
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct DashboardWarningRow: View {
+    let warning: DashboardWarningSummary
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("\(warning.count)x")
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(.orange)
+                .frame(width: 42, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(warning.reason)
+                    .font(.callout.weight(.semibold))
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+
+                Text(warning.involvedObject)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+
+                if warning.source != "-" {
+                    Text(warning.source)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+private struct DashboardSummaryRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .font(.callout.monospacedDigit().weight(.semibold))
+                .textSelection(.enabled)
+        }
+        .font(.callout)
+    }
+}
+
+private struct DashboardMutedState: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 92, alignment: .center)
+    }
+}
+
+private struct DashboardPhaseSegment: Identifiable {
+    var title: String
+    var count: Int
+    var tint: Color
+
+    var id: String {
+        title
+    }
+}
+
+private struct DashboardPhaseBar: View {
+    let segments: [DashboardPhaseSegment]
+
+    var body: some View {
+        let visibleSegments = segments.filter { $0.count > 0 }
+        let total = visibleSegments.reduce(0) { $0 + $1.count }
+
+        VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { proxy in
+                HStack(spacing: 2) {
+                    ForEach(visibleSegments) { segment in
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(segment.tint)
+                            .frame(width: segmentWidth(segment.count, total: total, availableWidth: proxy.size.width))
+                    }
+                }
+            }
+            .frame(height: 8)
+
+            HStack(spacing: 12) {
+                ForEach(visibleSegments) { segment in
+                    Label("\(segment.title) \(segment.count)", systemImage: "circle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(segment.tint)
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
+    private func segmentWidth(_ count: Int, total: Int, availableWidth: CGFloat) -> CGFloat {
+        guard total > 0 else {
+            return 0
+        }
+
+        return max(4, availableWidth * CGFloat(count) / CGFloat(total))
     }
 }
 
@@ -374,5 +782,37 @@ private struct DashboardRows: View {
         }
 
         return discovery == nil ? "Unknown" : "Loaded"
+    }
+}
+
+private extension DashboardHealthStatus {
+    var tint: Color {
+        switch self {
+        case .healthy:
+            .green
+        case .progressing:
+            .blue
+        case .warning:
+            .orange
+        case .failed:
+            .red
+        case .unknown:
+            .secondary
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .healthy:
+            "checkmark.circle.fill"
+        case .progressing:
+            "arrow.triangle.2.circlepath"
+        case .warning:
+            "exclamationmark.triangle.fill"
+        case .failed:
+            "xmark.octagon.fill"
+        case .unknown:
+            "questionmark.circle"
+        }
     }
 }

@@ -505,4 +505,373 @@ struct KubernetesResourceListTests {
         #expect(ManifestSearchIndex.matches(in: yaml, query: "").isEmpty)
         #expect(ManifestSearchIndex.matches(in: yaml, query: "   ").isEmpty)
     }
+
+    @Test func dashboardSnapshotComputesNodePodAndWorkloadHealth() throws {
+        let snapshot = try ClusterDashboardSnapshot.make(states: [
+            .nodes: loadedState(
+                for: .nodes,
+                json:
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Node",
+                      "metadata": { "name": "ready-node" },
+                      "status": {
+                        "conditions": [
+                          { "type": "Ready", "status": "True" }
+                        ]
+                      }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Node",
+                      "metadata": { "name": "not-ready-node" },
+                      "status": {
+                        "conditions": [
+                          { "type": "Ready", "status": "False" }
+                        ]
+                      }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Node",
+                      "metadata": { "name": "unknown-node" },
+                      "status": { "conditions": [] }
+                    }
+                  ]
+                }
+                """
+            ),
+            .pods: loadedState(
+                for: .pods,
+                json:
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": { "name": "running", "namespace": "demo" },
+                      "status": {
+                        "phase": "Running",
+                        "containerStatuses": [
+                          { "name": "app", "restartCount": 2 }
+                        ]
+                      }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": { "name": "pending", "namespace": "demo" },
+                      "status": { "phase": "Pending" }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": { "name": "failed", "namespace": "demo" },
+                      "status": { "phase": "Failed" }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": { "name": "succeeded", "namespace": "demo" },
+                      "status": { "phase": "Succeeded" }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": { "name": "mystery", "namespace": "demo" },
+                      "status": { "phase": "Mystery" }
+                    }
+                  ]
+                }
+                """
+            ),
+            .deployments: loadedState(
+                for: .deployments,
+                json:
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "Deployment",
+                      "metadata": { "name": "ready", "namespace": "demo" },
+                      "spec": { "replicas": 2 },
+                      "status": { "readyReplicas": 2 }
+                    },
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "Deployment",
+                      "metadata": { "name": "progressing", "namespace": "demo" },
+                      "spec": { "replicas": 3 },
+                      "status": { "readyReplicas": 1 }
+                    },
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "Deployment",
+                      "metadata": { "name": "unavailable", "namespace": "demo" },
+                      "spec": { "replicas": 2 },
+                      "status": { "readyReplicas": 0 }
+                    }
+                  ]
+                }
+                """
+            )
+        ])
+
+        #expect(snapshot.nodeHealth.total == 3)
+        #expect(snapshot.nodeHealth.ready == 1)
+        #expect(snapshot.nodeHealth.notReady == 1)
+        #expect(snapshot.nodeHealth.unknown == 1)
+        #expect(snapshot.nodeHealth.status == .failed)
+
+        #expect(snapshot.podHealth.total == 5)
+        #expect(snapshot.podHealth.running == 1)
+        #expect(snapshot.podHealth.pending == 1)
+        #expect(snapshot.podHealth.failed == 1)
+        #expect(snapshot.podHealth.succeeded == 1)
+        #expect(snapshot.podHealth.unknown == 1)
+        #expect(snapshot.podHealth.restartCount == 2)
+        #expect(snapshot.podHealth.status == .failed)
+
+        #expect(snapshot.workloadHealth.total == 3)
+        #expect(snapshot.workloadHealth.ready == 1)
+        #expect(snapshot.workloadHealth.progressing == 1)
+        #expect(snapshot.workloadHealth.unavailable == 1)
+        #expect(snapshot.workloadHealth.status == .failed)
+        #expect(snapshot.status == .failed)
+    }
+
+    @Test func dashboardSnapshotAggregatesWarningEvents() throws {
+        let snapshot = try ClusterDashboardSnapshot.make(states: [
+            .events: loadedState(
+                for: .events,
+                json:
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Event",
+                      "metadata": { "name": "first", "namespace": "demo" },
+                      "type": "Warning",
+                      "reason": "FailedScheduling",
+                      "message": "No nodes available.",
+                      "count": 2,
+                      "source": { "component": "default-scheduler" },
+                      "involvedObject": {
+                        "kind": "Pod",
+                        "namespace": "demo",
+                        "name": "api"
+                      }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Event",
+                      "metadata": { "name": "second", "namespace": "demo" },
+                      "type": "Warning",
+                      "reason": "FailedScheduling",
+                      "message": "No nodes available.",
+                      "count": 3,
+                      "source": { "component": "default-scheduler" },
+                      "involvedObject": {
+                        "kind": "Pod",
+                        "namespace": "demo",
+                        "name": "api"
+                      }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Event",
+                      "metadata": { "name": "third", "namespace": "demo" },
+                      "type": "Warning",
+                      "reason": "FailedMount",
+                      "message": "Volume not ready.",
+                      "count": 1,
+                      "source": { "component": "kubelet", "host": "worker-1" },
+                      "involvedObject": {
+                        "kind": "Pod",
+                        "namespace": "demo",
+                        "name": "worker"
+                      }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Event",
+                      "metadata": { "name": "normal", "namespace": "demo" },
+                      "type": "Normal",
+                      "reason": "Pulled",
+                      "message": "Image is present.",
+                      "count": 1
+                    }
+                  ]
+                }
+                """
+            )
+        ])
+
+        #expect(snapshot.eventHealth.isLoaded)
+        #expect(snapshot.eventHealth.total == 4)
+        #expect(snapshot.eventHealth.warnings == 3)
+        #expect(snapshot.eventHealth.status == .warning)
+        #expect(snapshot.eventHealth.topWarnings.first?.reason == "FailedScheduling")
+        #expect(snapshot.eventHealth.topWarnings.first?.count == 5)
+        #expect(snapshot.status == .warning)
+    }
+
+    @Test func dashboardSnapshotComputesStorageAndEmptyLoadedWorkloads() throws {
+        let snapshot = try ClusterDashboardSnapshot.make(states: [
+            .deployments: loadedState(for: .deployments, json: #"{ "items": [] }"#),
+            .persistentVolumes: loadedState(
+                for: .persistentVolumes,
+                json:
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "PersistentVolume",
+                      "metadata": { "name": "pv-bound" },
+                      "status": { "phase": "Bound" }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "PersistentVolume",
+                      "metadata": { "name": "pv-available" },
+                      "status": { "phase": "Available" }
+                    }
+                  ]
+                }
+                """
+            ),
+            .persistentVolumeClaims: loadedState(
+                for: .persistentVolumeClaims,
+                json:
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "PersistentVolumeClaim",
+                      "metadata": { "name": "pvc-pending", "namespace": "demo" },
+                      "status": { "phase": "Pending" }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "PersistentVolumeClaim",
+                      "metadata": { "name": "pvc-lost", "namespace": "demo" },
+                      "status": { "phase": "Lost" }
+                    }
+                  ]
+                }
+                """
+            )
+        ])
+
+        #expect(snapshot.workloadHealth.isLoaded)
+        #expect(snapshot.workloadHealth.total == 0)
+        #expect(snapshot.workloadHealth.status == .unknown)
+
+        #expect(snapshot.storageHealth.isLoaded)
+        #expect(snapshot.storageHealth.total == 4)
+        #expect(snapshot.storageHealth.bound == 2)
+        #expect(snapshot.storageHealth.pending == 1)
+        #expect(snapshot.storageHealth.lost == 1)
+        #expect(snapshot.storageHealth.status == .failed)
+        #expect(snapshot.status == .failed)
+    }
+
+    @Test func dashboardSnapshotIgnoresUnknownSectionsWhenKnownHealthExists() throws {
+        let snapshot = try ClusterDashboardSnapshot.make(states: [
+            .pods: loadedState(
+                for: .pods,
+                json:
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": { "name": "running", "namespace": "demo" },
+                      "status": { "phase": "Running" }
+                    }
+                  ]
+                }
+                """
+            )
+        ])
+
+        #expect(snapshot.podHealth.status == .healthy)
+        #expect(snapshot.nodeHealth.status == .unknown)
+        #expect(snapshot.storageHealth.status == .unknown)
+        #expect(snapshot.status == .healthy)
+    }
+
+    private func loadedState(
+        for item: ResourceNavigationItem,
+        json: String
+    ) throws -> ResourceListLoadState {
+        let list = try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(json.utf8)
+        )
+        let resource = discoveredResource(for: item)
+        return .loaded(
+            ResourceListSnapshot(
+                query: ResourceListQuery(
+                    contextID: "test",
+                    resource: resource,
+                    namespaceSelection: AppModel.allNamespacesSelection
+                ),
+                items: list.items,
+                resourceVersion: list.metadata?.resourceVersion,
+                continueToken: list.metadata?.continueToken,
+                loadedAt: Date(timeIntervalSince1970: 0)
+            )
+        )
+    }
+
+    private func discoveredResource(for item: ResourceNavigationItem) -> KubernetesDiscoveredResource {
+        let definition: (groupVersion: String, name: String, kind: String, namespaced: Bool)
+        switch item {
+        case .nodes:
+            definition = ("v1", "nodes", "Node", false)
+        case .pods:
+            definition = ("v1", "pods", "Pod", true)
+        case .deployments:
+            definition = ("apps/v1", "deployments", "Deployment", true)
+        case .statefulSets:
+            definition = ("apps/v1", "statefulsets", "StatefulSet", true)
+        case .daemonSets:
+            definition = ("apps/v1", "daemonsets", "DaemonSet", true)
+        case .jobs:
+            definition = ("batch/v1", "jobs", "Job", true)
+        case .cronJobs:
+            definition = ("batch/v1", "cronjobs", "CronJob", true)
+        case .persistentVolumes:
+            definition = ("v1", "persistentvolumes", "PersistentVolume", false)
+        case .persistentVolumeClaims:
+            definition = ("v1", "persistentvolumeclaims", "PersistentVolumeClaim", true)
+        case .events:
+            definition = ("v1", "events", "Event", true)
+        default:
+            definition = ("v1", item.rawValue, item.title, true)
+        }
+
+        return KubernetesDiscoveredResource(
+            groupVersion: definition.groupVersion,
+            resource: KubernetesAPIResource(
+                name: definition.name,
+                singularName: "",
+                namespaced: definition.namespaced,
+                kind: definition.kind,
+                verbs: ["get", "list"],
+                shortNames: nil,
+                categories: nil
+            )
+        )
+    }
 }

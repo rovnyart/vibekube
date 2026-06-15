@@ -25,12 +25,24 @@ final class AppModel: ObservableObject {
     private var userPreferences: UserPreferencesProviding
     private var loadedKubeconfig: Kubeconfig
     private var connectionTask: Task<Void, Never>?
-    private var resourceListTask: Task<Void, Never>?
+    private var resourceListTasksByQuery: [ResourceListQuery: Task<Void, Never>]
     private var resourceDetailTask: Task<Void, Never>?
     private var resourceEventsTask: Task<Void, Never>?
     private var envSecretValueTasksByQuery: [ResourceEnvSecretValueQuery: Task<Void, Never>]
 
     static let allNamespacesSelection = "__vibekube_all_namespaces__"
+    static let dashboardResourceItems: [ResourceNavigationItem] = [
+        .nodes,
+        .pods,
+        .deployments,
+        .statefulSets,
+        .daemonSets,
+        .jobs,
+        .cronJobs,
+        .persistentVolumes,
+        .persistentVolumeClaims,
+        .events
+    ]
 
     convenience init() {
         let environment = ProcessInfo.processInfo.environment
@@ -106,6 +118,7 @@ final class AppModel: ObservableObject {
         self.selectedNamespaceByContextID = selectedNamespaceByContextID.isEmpty
             ? userPreferences.selectedNamespaceByContextID
             : selectedNamespaceByContextID
+        self.resourceListTasksByQuery = [:]
         self.resourceEventsTask = nil
         self.envSecretValueTasksByQuery = [:]
 
@@ -213,13 +226,17 @@ final class AppModel: ObservableObject {
         selectedConnectionState == .connected && route.resource.supportsLogs
     }
 
+    var selectedDashboardSnapshot: ClusterDashboardSnapshot {
+        ClusterDashboardSnapshot.make(states: dashboardResourceStates())
+    }
+
     func selectCluster(id: ClusterSummary.ID?) {
         guard route.clusterID != id else {
             return
         }
 
         connectionTask?.cancel()
-        resourceListTask?.cancel()
+        cancelResourceListTasks()
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
         cancelEnvSecretValueTasks()
@@ -245,7 +262,9 @@ final class AppModel: ObservableObject {
         userPreferences.selectedNamespaceByContextID = selectedNamespaceByContextID
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
-        if let selectedResource {
+        if selectedResource == .dashboard {
+            loadDashboardResources(force: true)
+        } else if let selectedResource {
             loadResourceList(for: selectedResource, force: true)
         }
     }
@@ -271,7 +290,9 @@ final class AppModel: ObservableObject {
     }
 
     func refresh() {
-        if let selectedResource,
+        if selectedResource == .dashboard, selectedConnectionState == .connected {
+            loadDashboardResources(force: true)
+        } else if let selectedResource,
            selectedConnectionState == .connected,
            selectedResource.discoveredResource(in: selectedDiscovery) != nil {
             loadResourceList(for: selectedResource, force: true)
@@ -330,7 +351,7 @@ final class AppModel: ObservableObject {
         guard let selectedClusterID else { return }
 
         connectionTask?.cancel()
-        resourceListTask?.cancel()
+        cancelResourceListTasks()
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
         cancelEnvSecretValueTasks()
@@ -342,7 +363,9 @@ final class AppModel: ObservableObject {
                 cluster.lastSeenAt = Date()
             }
             discoveryByContextID[selectedClusterID] = .preview
-            if let selectedResource {
+            if selectedResource == .dashboard {
+                loadDashboardResources()
+            } else if let selectedResource {
                 loadResourceList(for: selectedResource)
             }
             return
@@ -379,12 +402,11 @@ final class AppModel: ObservableObject {
 
     func disconnectSelectedCluster() {
         connectionTask?.cancel()
-        resourceListTask?.cancel()
+        cancelResourceListTasks()
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
         cancelEnvSecretValueTasks()
         connectionTask = nil
-        resourceListTask = nil
         resourceDetailTask = nil
         resourceEventsTask = nil
         connectionErrorMessage = nil
@@ -416,6 +438,21 @@ final class AppModel: ObservableObject {
         resourceListQuery(for: resource)?.id ?? "\(selectedClusterID ?? "none")|\(resource.id)|\(selectedConnectionState.rawValue)"
     }
 
+    var dashboardTaskID: String {
+        [
+            selectedClusterID ?? "none",
+            selectedNamespaceSelection,
+            selectedConnectionState.rawValue,
+            selectedDiscovery.map { "\($0.resourceCount)" } ?? "no-discovery"
+        ].joined(separator: "|")
+    }
+
+    func loadDashboardResources(force: Bool = false) {
+        for item in Self.dashboardResourceItems {
+            loadResourceList(for: item, force: force)
+        }
+    }
+
     func loadResourceList(for resource: ResourceNavigationItem, force: Bool = false) {
         guard selectedConnectionState == .connected,
               let query = resourceListQuery(for: resource),
@@ -432,7 +469,7 @@ final class AppModel: ObservableObject {
             }
         }
 
-        resourceListTask?.cancel()
+        resourceListTasksByQuery[query]?.cancel()
         resourceListStateByQuery[query] = .loading
 
         guard let resourceListService else {
@@ -450,7 +487,7 @@ final class AppModel: ObservableObject {
 
         let kubeconfig = loadedKubeconfig
         let namespace = namespaceForRequest(query)
-        resourceListTask = Task { [weak self] in
+        resourceListTasksByQuery[query] = Task { [weak self] in
             do {
                 let response = try await resourceListService.listResources(
                     contextName: query.contextID,
@@ -695,7 +732,9 @@ final class AppModel: ObservableObject {
             connectionErrorMessage = nil
         }
 
-        if selectedClusterID == contextID, let selectedResource {
+        if selectedClusterID == contextID, selectedResource == .dashboard {
+            loadDashboardResources()
+        } else if selectedClusterID == contextID, let selectedResource {
             loadResourceList(for: selectedResource)
         }
     }
@@ -722,6 +761,7 @@ final class AppModel: ObservableObject {
         query: ResourceListQuery,
         response: KubernetesUnstructuredResourceList
     ) {
+        resourceListTasksByQuery[query] = nil
         resourceListStateByQuery[query] = .loaded(
             ResourceListSnapshot(
                 query: query,
@@ -734,12 +774,14 @@ final class AppModel: ObservableObject {
     }
 
     private func cancelResourceList(query: ResourceListQuery) {
+        resourceListTasksByQuery[query] = nil
         if resourceListStateByQuery[query] == .loading {
             resourceListStateByQuery[query] = .idle
         }
     }
 
     private func failResourceList(query: ResourceListQuery, error: Error) {
+        resourceListTasksByQuery[query] = nil
         resourceListStateByQuery[query] = .failed(error.localizedDescription)
     }
 
@@ -813,6 +855,11 @@ final class AppModel: ObservableObject {
         envSecretValueTasksByQuery.removeAll()
     }
 
+    private func cancelResourceListTasks() {
+        resourceListTasksByQuery.values.forEach { $0.cancel() }
+        resourceListTasksByQuery.removeAll()
+    }
+
     private func navigate(
         clusterID: ClusterSummary.ID?,
         resource: ResourceNavigationItem,
@@ -852,6 +899,14 @@ final class AppModel: ObservableObject {
             contextID: selectedClusterID,
             resource: discoveredResource,
             namespaceSelection: selectedNamespaceSelection
+        )
+    }
+
+    private func dashboardResourceStates() -> [ResourceNavigationItem: ResourceListLoadState] {
+        Dictionary(
+            uniqueKeysWithValues: Self.dashboardResourceItems.map { item in
+                (item, resourceListState(for: item))
+            }
         )
     }
 
