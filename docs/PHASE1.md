@@ -19,6 +19,7 @@ Goal: parse local kubeconfig files on startup, show contexts immediately, and le
 - The app now loads kubeconfig contexts on startup through `AppModel`.
 - Default discovery reads `~/.kube/config`; `KUBECONFIG` colon-separated path lists are supported.
 - Kubeconfig parsing is currently a focused native parser that covers the structures needed for the first client slice. Revisit a full YAML dependency if we hit advanced YAML features in real configs.
+- `exec` credential plugins are parsed as supported connection paths, including Teleport `tsh` detection for corporate kubeconfigs.
 - App Sandbox is disabled for the app target at this checkpoint so Vibekube can read local kubeconfig files and, in the next phase, make Kubernetes API calls. Revisit distribution hardening in Phase 11.
 - UI tests use `VIBEKUBE_USE_PREVIEW_CLUSTERS=1` so they stay deterministic and do not depend on the developer machine kubeconfig.
 
@@ -52,6 +53,8 @@ Checkpoint result: no external YAML dependency added yet; native parser is enoug
 - [x] Decode client-certificate-data.
 - [x] Decode client-key-data.
 - [x] Preserve certificate/key file paths when data is path-based.
+- [x] Parse exec credential plugin metadata.
+- [x] Detect Teleport `tsh` exec auth for display.
 - [ ] Normalize server URLs.
 - [x] Redact secrets in debug descriptions and errors.
 

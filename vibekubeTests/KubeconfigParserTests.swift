@@ -66,7 +66,7 @@ struct KubeconfigParserTests {
         #expect(config.clusterSummaries().first?.connectionState == .disconnected)
     }
 
-    @Test func parsesExecAuthAsUnsupportedForInitialConnection() throws {
+    @Test func parsesExecAuthAsSupportedCredentialPlugin() throws {
         let config = try parser().parse(
             """
             clusters:
@@ -100,7 +100,55 @@ struct KubeconfigParserTests {
 
         #expect(exec.command == "aws")
         #expect(exec.args == ["eks", "get-token", "--cluster-name", "staging"])
-        #expect(config.clusterSummaries().first?.connectionState == .unsupportedAuth)
+        #expect(config.clusterSummaries().first?.authDescription == "Exec auth: aws")
+        #expect(config.clusterSummaries().first?.connectionState == .disconnected)
+    }
+
+    @Test func parsesTeleportExecAuthMetadata() throws {
+        let config = try parser().parse(
+            """
+            clusters:
+            - name: corporate
+              cluster:
+                server: https://teleport.example.com:443
+            contexts:
+            - name: teleport.example.com-corporate
+              context:
+                cluster: corporate
+                user: teleport-user
+            users:
+            - name: teleport-user
+              user:
+                exec:
+                  apiVersion: client.authentication.k8s.io/v1
+                  command: /opt/homebrew/bin/tsh
+                  args:
+                  - kube
+                  - credentials
+                  - --kube-cluster=corporate
+                  env:
+                  - name: TELEPORT_HOME
+                    value: /Users/art/.tsh
+                  installHint: brew install teleport
+                  provideClusterInfo: true
+                  interactiveMode: IfAvailable
+            """
+        )
+
+        let user = try #require(config.users.first)
+        guard case .exec(let exec) = user.user.authMethod else {
+            Issue.record("Expected exec auth")
+            return
+        }
+
+        #expect(exec.isTeleport)
+        #expect(exec.commandDisplayName == "tsh")
+        #expect(exec.env == [KubeExecEnvironmentVariable(name: "TELEPORT_HOME", value: "/Users/art/.tsh")])
+        #expect(exec.installHint == "brew install teleport")
+        #expect(exec.provideClusterInfo)
+        #expect(exec.interactiveMode == "IfAvailable")
+        #expect(config.clusterSummaries().first?.authDescription == "Teleport exec auth (tsh)")
+        #expect(config.clusterSummaries().first?.connectionState == .disconnected)
     }
 
     @Test func rejectsMalformedYAML() throws {

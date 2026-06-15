@@ -13,6 +13,7 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - [ ] API discovery works.
 - [ ] Namespaces load.
 - [ ] Connection errors are mapped to user-facing states.
+- [x] Exec auth is documented as a first-class connection path.
 
 ## Implementation Slices
 
@@ -31,11 +32,29 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - [ ] Support certificate-authority file paths.
 - [ ] Support bearer token auth.
 - [ ] Support client certificate/key auth if feasible in first pass.
+- [ ] Support Kubernetes exec credential plugins.
+- [ ] Support Teleport `tsh` kube credentials via exec auth.
 - [ ] Represent unsupported auth-provider cases cleanly.
-- [ ] Represent exec auth as planned or stubbed with clear UI.
+- [x] Represent exec auth as planned with clear UI.
 - [ ] Ensure secrets are redacted in logs/errors.
 
 Checkpoint: stop before adding any complex auth helper dependency.
+
+### 2.2a Exec Credential Plugins And Teleport
+
+- [ ] Resolve exec commands from absolute paths or `PATH`.
+- [ ] Show kubeconfig `installHint` when an exec command is missing.
+- [ ] Run the configured `user.exec.command` with args and env.
+- [ ] Pass `KUBERNETES_EXEC_INFO` when `provideClusterInfo` is true.
+- [ ] Respect `interactiveMode` (`Never`, `IfAvailable`, `Always`).
+- [ ] Decode `ExecCredential` v1 and v1beta1 JSON.
+- [ ] Apply returned bearer token credentials.
+- [ ] Apply returned client certificate/key credentials if feasible.
+- [ ] Cache exec credentials until `expirationTimestamp`.
+- [ ] Re-run exec auth on expiry or `401 Unauthorized`.
+- [ ] Let Teleport `tsh` open browser SSO/MFA when credentials are missing or expired.
+- [ ] Show signing-in/cancel/error UI for exec-auth flows.
+- [ ] Redact exec stdout/stderr and decoded credential material.
 
 ### 2.3 Discovery APIs
 
@@ -80,6 +99,7 @@ Checkpoint: stop before adding any complex auth helper dependency.
 - [ ] API groups/resources are discovered.
 - [ ] Namespaces are available in the selector.
 - [ ] Bad auth, offline server, and certificate failures are understandable.
+- [ ] Teleport-backed kubeconfigs can trigger `tsh` login/browser auth through exec credentials.
 
 ## Validation Commands
 

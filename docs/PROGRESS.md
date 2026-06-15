@@ -7,8 +7,8 @@ This file tracks implementation status across all phases. Keep this updated when
 | Phase | Plan | Status | Current Checkpoint |
 | --- | --- | --- | --- |
 | 0 | [Project Foundation](PHASE0.md) | Review checkpoint | Native shell foundation builds; unit and UI tests pass with preview fixtures |
-| 1 | [Kubeconfig Discovery](PHASE1.md) | Review checkpoint | App loads kubeconfig contexts; parser/unit/UI tests pass; file watching/search/persistence remain |
-| 2 | [Kubernetes API Connectivity](PHASE2.md) | Not started | Waiting for kubeconfig/auth models |
+| 1 | [Kubeconfig Discovery](PHASE1.md) | Review checkpoint | App loads kubeconfig contexts, including exec/Teleport metadata; parser/unit/UI tests pass |
+| 2 | [Kubernetes API Connectivity](PHASE2.md) | Not started | Next: real API client plus TLS/token/client-cert/exec auth |
 | 3 | [Main App Shell](PHASE3.md) | Not started | Waiting for foundation/navigation model |
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Not started | Waiting for API client/resource store |
 | 5 | [Resource Browsing](PHASE5.md) | Not started | Waiting for discovery and list APIs |
@@ -28,6 +28,7 @@ This file tracks implementation status across all phases. Keep this updated when
 - [x] Keep existing scaffold and demo cluster untouched while planning.
 - [x] Replace scaffold UI with Vibekube app shell.
 - [x] Parse kubeconfig and show contexts.
+- [x] Recognize exec/Teleport kubeconfig auth as a supported planned path.
 - [ ] Connect to demo cluster.
 - [ ] Browse resources.
 - [ ] Inspect YAML.

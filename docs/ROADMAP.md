@@ -127,7 +127,8 @@ Goal: automatically parse `~/.kube/config`, show contexts on startup, and let th
   - certificate authority data/path
   - client certificate/key data/path
   - bearer tokens
-  - auth-provider and exec auth stubs
+  - exec credential plugin metadata
+  - legacy auth-provider visibility
 - Startup cluster browser showing contexts grouped by kubeconfig source.
 - Current-context preselection.
 - Manual refresh and file watching for kubeconfig changes.
@@ -159,7 +160,8 @@ Goal: automatically parse `~/.kube/config`, show contexts on startup, and let th
 
 - Show all contexts immediately after parse, before any network health checks complete.
 - Use status badges for connection health.
-- Keep unsupported auth visible with a useful explanation instead of hiding the context.
+- Treat Kubernetes `exec` credential plugins as supported planned auth, including Teleport `tsh` contexts.
+- Keep truly unsupported auth visible with a useful explanation instead of hiding the context.
 
 ### Tests
 
@@ -181,6 +183,8 @@ Goal: connect to a selected cluster and discover available API resources.
 - HTTP client for Kubernetes API server.
 - TLS/certificate support based on kubeconfig.
 - Authentication support for initial auth methods.
+- Kubernetes `exec` credential plugin support for providers such as Teleport, EKS, GKE, and Azure.
+- Teleport-friendly `tsh` flow: run the kubeconfig exec command and let browser SSO/MFA open when credentials are missing or expired.
 - `/version`, `/api`, `/apis`, and API resource discovery.
 - Namespace list loading.
 - Permission-aware error handling.
@@ -204,22 +208,32 @@ Goal: connect to a selected cluster and discover available API resources.
   - deployments
 - Add generic unstructured resource support for unknown kinds and CRDs.
 - Add response/error models for Kubernetes `Status` objects.
+- Implement exec credential runner:
+  - resolve command paths and `installHint`
+  - pass `exec.env` and `KUBERNETES_EXEC_INFO`
+  - respect `interactiveMode`
+  - decode `ExecCredential` v1/v1beta1
+  - cache credentials until expiry and retry after 401
+  - redact stdout/stderr and credential material
 
 ### UX Notes
 
 - Show connection progress in the toolbar.
+- Show a signing-in state when an exec credential plugin is running, especially for Teleport/browser auth.
 - Display cluster version and active namespace near the dashboard header.
 - Surface permission errors inline per resource group.
 
 ### Tests
 
 - Unit tests for URL construction and response decoding.
+- Unit tests for exec credential decoding, expiry, and redaction.
 - Integration tests against the kind demo cluster where practical.
 - Mock API server tests for auth, TLS, pagination, and error states.
 
 ### Exit Criteria
 
 - App can connect to the demo cluster.
+- App can connect through an exec-auth kubeconfig when the configured CLI is available.
 - App can discover core, apps, batch, and custom API groups.
 - Namespace list loads and can be selected.
 

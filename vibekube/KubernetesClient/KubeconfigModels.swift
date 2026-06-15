@@ -91,7 +91,11 @@ enum KubeAuthMethod: Equatable, CustomStringConvertible, CustomDebugStringConver
         case .clientCertificate:
             "Client certificate"
         case .exec(let exec):
-            "Exec auth\(exec.command.map { ": \($0)" } ?? "")"
+            if exec.isTeleport {
+                "Teleport exec auth (tsh)"
+            } else {
+                "Exec auth\(exec.commandDisplayName.map { ": \($0)" } ?? "")"
+            }
         case .authProvider(let name):
             "Auth provider: \(name)"
         case .basicAuth:
@@ -111,9 +115,9 @@ enum KubeAuthMethod: Equatable, CustomStringConvertible, CustomDebugStringConver
 
     var isInitiallySupported: Bool {
         switch self {
-        case .none, .token, .clientCertificate:
+        case .none, .token, .clientCertificate, .exec:
             true
-        case .exec, .authProvider, .basicAuth, .unsupported:
+        case .authProvider, .basicAuth, .unsupported:
             false
         }
     }
@@ -130,6 +134,24 @@ struct KubeExecAuth: Equatable {
     var apiVersion: String?
     var command: String?
     var args: [String]
+    var env: [KubeExecEnvironmentVariable]
+    var installHint: String?
+    var provideClusterInfo: Bool
+    var interactiveMode: String?
+
+    var commandDisplayName: String? {
+        guard let command, !command.isEmpty else { return nil }
+        return URL(fileURLWithPath: command).lastPathComponent
+    }
+
+    var isTeleport: Bool {
+        commandDisplayName == "tsh"
+    }
+}
+
+struct KubeExecEnvironmentVariable: Equatable {
+    var name: String
+    var value: String
 }
 
 extension Kubeconfig {

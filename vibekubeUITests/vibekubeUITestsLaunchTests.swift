@@ -20,10 +20,11 @@ final class vibekubeUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunch() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
         app.launchEnvironment["VIBEKUBE_USE_PREVIEW_CLUSTERS"] = "1"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Vibekube"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["app.title"].waitForExistence(timeout: 5))
 
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Launch Screen"

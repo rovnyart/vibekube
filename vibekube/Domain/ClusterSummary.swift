@@ -37,8 +37,8 @@ extension ClusterSummary {
             namespace: "default",
             sourceName: "~/.kube/config",
             isCurrentContext: false,
-            authDescription: "Exec auth",
-            connectionState: .unsupportedAuth,
+            authDescription: "Teleport exec auth (tsh)",
+            connectionState: .disconnected,
             kubernetesVersion: nil,
             lastSeenAt: nil
         ),

@@ -115,7 +115,11 @@ struct KubeconfigParser {
                 KubeExecAuth(
                     apiVersion: exec["apiVersion"]?.string,
                     command: exec["command"]?.string,
-                    args: exec["args"]?.sequence?.compactMap(\.string) ?? []
+                    args: exec["args"]?.sequence?.compactMap(\.string) ?? [],
+                    env: parseExecEnvironment(exec["env"]?.sequence ?? []),
+                    installHint: exec["installHint"]?.string,
+                    provideClusterInfo: exec["provideClusterInfo"]?.bool ?? false,
+                    interactiveMode: exec["interactiveMode"]?.string
                 )
             )
         }
@@ -133,6 +137,18 @@ struct KubeconfigParser {
         }
 
         return .unsupported("Unsupported auth")
+    }
+
+    private func parseExecEnvironment(_ values: [SimpleYAMLValue]) -> [KubeExecEnvironmentVariable] {
+        values.compactMap { value in
+            guard let item = value.mapping,
+                  let name = item["name"]?.string,
+                  let variableValue = item["value"]?.string else {
+                return nil
+            }
+
+            return KubeExecEnvironmentVariable(name: name, value: variableValue)
+        }
     }
 
     private func hasClientCertificateAuth(_ user: [String: SimpleYAMLValue]) -> Bool {
