@@ -249,8 +249,16 @@ final class AppModel: ObservableObject {
             return
         }
 
+        if route.resource == .dashboard, resource != .dashboard {
+            cancelDashboardResourceListTasks(excluding: resource)
+        }
+
         navigate(clusterID: selectedClusterID, resource: resource)
-        loadResourceList(for: resource)
+        if resource == .dashboard {
+            loadDashboardResources()
+        } else {
+            loadResourceList(for: resource)
+        }
     }
 
     func selectNamespace(_ namespace: String) {
@@ -858,6 +866,21 @@ final class AppModel: ObservableObject {
     private func cancelResourceListTasks() {
         resourceListTasksByQuery.values.forEach { $0.cancel() }
         resourceListTasksByQuery.removeAll()
+    }
+
+    private func cancelDashboardResourceListTasks(excluding retainedResource: ResourceNavigationItem?) {
+        for item in Self.dashboardResourceItems where item != retainedResource {
+            guard let query = resourceListQuery(for: item),
+                  resourceListTasksByQuery[query] != nil else {
+                continue
+            }
+
+            resourceListTasksByQuery[query]?.cancel()
+            resourceListTasksByQuery[query] = nil
+            if resourceListStateByQuery[query] == .loading {
+                resourceListStateByQuery[query] = .idle
+            }
+        }
     }
 
     private func navigate(

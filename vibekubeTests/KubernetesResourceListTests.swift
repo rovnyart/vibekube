@@ -623,12 +623,14 @@ struct KubernetesResourceListTests {
         ])
 
         #expect(snapshot.nodeHealth.total == 3)
+        #expect(snapshot.resourceCount(for: .nodes) == 3)
         #expect(snapshot.nodeHealth.ready == 1)
         #expect(snapshot.nodeHealth.notReady == 1)
         #expect(snapshot.nodeHealth.unknown == 1)
         #expect(snapshot.nodeHealth.status == .failed)
 
         #expect(snapshot.podHealth.total == 5)
+        #expect(snapshot.resourceCount(for: .pods) == 5)
         #expect(snapshot.podHealth.running == 1)
         #expect(snapshot.podHealth.pending == 1)
         #expect(snapshot.podHealth.failed == 1)
@@ -638,6 +640,7 @@ struct KubernetesResourceListTests {
         #expect(snapshot.podHealth.status == .failed)
 
         #expect(snapshot.workloadHealth.total == 3)
+        #expect(snapshot.resourceCount(for: .deployments) == 3)
         #expect(snapshot.workloadHealth.ready == 1)
         #expect(snapshot.workloadHealth.progressing == 1)
         #expect(snapshot.workloadHealth.unavailable == 1)

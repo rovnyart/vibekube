@@ -48,6 +48,7 @@ struct ClusterDashboardSnapshot: Equatable {
     var workloadHealth: WorkloadHealthSummary
     var storageHealth: StorageHealthSummary
     var eventHealth: DashboardEventHealthSummary
+    var resourceCounts: [ResourceNavigationItem: Int]
     var loadedAt: Date?
 
     var status: DashboardHealthStatus {
@@ -65,6 +66,10 @@ struct ClusterDashboardSnapshot: Equatable {
         }
 
         return knownStatuses.max() ?? .unknown
+    }
+
+    func resourceCount(for item: ResourceNavigationItem) -> Int? {
+        resourceCounts[item]
     }
 
     static func make(
@@ -91,6 +96,14 @@ struct ClusterDashboardSnapshot: Equatable {
                 persistentVolumeClaims: states[.persistentVolumeClaims]?.snapshot?.items
             ),
             eventHealth: DashboardEventHealthSummary(items: states[.events]?.snapshot?.items),
+            resourceCounts: Dictionary(
+                uniqueKeysWithValues: states.compactMap { item, state in
+                    guard let snapshot = state.snapshot else {
+                        return nil
+                    }
+                    return (item, snapshot.items.count)
+                }
+            ),
             loadedAt: loadedSnapshots.map(\.loadedAt).max()
         )
     }

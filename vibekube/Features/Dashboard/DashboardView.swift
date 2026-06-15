@@ -7,12 +7,21 @@ struct DashboardView: View {
     ]
 
     var body: some View {
-        ScrollView {
+        let snapshot = appModel.selectedDashboardSnapshot
+
+        return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 connectionMessage
 
-                healthStrip
+                healthStrip(snapshot: snapshot)
+
+                SectionSurface(title: "Resource Inventory", systemImage: "square.grid.3x3") {
+                    DashboardResourceInventoryView(
+                        snapshot: snapshot,
+                        discovery: appModel.selectedDiscovery
+                    )
+                }
 
                 SectionSurface(title: "Cluster Snapshot", systemImage: "chart.bar.xaxis") {
                     DashboardRows(
@@ -25,16 +34,16 @@ struct DashboardView: View {
 
                 HStack(alignment: .top, spacing: 18) {
                     SectionSurface(title: "Pod Health", systemImage: "shippingbox") {
-                        DashboardPodHealthView(summary: dashboardSnapshot.podHealth)
+                        DashboardPodHealthView(summary: snapshot.podHealth)
                     }
 
                     SectionSurface(title: "Workloads", systemImage: "square.stack.3d.up") {
-                        DashboardWorkloadHealthView(summary: dashboardSnapshot.workloadHealth)
+                        DashboardWorkloadHealthView(summary: snapshot.workloadHealth)
                     }
                 }
 
                 SectionSurface(title: "Warning Events", systemImage: "exclamationmark.triangle") {
-                    DashboardWarningsView(summary: dashboardSnapshot.eventHealth)
+                    DashboardWarningsView(summary: snapshot.eventHealth)
                 }
 
                 SectionSurface(title: "Recent Events", systemImage: "waveform.path.ecg") {
@@ -58,57 +67,53 @@ struct DashboardView: View {
         .accessibilityIdentifier("dashboard.view")
     }
 
-    private var dashboardSnapshot: ClusterDashboardSnapshot {
-        appModel.selectedDashboardSnapshot
-    }
-
-    private var healthStrip: some View {
+    private func healthStrip(snapshot: ClusterDashboardSnapshot) -> some View {
         LazyVGrid(columns: healthColumns, alignment: .leading, spacing: 12) {
             DashboardHealthTile(
                 title: "Cluster",
-                value: dashboardSnapshot.status.title,
-                detail: clusterHealthDetail,
-                status: dashboardSnapshot.status,
+                value: snapshot.status.title,
+                detail: clusterHealthDetail(snapshot),
+                status: snapshot.status,
                 systemImage: "heart.text.square"
             )
 
             DashboardHealthTile(
                 title: "Nodes",
-                value: nodeValue,
-                detail: nodeDetail,
-                status: dashboardSnapshot.nodeHealth.status,
+                value: nodeValue(snapshot),
+                detail: nodeDetail(snapshot),
+                status: snapshot.nodeHealth.status,
                 systemImage: "server.rack"
             )
 
             DashboardHealthTile(
                 title: "Pods",
-                value: podValue,
-                detail: podDetail,
-                status: dashboardSnapshot.podHealth.status,
+                value: podValue(snapshot),
+                detail: podDetail(snapshot),
+                status: snapshot.podHealth.status,
                 systemImage: "shippingbox"
             )
 
             DashboardHealthTile(
                 title: "Workloads",
-                value: workloadValue,
-                detail: workloadDetail,
-                status: dashboardSnapshot.workloadHealth.status,
+                value: workloadValue(snapshot),
+                detail: workloadDetail(snapshot),
+                status: snapshot.workloadHealth.status,
                 systemImage: "square.stack.3d.up"
             )
 
             DashboardHealthTile(
                 title: "Storage",
-                value: storageValue,
-                detail: storageDetail,
-                status: dashboardSnapshot.storageHealth.status,
+                value: storageValue(snapshot),
+                detail: storageDetail(snapshot),
+                status: snapshot.storageHealth.status,
                 systemImage: "internaldrive"
             )
 
             DashboardHealthTile(
                 title: "Warnings",
-                value: warningValue,
-                detail: warningDetail,
-                status: dashboardSnapshot.eventHealth.status,
+                value: warningValue(snapshot),
+                detail: warningDetail(snapshot),
+                status: snapshot.eventHealth.status,
                 systemImage: "exclamationmark.triangle"
             )
         }
@@ -156,21 +161,21 @@ struct DashboardView: View {
         }
     }
 
-    private var clusterHealthDetail: String {
-        if let loadedAt = dashboardSnapshot.loadedAt {
+    private func clusterHealthDetail(_ snapshot: ClusterDashboardSnapshot) -> String {
+        if let loadedAt = snapshot.loadedAt {
             return "Updated \(loadedAt.formatted(date: .omitted, time: .standard))"
         }
 
         return appModel.selectedConnectionState == .connected ? "Loading resources" : "Connect to load health"
     }
 
-    private var nodeValue: String {
-        let summary = dashboardSnapshot.nodeHealth
+    private func nodeValue(_ snapshot: ClusterDashboardSnapshot) -> String {
+        let summary = snapshot.nodeHealth
         return summary.isLoaded ? "\(summary.ready)/\(summary.total)" : "-"
     }
 
-    private var nodeDetail: String {
-        let summary = dashboardSnapshot.nodeHealth
+    private func nodeDetail(_ snapshot: ClusterDashboardSnapshot) -> String {
+        let summary = snapshot.nodeHealth
         guard summary.isLoaded else {
             return "Not loaded"
         }
@@ -186,13 +191,13 @@ struct DashboardView: View {
         return "Ready nodes"
     }
 
-    private var podValue: String {
-        let summary = dashboardSnapshot.podHealth
+    private func podValue(_ snapshot: ClusterDashboardSnapshot) -> String {
+        let summary = snapshot.podHealth
         return summary.isLoaded ? "\(summary.running)/\(summary.total)" : "-"
     }
 
-    private var podDetail: String {
-        let summary = dashboardSnapshot.podHealth
+    private func podDetail(_ snapshot: ClusterDashboardSnapshot) -> String {
+        let summary = snapshot.podHealth
         guard summary.isLoaded else {
             return "Not loaded"
         }
@@ -212,13 +217,13 @@ struct DashboardView: View {
         return "Running pods"
     }
 
-    private var workloadValue: String {
-        let summary = dashboardSnapshot.workloadHealth
+    private func workloadValue(_ snapshot: ClusterDashboardSnapshot) -> String {
+        let summary = snapshot.workloadHealth
         return summary.isLoaded ? "\(summary.ready)/\(summary.total)" : "-"
     }
 
-    private var workloadDetail: String {
-        let summary = dashboardSnapshot.workloadHealth
+    private func workloadDetail(_ snapshot: ClusterDashboardSnapshot) -> String {
+        let summary = snapshot.workloadHealth
         guard summary.isLoaded else {
             return "Not loaded"
         }
@@ -234,13 +239,13 @@ struct DashboardView: View {
         return "Ready workloads"
     }
 
-    private var storageValue: String {
-        let summary = dashboardSnapshot.storageHealth
+    private func storageValue(_ snapshot: ClusterDashboardSnapshot) -> String {
+        let summary = snapshot.storageHealth
         return summary.isLoaded ? "\(summary.bound)/\(summary.total)" : "-"
     }
 
-    private var storageDetail: String {
-        let summary = dashboardSnapshot.storageHealth
+    private func storageDetail(_ snapshot: ClusterDashboardSnapshot) -> String {
+        let summary = snapshot.storageHealth
         guard summary.isLoaded else {
             return "Not loaded"
         }
@@ -256,13 +261,13 @@ struct DashboardView: View {
         return "Bound volumes"
     }
 
-    private var warningValue: String {
-        let summary = dashboardSnapshot.eventHealth
+    private func warningValue(_ snapshot: ClusterDashboardSnapshot) -> String {
+        let summary = snapshot.eventHealth
         return summary.isLoaded ? "\(summary.warnings)" : "-"
     }
 
-    private var warningDetail: String {
-        let summary = dashboardSnapshot.eventHealth
+    private func warningDetail(_ snapshot: ClusterDashboardSnapshot) -> String {
+        let summary = snapshot.eventHealth
         guard summary.isLoaded else {
             return "Not loaded"
         }
@@ -332,6 +337,114 @@ private struct DashboardHealthTile: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(status.tint.opacity(0.22))
         }
+    }
+}
+
+private struct DashboardResourceInventoryView: View {
+    let snapshot: ClusterDashboardSnapshot
+    let discovery: KubernetesDiscoverySnapshot?
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 14)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+            DashboardInventoryMetric(
+                title: "API Groups",
+                value: discoveryValue(\.apiGroupCount),
+                systemImage: "square.stack.3d.up"
+            )
+            DashboardInventoryMetric(
+                title: "API Resources",
+                value: discoveryValue(\.resourceCount),
+                systemImage: "shippingbox"
+            )
+            DashboardInventoryMetric(
+                title: "Namespaces",
+                value: namespaceCount,
+                systemImage: "folder"
+            )
+            DashboardInventoryMetric(
+                title: "Cluster Scoped",
+                value: discoveryValue(\.clusterScopedResourceCount),
+                systemImage: "globe"
+            )
+            DashboardInventoryMetric(
+                title: "Nodes",
+                value: resourceCount(.nodes),
+                systemImage: "server.rack"
+            )
+            DashboardInventoryMetric(
+                title: "Pods",
+                value: resourceCount(.pods),
+                systemImage: "shippingbox"
+            )
+            DashboardInventoryMetric(
+                title: "Workloads",
+                value: snapshot.workloadHealth.isLoaded ? "\(snapshot.workloadHealth.total)" : "-",
+                systemImage: "square.stack.3d.up"
+            )
+            DashboardInventoryMetric(
+                title: "Storage",
+                value: snapshot.storageHealth.isLoaded ? "\(snapshot.storageHealth.total)" : "-",
+                systemImage: "internaldrive"
+            )
+            DashboardInventoryMetric(
+                title: "Events",
+                value: resourceCount(.events),
+                systemImage: "waveform.path.ecg"
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var namespaceCount: String {
+        guard let discovery else {
+            return "-"
+        }
+
+        if discovery.namespaceDiscovery.errorMessage != nil {
+            return "!"
+        }
+
+        return "\(discovery.namespaceDiscovery.items.count)"
+    }
+
+    private func discoveryValue(_ keyPath: KeyPath<KubernetesDiscoverySnapshot, Int>) -> String {
+        discovery.map { "\($0[keyPath: keyPath])" } ?? "-"
+    }
+
+    private func resourceCount(_ item: ResourceNavigationItem) -> String {
+        snapshot.resourceCount(for: item).map(String.init) ?? "-"
+    }
+}
+
+private struct DashboardInventoryMetric: View {
+    let title: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.title3.monospacedDigit().weight(.semibold))
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

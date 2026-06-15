@@ -14,13 +14,23 @@ Goal: show a useful operational overview for the selected cluster.
 - [x] Dashboard UI handles event loading, empty, and error states.
 - [x] Dashboard UI renders live healthy/warning/failed summary states.
 - [x] Dashboard resource lists load together without cancelling sibling requests.
+- [x] Dashboard avoids repeated snapshot recomputation during a single render.
+- [x] Dashboard cancels irrelevant in-flight list loads when navigating away.
 
 ## Checkpoint Notes
 
 - Dashboard Recent Events now loads the same Kubernetes Event resources used by the resource inspector, but without per-object filtering.
 - Resource detail Events are object-specific; Dashboard Recent Events are cluster/namespace-scope operational feed.
 - Dashboard health now derives from real resource lists: nodes, pods, workloads, PV/PVCs, and warning events.
+- Dashboard render now computes the health snapshot once per SwiftUI pass instead of repeatedly walking the same resource arrays.
+- Leaving Dashboard cancels in-flight dashboard-only list calls, while preserving a clicked resource if it was already loading.
 - The dashboard still needs richer charts, metrics-server awareness, drill-down links, and clearer handling for partial load failures.
+
+## Product Reference Notes
+
+- Aptakube emphasizes Workload Overview, failing pods/deployments, warning events, recent restarts, and CPU/memory metrics via the standard Kubernetes Metrics API: https://aptakube.com/ and https://aptakube.com/metrics
+- Lens/OpenLens-style dashboards emphasize at-a-glance resources, CPU/memory, pod capacity, problems from events, workload overviews, logs, and live status updates: https://lenshq.io/blog/lens-kubernetes
+- Kubernetes Dashboard defines the baseline expectation as application/resource overview, state/error visibility, and resource management: https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/
 
 ## Planned Dashboard Shape
 
@@ -70,6 +80,7 @@ Goal: show a useful operational overview for the selected cluster.
 
 - [x] Cluster identity header.
 - [x] Health summary strip.
+- [x] Resource inventory summary.
 - [x] Node readiness summary.
 - [x] Workload summary.
 - [x] Pod health summary.
