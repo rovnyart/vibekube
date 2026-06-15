@@ -46,8 +46,10 @@ struct vibekubeTests {
         #expect(model.selectedConnectionState == .connected)
         #expect(model.selectedCluster?.kubernetesVersion == "v1.30.0")
         #expect(model.selectedDiscovery?.resourceCount == 1)
-        #expect(model.selectedNamespaceSelection == "vibekube-demo")
+        #expect(model.selectedNamespaceSelection == AppModel.allNamespacesSelection)
+        #expect(model.selectedNamespaceTitle == "All Namespaces")
         #expect(model.namespaceSelectionOptions.contains(AppModel.allNamespacesSelection))
+        #expect(model.namespaceSelectionOptions.contains("vibekube-demo"))
         #expect(model.connectionErrorMessage == nil)
     }
 
@@ -87,7 +89,8 @@ struct vibekubeTests {
         }
 
         #expect(snapshot.items.map(\.displayName) == ["web-0"])
-        #expect(snapshot.query.namespaceSelection == "vibekube-demo")
+        #expect(snapshot.items.first?.displayNamespace == "all")
+        #expect(snapshot.query.namespaceSelection == AppModel.allNamespacesSelection)
     }
 
     @Test func resourceNavigationGroupsWorkloads() {

@@ -111,6 +111,7 @@ Resource list URLs are built from discovery metadata:
 
 Current list behavior:
 
+- New cluster connections start with `All Namespaces` selected so common resource lists show cluster-wide data by default.
 - The selected namespace controls namespaced list requests.
 - `All Namespaces` omits the namespace path segment for namespaced resources.
 - Cluster-scoped resources ignore namespace selection.

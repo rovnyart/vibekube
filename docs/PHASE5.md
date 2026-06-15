@@ -19,6 +19,7 @@ Goal: browse Kubernetes resources by group with sortable, filterable, namespace-
 - Built-in navigation items route to a native table once their API resource is discovered.
 - The table currently shows safe generic columns: name, namespace, kind, status, age, and labels.
 - Toolbar search filters the current table.
+- New cluster connections default to `All Namespaces` so workload lists are cluster-wide unless narrowed.
 - Toolbar namespace selection reloads namespaced resources for the selected namespace or all namespaces.
 - Secret payload fields are not decoded into list rows and are not searchable/displayed.
 - Pagination tokens are decoded but follow-up page loading is not implemented yet.

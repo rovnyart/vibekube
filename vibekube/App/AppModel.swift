@@ -90,7 +90,7 @@ final class AppModel: ObservableObject {
             return selectedNamespace
         }
 
-        return selectedCluster?.namespace ?? Self.allNamespacesSelection
+        return Self.allNamespacesSelection
     }
 
     var selectedNamespaceTitle: String {
@@ -340,10 +340,7 @@ final class AppModel: ObservableObject {
         discoveryByContextID[contextID] = snapshot.discovery
 
         if selectedNamespaceByContextID[contextID] == nil {
-            selectedNamespaceByContextID[contextID] = defaultNamespaceSelection(
-                contextID: contextID,
-                discovery: snapshot.discovery
-            )
+            selectedNamespaceByContextID[contextID] = Self.allNamespacesSelection
         }
 
         if selectedClusterID == contextID {
@@ -409,18 +406,6 @@ final class AppModel: ObservableObject {
         }
 
         update(&clusters[index])
-    }
-
-    private func defaultNamespaceSelection(
-        contextID: ClusterSummary.ID,
-        discovery: KubernetesDiscoverySnapshot
-    ) -> String {
-        let contextNamespace = clusters.first { $0.id == contextID }?.namespace
-        if let contextNamespace, !contextNamespace.isEmpty {
-            return contextNamespace
-        }
-
-        return discovery.namespaceDiscovery.items.first?.name ?? Self.allNamespacesSelection
     }
 
     private func resourceListQuery(for resource: ResourceNavigationItem) -> ResourceListQuery? {
