@@ -23,14 +23,13 @@ final class vibekubeUITests: XCTestCase {
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testShellLaunches() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+        XCTAssertTrue(app.staticTexts["Vibekube"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["kind-vibekube-dev"].exists)
+        XCTAssertTrue(app.buttons["toolbar.refresh"].exists)
     }
 
     @MainActor

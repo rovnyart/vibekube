@@ -10,10 +10,29 @@ import Testing
 
 struct vibekubeTests {
 
-    @Test func example() async throws {
-        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
-        // Swift Testing Documentation
-        // https://developer.apple.com/documentation/testing
+    @MainActor
+    @Test func appModelSelectsFirstClusterByDefault() {
+        let model = AppModel(clusters: ClusterSummary.preview)
+
+        #expect(model.selectedClusterID == "kind-vibekube-dev")
+        #expect(model.selectedResource == .dashboard)
+    }
+
+    @MainActor
+    @Test func appModelConnectsAndDisconnectsSelectedCluster() {
+        let model = AppModel(clusters: ClusterSummary.preview)
+
+        model.connectSelectedCluster()
+        #expect(model.selectedConnectionState == .connected)
+
+        model.disconnectSelectedCluster()
+        #expect(model.selectedConnectionState == .disconnected)
+    }
+
+    @Test func resourceNavigationGroupsWorkloads() {
+        #expect(ResourceNavigationItem.pods.section == .workloads)
+        #expect(ResourceNavigationItem.deployments.section == .workloads)
+        #expect(ResourceNavigationItem.services.section == .network)
     }
 
 }

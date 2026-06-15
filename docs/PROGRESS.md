@@ -6,7 +6,7 @@ This file tracks implementation status across all phases. Keep this updated when
 
 | Phase | Plan | Status | Current Checkpoint |
 | --- | --- | --- | --- |
-| 0 | [Project Foundation](PHASE0.md) | In planning | Xcode scaffold, demo cluster scripts, and roadmap exist |
+| 0 | [Project Foundation](PHASE0.md) | Review checkpoint | Native shell foundation builds; unit tests pass; UI automation blocked locally |
 | 1 | [Kubeconfig Discovery](PHASE1.md) | Not started | Waiting for Phase 0 app foundation |
 | 2 | [Kubernetes API Connectivity](PHASE2.md) | Not started | Waiting for kubeconfig/auth models |
 | 3 | [Main App Shell](PHASE3.md) | Not started | Waiting for foundation/navigation model |
@@ -26,7 +26,7 @@ This file tracks implementation status across all phases. Keep this updated when
 - [x] Create high-level roadmap.
 - [x] Create detailed phase implementation plans.
 - [x] Keep existing scaffold and demo cluster untouched while planning.
-- [ ] Replace scaffold UI with Vibekube app shell.
+- [x] Replace scaffold UI with Vibekube app shell.
 - [ ] Parse kubeconfig and show contexts.
 - [ ] Connect to demo cluster.
 - [ ] Browse resources.
