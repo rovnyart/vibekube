@@ -400,6 +400,7 @@ private struct ResourceDetailTabButton: View {
 
 private enum ResourceDetailPanelTab: String, CaseIterable, Identifiable {
     case overview
+    case events
     case environment
     case yaml
     case metadata
@@ -413,6 +414,8 @@ private enum ResourceDetailPanelTab: String, CaseIterable, Identifiable {
         switch self {
         case .overview:
             "Overview"
+        case .events:
+            "Events"
         case .environment:
             "Env"
         case .yaml:
@@ -428,6 +431,8 @@ private enum ResourceDetailPanelTab: String, CaseIterable, Identifiable {
         switch self {
         case .overview:
             "list.bullet.rectangle"
+        case .events:
+            "waveform.path.ecg"
         case .environment:
             "switch.2"
         case .yaml:
@@ -545,6 +550,8 @@ private struct ResourceDetailView: View {
                 summary: snapshot.summary,
                 loadedAt: snapshot.loadedAt
             )
+        case .events:
+            ResourceDetailEventsView(detail: snapshot)
         case .environment:
             ResourceDetailEnvironmentView(summary: snapshot.summary)
         case .yaml:
@@ -782,6 +789,195 @@ private struct ResourceDetailMetadataView: View {
         values
             .sorted { lhs, rhs in lhs.key.localizedStandardCompare(rhs.key) == .orderedAscending }
             .map { ($0.key, $0.value) }
+    }
+}
+
+private struct ResourceDetailEventsView: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let detail: ResourceDetailSnapshot
+
+    var body: some View {
+        Group {
+            switch appModel.resourceEventsState(for: detail) {
+            case .idle:
+                ProgressView("Loading Events")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(nsColor: .textBackgroundColor))
+            case .loading:
+                ProgressView("Loading Events")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(nsColor: .textBackgroundColor))
+            case .loaded(let snapshot):
+                loadedContent(snapshot)
+            case .failed(let message):
+                VStack(spacing: 12) {
+                    EmptyStateView(
+                        title: "Could Not Load Events",
+                        subtitle: message,
+                        systemImage: "exclamationmark.triangle"
+                    )
+
+                    Button {
+                        appModel.loadResourceEvents(for: detail, force: true)
+                    } label: {
+                        Label("Retry", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .textBackgroundColor))
+            }
+        }
+        .task(id: appModel.resourceEventsTaskID(for: detail)) {
+            appModel.loadResourceEvents(for: detail)
+        }
+        .accessibilityIdentifier("resource.detail.events")
+    }
+
+    @ViewBuilder
+    private func loadedContent(_ snapshot: ResourceEventsSnapshot) -> some View {
+        if snapshot.events.isEmpty {
+            EmptyStateView(
+                title: "No Events",
+                subtitle: "Kubernetes has not reported events for this resource.",
+                systemImage: "waveform.path.ecg"
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .textBackgroundColor))
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("\(snapshot.events.count) events")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        Text("Loaded \(snapshot.loadedAt.formatted(date: .omitted, time: .standard))")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+
+                        Button {
+                            appModel.loadResourceEvents(for: detail, force: true)
+                        } label: {
+                            Label("Refresh Events", systemImage: "arrow.clockwise")
+                                .labelStyle(.iconOnly)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Refresh Events")
+                    }
+
+                    VStack(spacing: 10) {
+                        ForEach(snapshot.events) { event in
+                            ResourceEventCard(event: event)
+                        }
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(Color(nsColor: .textBackgroundColor))
+        }
+    }
+}
+
+private struct ResourceEventCard: View {
+    let event: KubernetesResourceEventSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                ResourceEventTypePill(type: event.type)
+
+                Text(event.reason)
+                    .font(.callout.weight(.semibold))
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+
+                if let count = event.count, count > 1 {
+                    Text("\(count)x")
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+
+                Spacer()
+
+                Text(event.ageDescription())
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(event.message)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+
+            HStack(spacing: 8) {
+                if let source = event.source, !source.isEmpty {
+                    Label(source, systemImage: "antenna.radiowaves.left.and.right")
+                }
+
+                if let involvedText, !involvedText.isEmpty {
+                    Label(involvedText, systemImage: "scope")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .textSelection(.enabled)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(borderTint.opacity(0.22))
+        }
+    }
+
+    private var involvedText: String? {
+        let object = [
+            event.involvedKind,
+            event.involvedNamespace,
+            event.involvedName
+        ]
+        .compactMap { value in
+            guard let value, !value.isEmpty else {
+                return nil
+            }
+            return value
+        }
+        .joined(separator: " / ")
+
+        if let fieldPath = event.involvedFieldPath, !fieldPath.isEmpty {
+            return object.isEmpty ? fieldPath : "\(object) / \(fieldPath)"
+        }
+
+        return object.isEmpty ? nil : object
+    }
+
+    private var borderTint: Color {
+        event.type.localizedCaseInsensitiveContains("warning") ? .orange : .secondary
+    }
+}
+
+private struct ResourceEventTypePill: View {
+    let type: String
+
+    var body: some View {
+        Text(type.isEmpty ? "-" : type)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(tint.opacity(0.12), in: Capsule())
+    }
+
+    private var tint: Color {
+        type.localizedCaseInsensitiveContains("warning") ? .orange : .green
     }
 }
 

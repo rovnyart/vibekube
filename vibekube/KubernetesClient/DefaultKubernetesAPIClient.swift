@@ -63,8 +63,37 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         try await get(path: resource.itemPath(namespace: namespace, name: name))
     }
 
-    private func get<Response: Decodable>(path: String) async throws -> Response {
-        var request = URLRequest(url: configuration.url(path: path))
+    func resourceEvents(
+        eventsResource: KubernetesDiscoveredResource,
+        namespace: String?,
+        involvedKind: String,
+        involvedName: String,
+        involvedUID: String?
+    ) async throws -> KubernetesResourceEventList {
+        try await get(
+            path: eventsResource.listPath(namespace: namespace),
+            queryItems: [
+                URLQueryItem(
+                    name: "fieldSelector",
+                    value: Self.eventFieldSelector(
+                        eventsResource: eventsResource,
+                        namespace: namespace,
+                        involvedKind: involvedKind,
+                        involvedName: involvedName,
+                        involvedUID: involvedUID
+                    )
+                )
+            ]
+        )
+    }
+
+    private func get<Response: Decodable>(
+        path: String,
+        queryItems: [URLQueryItem] = []
+    ) async throws -> Response {
+        var components = URLComponents(url: configuration.url(path: path), resolvingAgainstBaseURL: false)
+        components?.queryItems = queryItems.isEmpty ? nil : queryItems
+        var request = URLRequest(url: components?.url ?? configuration.url(path: path))
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         applyAuthentication(to: &request)
@@ -109,5 +138,28 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         default:
             return .statusCode(statusCode, message)
         }
+    }
+
+    private static func eventFieldSelector(
+        eventsResource: KubernetesDiscoveredResource,
+        namespace: String?,
+        involvedKind: String,
+        involvedName: String,
+        involvedUID: String?
+    ) -> String {
+        let prefix = eventsResource.group == "events.k8s.io" ? "regarding" : "involvedObject"
+
+        if let involvedUID, !involvedUID.isEmpty {
+            return "\(prefix).uid=\(involvedUID)"
+        }
+
+        var selectors = [
+            "\(prefix).kind=\(involvedKind)",
+            "\(prefix).name=\(involvedName)"
+        ]
+        if let namespace, !namespace.isEmpty {
+            selectors.append("\(prefix).namespace=\(namespace)")
+        }
+        return selectors.joined(separator: ",")
     }
 }

@@ -71,6 +71,7 @@ extension KubernetesDiscoverySnapshot {
                     KubernetesAPIResource(name: "configmaps", singularName: "", namespaced: true, kind: "ConfigMap", verbs: ["get", "list", "watch"], shortNames: ["cm"], categories: nil),
                     KubernetesAPIResource(name: "secrets", singularName: "", namespaced: true, kind: "Secret", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil),
                     KubernetesAPIResource(name: "services", singularName: "", namespaced: true, kind: "Service", verbs: ["get", "list", "watch"], shortNames: ["svc"], categories: ["all"]),
+                    KubernetesAPIResource(name: "events", singularName: "", namespaced: true, kind: "Event", verbs: ["get", "list", "watch"], shortNames: ["ev"], categories: nil),
                     KubernetesAPIResource(name: "namespaces", singularName: "", namespaced: false, kind: "Namespace", verbs: ["get", "list", "watch"], shortNames: ["ns"], categories: nil),
                     KubernetesAPIResource(name: "nodes", singularName: "", namespaced: false, kind: "Node", verbs: ["get", "list", "watch"], shortNames: ["no"], categories: nil)
                 ]

@@ -45,7 +45,7 @@ struct vibekubeTests {
 
         #expect(model.selectedConnectionState == .connected)
         #expect(model.selectedCluster?.kubernetesVersion == "v1.30.0")
-        #expect(model.selectedDiscovery?.resourceCount == 2)
+        #expect(model.selectedDiscovery?.resourceCount == 3)
         #expect(model.selectedNamespaceSelection == AppModel.allNamespacesSelection)
         #expect(model.selectedNamespaceTitle == "All Namespaces")
         #expect(model.namespaceSelectionOptions.contains(AppModel.allNamespacesSelection))
@@ -133,6 +133,54 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelLoadsResourceEventsForSelectedDetail() async {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            resourceDetailService: SucceedingResourceDetailService(),
+            resourceEventService: SucceedingResourceEventService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        await Task.yield()
+
+        model.selectResource(.pods)
+        await Task.yield()
+
+        guard case .loaded(let listSnapshot) = model.resourceListState(for: .pods),
+              let row = listSnapshot.items.first else {
+            Issue.record("Expected loaded resource row")
+            return
+        }
+
+        model.loadResourceDetail(for: .pods, row: row)
+        for _ in 0..<3 {
+            await Task.yield()
+        }
+
+        guard case .loaded(let detail) = model.resourceDetailState(for: .pods, row: row) else {
+            Issue.record("Expected loaded resource detail")
+            return
+        }
+
+        model.loadResourceEvents(for: detail)
+        for _ in 0..<3 {
+            await Task.yield()
+        }
+
+        guard case .loaded(let events) = model.resourceEventsState(for: detail) else {
+            Issue.record("Expected loaded resource events")
+            return
+        }
+
+        #expect(events.query.involvedName == "web-0")
+        #expect(events.query.involvedUID == "pod-uid")
+        #expect(events.events.map(\.reason) == ["Pulled"])
+    }
+
+    @MainActor
     @Test func appModelRevealsEnvSecretValue() async {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -191,7 +239,8 @@ private struct SucceedingConnectionService: KubernetesConnectionServicing {
                         groupVersion: "v1",
                         resources: [
                             KubernetesAPIResource(name: "pods", singularName: "", namespaced: true, kind: "Pod", verbs: ["get", "list"], shortNames: nil, categories: nil),
-                            KubernetesAPIResource(name: "secrets", singularName: "", namespaced: true, kind: "Secret", verbs: ["get"], shortNames: nil, categories: nil)
+                            KubernetesAPIResource(name: "secrets", singularName: "", namespaced: true, kind: "Secret", verbs: ["get"], shortNames: nil, categories: nil),
+                            KubernetesAPIResource(name: "events", singularName: "", namespaced: true, kind: "Event", verbs: ["list"], shortNames: nil, categories: nil)
                         ]
                     )
                 ],
@@ -277,6 +326,7 @@ private struct SucceedingResourceDetailService: KubernetesResourceDetailServicin
                   "metadata": {
                     "name": "\(name)",
                     \(namespaceLine)
+                    "uid": "pod-uid",
                     "labels": {
                       "app": "web"
                     }
@@ -284,6 +334,60 @@ private struct SucceedingResourceDetailService: KubernetesResourceDetailServicin
                   "status": {
                     "phase": "Running"
                   }
+                }
+                """.utf8
+            )
+        )
+    }
+}
+
+private struct SucceedingResourceEventService: KubernetesResourceEventServicing {
+    func resourceEvents(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        eventsResource: KubernetesDiscoveredResource,
+        namespace: String?,
+        involvedKind: String,
+        involvedName: String,
+        involvedUID: String?
+    ) async throws -> KubernetesResourceEventList {
+        #expect(eventsResource.name == "events")
+        #expect(namespace == "vibekube-demo")
+        #expect(involvedKind == "Pod")
+        #expect(involvedName == "web-0")
+        #expect(involvedUID == "pod-uid")
+
+        return try JSONDecoder().decode(
+            KubernetesResourceEventList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Event",
+                      "metadata": {
+                        "name": "web-0.pulled",
+                        "namespace": "vibekube-demo",
+                        "uid": "event-pulled",
+                        "creationTimestamp": "2026-06-15T10:01:00Z"
+                      },
+                      "type": "Normal",
+                      "reason": "Pulled",
+                      "message": "Container image is present.",
+                      "count": 1,
+                      "lastTimestamp": "2026-06-15T10:01:00Z",
+                      "involvedObject": {
+                        "kind": "Pod",
+                        "name": "web-0",
+                        "namespace": "vibekube-demo",
+                        "uid": "pod-uid"
+                      },
+                      "source": {
+                        "component": "kubelet"
+                      }
+                    }
+                  ]
                 }
                 """.utf8
             )

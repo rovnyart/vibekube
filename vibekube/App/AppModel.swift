@@ -13,6 +13,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot]
     @Published private(set) var resourceListStateByQuery: [ResourceListQuery: ResourceListLoadState]
     @Published private(set) var resourceDetailStateByQuery: [ResourceDetailQuery: ResourceDetailLoadState]
+    @Published private(set) var resourceEventsStateByQuery: [ResourceEventsQuery: ResourceEventsLoadState]
     @Published private(set) var envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
@@ -20,10 +21,12 @@ final class AppModel: ObservableObject {
     private let connectionService: KubernetesConnectionServicing?
     private let resourceListService: KubernetesResourceListServicing?
     private let resourceDetailService: KubernetesResourceDetailServicing?
+    private let resourceEventService: KubernetesResourceEventServicing?
     private var loadedKubeconfig: Kubeconfig
     private var connectionTask: Task<Void, Never>?
     private var resourceListTask: Task<Void, Never>?
     private var resourceDetailTask: Task<Void, Never>?
+    private var resourceEventsTask: Task<Void, Never>?
     private var envSecretValueTasksByQuery: [ResourceEnvSecretValueQuery: Task<Void, Never>]
 
     static let allNamespacesSelection = "__vibekube_all_namespaces__"
@@ -38,7 +41,8 @@ final class AppModel: ObservableObject {
                 kubeconfigLoader: nil,
                 connectionService: usePreviewData ? PreviewKubernetesConnectionService() : nil,
                 resourceListService: usePreviewData ? PreviewKubernetesResourceListService() : nil,
-                resourceDetailService: usePreviewData ? PreviewKubernetesResourceDetailService() : nil
+                resourceDetailService: usePreviewData ? PreviewKubernetesResourceDetailService() : nil,
+                resourceEventService: usePreviewData ? PreviewKubernetesResourceEventService() : nil
             )
         } else {
             let execCredentialProvider = DefaultKubernetesExecCredentialProvider()
@@ -48,7 +52,8 @@ final class AppModel: ObservableObject {
                 kubeconfigLoader: KubeconfigLoader(environment: environment),
                 connectionService: KubernetesConnectionService(execCredentialProvider: execCredentialProvider),
                 resourceListService: KubernetesResourceListService(execCredentialProvider: execCredentialProvider),
-                resourceDetailService: KubernetesResourceDetailService(execCredentialProvider: execCredentialProvider)
+                resourceDetailService: KubernetesResourceDetailService(execCredentialProvider: execCredentialProvider),
+                resourceEventService: KubernetesResourceEventService(execCredentialProvider: execCredentialProvider)
             )
             reloadKubeconfig()
         }
@@ -61,10 +66,12 @@ final class AppModel: ObservableObject {
         connectionService: KubernetesConnectionServicing? = nil,
         resourceListService: KubernetesResourceListServicing? = nil,
         resourceDetailService: KubernetesResourceDetailServicing? = nil,
+        resourceEventService: KubernetesResourceEventServicing? = nil,
         loadedKubeconfig: Kubeconfig? = nil,
         discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot] = [:],
         resourceListStateByQuery: [ResourceListQuery: ResourceListLoadState]? = nil,
         resourceDetailStateByQuery: [ResourceDetailQuery: ResourceDetailLoadState]? = nil,
+        resourceEventsStateByQuery: [ResourceEventsQuery: ResourceEventsLoadState]? = nil,
         envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]? = nil,
         selectedNamespaceByContextID: [ClusterSummary.ID: String] = [:]
     ) {
@@ -76,12 +83,15 @@ final class AppModel: ObservableObject {
         self.connectionService = connectionService
         self.resourceListService = resourceListService
         self.resourceDetailService = resourceDetailService
+        self.resourceEventService = resourceEventService
         self.loadedKubeconfig = loadedKubeconfig ?? .empty
         self.discoveryByContextID = discoveryByContextID
         self.resourceListStateByQuery = resourceListStateByQuery ?? [:]
         self.resourceDetailStateByQuery = resourceDetailStateByQuery ?? [:]
+        self.resourceEventsStateByQuery = resourceEventsStateByQuery ?? [:]
         self.envSecretValueStateByQuery = envSecretValueStateByQuery ?? [:]
         self.selectedNamespaceByContextID = selectedNamespaceByContextID
+        self.resourceEventsTask = nil
         self.envSecretValueTasksByQuery = [:]
     }
 
@@ -137,6 +147,7 @@ final class AppModel: ObservableObject {
         connectionTask?.cancel()
         resourceListTask?.cancel()
         resourceDetailTask?.cancel()
+        resourceEventsTask?.cancel()
         cancelEnvSecretValueTasks()
         selectedClusterID = id
         selectedResource = .dashboard
@@ -155,6 +166,7 @@ final class AppModel: ObservableObject {
 
         selectedNamespaceByContextID[selectedClusterID] = namespace
         resourceDetailTask?.cancel()
+        resourceEventsTask?.cancel()
         if let selectedResource {
             loadResourceList(for: selectedResource, force: true)
         }
@@ -189,6 +201,7 @@ final class AppModel: ObservableObject {
         discoveryByContextID = discoveryByContextID.filter { validContextIDs.contains($0.key) }
         resourceListStateByQuery = resourceListStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
         resourceDetailStateByQuery = resourceDetailStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
+        resourceEventsStateByQuery = resourceEventsStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
         envSecretValueStateByQuery = envSecretValueStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
         selectedNamespaceByContextID = selectedNamespaceByContextID.filter { validContextIDs.contains($0.key) }
 
@@ -221,6 +234,7 @@ final class AppModel: ObservableObject {
         connectionTask?.cancel()
         resourceListTask?.cancel()
         resourceDetailTask?.cancel()
+        resourceEventsTask?.cancel()
         cancelEnvSecretValueTasks()
         connectionErrorMessage = nil
 
@@ -245,6 +259,7 @@ final class AppModel: ObservableObject {
         discoveryByContextID[selectedClusterID] = nil
         resourceListStateByQuery = resourceListStateByQuery.filter { $0.key.contextID != selectedClusterID }
         resourceDetailStateByQuery = resourceDetailStateByQuery.filter { $0.key.contextID != selectedClusterID }
+        resourceEventsStateByQuery = resourceEventsStateByQuery.filter { $0.key.contextID != selectedClusterID }
         envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != selectedClusterID }
 
         connectionTask = Task { [weak self] in
@@ -268,10 +283,12 @@ final class AppModel: ObservableObject {
         connectionTask?.cancel()
         resourceListTask?.cancel()
         resourceDetailTask?.cancel()
+        resourceEventsTask?.cancel()
         cancelEnvSecretValueTasks()
         connectionTask = nil
         resourceListTask = nil
         resourceDetailTask = nil
+        resourceEventsTask = nil
         connectionErrorMessage = nil
 
         updateSelectedCluster { cluster in
@@ -284,6 +301,7 @@ final class AppModel: ObservableObject {
             discoveryByContextID[selectedClusterID] = nil
             resourceListStateByQuery = resourceListStateByQuery.filter { $0.key.contextID != selectedClusterID }
             resourceDetailStateByQuery = resourceDetailStateByQuery.filter { $0.key.contextID != selectedClusterID }
+            resourceEventsStateByQuery = resourceEventsStateByQuery.filter { $0.key.contextID != selectedClusterID }
             envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != selectedClusterID }
         }
     }
@@ -420,6 +438,69 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func resourceEventsState(for detail: ResourceDetailSnapshot) -> ResourceEventsLoadState {
+        guard selectedConnectionState == .connected else {
+            return .failed("Connect to a cluster before loading events.")
+        }
+
+        guard let query = resourceEventsQuery(for: detail) else {
+            return .failed("Events are not discoverable for this resource on the selected cluster.")
+        }
+
+        return resourceEventsStateByQuery[query] ?? .idle
+    }
+
+    func resourceEventsTaskID(for detail: ResourceDetailSnapshot) -> String {
+        resourceEventsQuery(for: detail)?.id ?? "\(detail.query.id)|events|\(selectedConnectionState.rawValue)"
+    }
+
+    func loadResourceEvents(for detail: ResourceDetailSnapshot, force: Bool = false) {
+        guard selectedConnectionState == .connected,
+              let query = resourceEventsQuery(for: detail),
+              query.eventsResource.verbs.contains("list") else {
+            return
+        }
+
+        if !force {
+            switch resourceEventsStateByQuery[query] {
+            case .some(.loaded), .some(.loading):
+                return
+            case .some(.idle), .some(.failed), .none:
+                break
+            }
+        }
+
+        resourceEventsTask?.cancel()
+        resourceEventsStateByQuery[query] = .loading
+
+        guard let resourceEventService else {
+            failResourceEvents(query: query, error: KubernetesClientError.unavailable("Resource event service is unavailable."))
+            return
+        }
+
+        let kubeconfig = loadedKubeconfig
+        resourceEventsTask = Task { [weak self] in
+            do {
+                let response = try await resourceEventService.resourceEvents(
+                    contextName: query.contextID,
+                    kubeconfig: kubeconfig,
+                    eventsResource: query.eventsResource,
+                    namespace: query.namespace,
+                    involvedKind: query.involvedKind,
+                    involvedName: query.involvedName,
+                    involvedUID: query.involvedUID
+                )
+
+                try Task.checkCancellation()
+                self?.finishResourceEvents(query: query, response: response)
+            } catch is CancellationError {
+                self?.cancelResourceEvents(query: query)
+            } catch {
+                self?.failResourceEvents(query: query, error: error)
+            }
+        }
+    }
+
     func envSecretValueState(
         namespace: String?,
         secretName: String?,
@@ -535,6 +616,7 @@ final class AppModel: ObservableObject {
         discoveryByContextID[contextID] = nil
         resourceListStateByQuery = resourceListStateByQuery.filter { $0.key.contextID != contextID }
         resourceDetailStateByQuery = resourceDetailStateByQuery.filter { $0.key.contextID != contextID }
+        resourceEventsStateByQuery = resourceEventsStateByQuery.filter { $0.key.contextID != contextID }
         envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != contextID }
     }
 
@@ -585,6 +667,30 @@ final class AppModel: ObservableObject {
 
     private func failResourceDetail(query: ResourceDetailQuery, error: Error) {
         resourceDetailStateByQuery[query] = .failed(error.localizedDescription)
+    }
+
+    private func finishResourceEvents(
+        query: ResourceEventsQuery,
+        response: KubernetesResourceEventList
+    ) {
+        resourceEventsStateByQuery[query] = .loaded(
+            ResourceEventsSnapshot(
+                query: query,
+                events: response.summaries,
+                resourceVersion: response.metadata?.resourceVersion,
+                loadedAt: Date()
+            )
+        )
+    }
+
+    private func cancelResourceEvents(query: ResourceEventsQuery) {
+        if resourceEventsStateByQuery[query] == .loading {
+            resourceEventsStateByQuery[query] = .idle
+        }
+    }
+
+    private func failResourceEvents(query: ResourceEventsQuery, error: Error) {
+        resourceEventsStateByQuery[query] = .failed(error.localizedDescription)
     }
 
     private func finishEnvSecretValue(query: ResourceEnvSecretValueQuery, value: String) {
@@ -659,6 +765,33 @@ final class AppModel: ObservableObject {
             resource: discoveredResource,
             namespace: namespace,
             name: name
+        )
+    }
+
+    private func resourceEventsQuery(for detail: ResourceDetailSnapshot) -> ResourceEventsQuery? {
+        guard let selectedClusterID,
+              selectedClusterID == detail.query.contextID,
+              let eventsResource = ResourceNavigationItem.events.discoveredResource(in: selectedDiscovery) else {
+            return nil
+        }
+
+        let involvedName = detail.summary.name ?? detail.query.name
+        guard !involvedName.isEmpty else {
+            return nil
+        }
+
+        let namespace = detail.summary.namespace ?? detail.query.namespace
+        if eventsResource.namespaced, detail.query.resource.namespaced, namespace == nil {
+            return nil
+        }
+
+        return ResourceEventsQuery(
+            contextID: selectedClusterID,
+            eventsResource: eventsResource,
+            namespace: eventsResource.namespaced ? namespace : nil,
+            involvedKind: detail.summary.kind ?? detail.query.resource.kind,
+            involvedName: involvedName,
+            involvedUID: detail.summary.uid
         )
     }
 
@@ -917,6 +1050,81 @@ private struct PreviewKubernetesResourceDetailService: KubernetesResourceDetailS
                       }
                     ]
                   }
+                }
+                """.utf8
+            )
+        )
+    }
+}
+
+private struct PreviewKubernetesResourceEventService: KubernetesResourceEventServicing {
+    func resourceEvents(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        eventsResource: KubernetesDiscoveredResource,
+        namespace: String?,
+        involvedKind: String,
+        involvedName: String,
+        involvedUID: String?
+    ) async throws -> KubernetesResourceEventList {
+        try JSONDecoder().decode(
+            KubernetesResourceEventList.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "\(eventsResource.groupVersion)",
+                  "kind": "EventList",
+                  "metadata": {
+                    "resourceVersion": "421"
+                  },
+                  "items": [
+                    {
+                      "apiVersion": "\(eventsResource.groupVersion)",
+                      "kind": "Event",
+                      "metadata": {
+                        "name": "\(involvedName).preview-scheduled",
+                        "namespace": "\(namespace ?? "vibekube-demo")",
+                        "uid": "preview-event-scheduled",
+                        "creationTimestamp": "2026-06-15T10:00:02Z"
+                      },
+                      "type": "Normal",
+                      "reason": "Scheduled",
+                      "note": "Successfully assigned \(namespace ?? "vibekube-demo")/\(involvedName) to preview-node",
+                      "regarding": {
+                        "kind": "\(involvedKind)",
+                        "name": "\(involvedName)",
+                        "namespace": "\(namespace ?? "vibekube-demo")",
+                        "uid": "\(involvedUID ?? "preview-pod-web-0")"
+                      },
+                      "reportingController": "default-scheduler",
+                      "eventTime": "2026-06-15T10:00:02Z",
+                      "deprecatedCount": 1
+                    },
+                    {
+                      "apiVersion": "\(eventsResource.groupVersion)",
+                      "kind": "Event",
+                      "metadata": {
+                        "name": "\(involvedName).preview-pulled",
+                        "namespace": "\(namespace ?? "vibekube-demo")",
+                        "uid": "preview-event-pulled",
+                        "creationTimestamp": "2026-06-15T10:00:07Z"
+                      },
+                      "type": "Normal",
+                      "reason": "Pulled",
+                      "note": "Container image already present on machine.",
+                      "regarding": {
+                        "kind": "\(involvedKind)",
+                        "name": "\(involvedName)",
+                        "namespace": "\(namespace ?? "vibekube-demo")",
+                        "uid": "\(involvedUID ?? "preview-pod-web-0")",
+                        "fieldPath": "spec.containers{web}"
+                      },
+                      "reportingController": "kubelet",
+                      "reportingInstance": "preview-node",
+                      "eventTime": "2026-06-15T10:00:07Z",
+                      "deprecatedCount": 1
+                    }
+                  ]
                 }
                 """.utf8
             )

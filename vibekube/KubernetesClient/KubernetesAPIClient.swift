@@ -15,6 +15,13 @@ protocol KubernetesAPIClient {
         namespace: String?,
         name: String
     ) async throws -> KubernetesResourceDetail
+    func resourceEvents(
+        eventsResource: KubernetesDiscoveredResource,
+        namespace: String?,
+        involvedKind: String,
+        involvedName: String,
+        involvedUID: String?
+    ) async throws -> KubernetesResourceEventList
 }
 
 struct KubernetesVersion: Decodable, Equatable {

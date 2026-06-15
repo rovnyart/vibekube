@@ -356,6 +356,81 @@ struct KubernetesResourceListTests {
         #expect(detail.decodedSecretValue(forKey: "token") == "plain-token")
     }
 
+    @Test func decodesCoreAndEventsAPIResourceEvents() throws {
+        let list = try JSONDecoder().decode(
+            KubernetesResourceEventList.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "EventList",
+                  "metadata": {
+                    "resourceVersion": "123"
+                  },
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Event",
+                      "metadata": {
+                        "name": "web.older",
+                        "namespace": "vibekube-demo",
+                        "uid": "event-older",
+                        "creationTimestamp": "2026-06-15T10:00:00Z"
+                      },
+                      "type": "Warning",
+                      "reason": "FailedScheduling",
+                      "message": "No nodes were available.",
+                      "count": 2,
+                      "lastTimestamp": "2026-06-15T10:00:00Z",
+                      "source": {
+                        "component": "default-scheduler"
+                      },
+                      "involvedObject": {
+                        "kind": "Pod",
+                        "name": "web-0",
+                        "namespace": "vibekube-demo",
+                        "uid": "pod-uid"
+                      }
+                    },
+                    {
+                      "apiVersion": "events.k8s.io/v1",
+                      "kind": "Event",
+                      "metadata": {
+                        "name": "web.newer",
+                        "namespace": "vibekube-demo",
+                        "uid": "event-newer",
+                        "creationTimestamp": "2026-06-15T10:01:00Z"
+                      },
+                      "type": "Normal",
+                      "reason": "Pulled",
+                      "note": "Container image is present.",
+                      "deprecatedCount": 1,
+                      "eventTime": "2026-06-15T10:01:00Z",
+                      "reportingController": "kubelet",
+                      "reportingInstance": "kind-control-plane",
+                      "regarding": {
+                        "kind": "Pod",
+                        "name": "web-0",
+                        "namespace": "vibekube-demo",
+                        "uid": "pod-uid",
+                        "fieldPath": "spec.containers{web}"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        #expect(list.metadata?.resourceVersion == "123")
+        #expect(list.summaries.map(\.reason) == ["Pulled", "FailedScheduling"])
+        #expect(list.summaries.first?.message == "Container image is present.")
+        #expect(list.summaries.first?.source == "kubelet / kind-control-plane")
+        #expect(list.summaries.first?.involvedFieldPath == "spec.containers{web}")
+        #expect(list.summaries.last?.type == "Warning")
+        #expect(list.summaries.last?.count == 2)
+    }
+
     @Test func indexesManifestSearchMatchesAcrossLines() {
         let yaml = """
         apiVersion: v1

@@ -10,7 +10,7 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - [x] Read-only resource detail inspector exists from list selection.
 - [ ] Dedicated resource detail route exists.
 - [x] Basic YAML viewer exists.
-- [ ] Event panel exists.
+- [x] Event panel exists.
 - [ ] Relationship resolver exists.
 - [x] Conditions/metadata views exist.
 
@@ -26,7 +26,8 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - The overview tab extracts status, identity, owner references, conditions, and pod-like container summaries.
 - Pod details now include an Environment tab for `env`, `envFrom`, ConfigMap refs, field refs, resource refs, and Secret key refs.
 - Secret-backed env values are masked by default and fetched/decoded on demand through an eye reveal button.
-- The richer Phase 6 detail experience still needs save/export YAML tools, events, relationships, ConfigMap value reveal, and custom metadata sections.
+- Resource details now include an Events tab that reads Kubernetes Events for the selected object using `events.k8s.io/v1` or core `v1/Event`.
+- The richer Phase 6 detail experience still needs save/export YAML tools, relationships, ConfigMap value reveal, and custom metadata sections.
 
 ## Implementation Slices
 
@@ -56,10 +57,10 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 
 ### 6.3 Events And Conditions
 
-- [ ] Query events related to selected resource.
-- [ ] Show event type, reason, message, count, source, and age.
-- [ ] Show conditions with status, reason, message, and last transition time.
-- [ ] Link events back to involved objects.
+- [x] Query events related to selected resource.
+- [x] Show event type, reason, message, count, source, and age.
+- [x] Show conditions with status, reason, message, and last transition time.
+- [x] Link events back to involved objects.
 
 ### 6.4 Relationships
 
@@ -79,7 +80,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] Multiple resource detail tabs.
 - [x] Overview tab.
 - [x] YAML tab.
-- [ ] Events tab.
+- [x] Events tab.
 - [ ] Related tab.
 - [x] Conditions tab.
 - [x] Metadata tab.
@@ -105,14 +106,16 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] Secret env reveal tests.
 - [x] Preview UI smoke test opens resource detail overview.
 - [ ] Relationship resolver tests.
-- [ ] UI navigation tests for events and related resources.
+- [x] Resource event decoding tests.
+- [x] Resource event model load tests.
+- [ ] UI navigation tests for related resources.
 
 ## Acceptance Criteria
 
 - [x] User can open any listed get-capable resource from a table row.
 - [x] YAML is readable, searchable, copyable, and safe for secrets.
 - [x] Pod env vars and Secret refs are visible without exposing secret values by default.
-- [ ] Events and conditions explain resource state.
+- [x] Events and conditions explain resource state.
 - [ ] Related resources are navigable.
 
 ## Validation Commands
