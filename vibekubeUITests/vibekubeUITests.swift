@@ -30,6 +30,11 @@ final class vibekubeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["app.title"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["kind-vibekube-dev"].exists)
         XCTAssertTrue(app.buttons["toolbar.refresh"].exists)
+
+        let podsItem = app.buttons["resource.nav.pods"]
+        XCTAssertTrue(podsItem.waitForExistence(timeout: 5))
+        podsItem.click()
+        XCTAssertTrue(app.staticTexts["resource.placeholder.pods"].waitForExistence(timeout: 5))
     }
 
     @MainActor
