@@ -16,7 +16,7 @@ struct ClusterSidebarView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, 12)
             } else {
-                List(selection: $appModel.selectedClusterID) {
+                List(selection: clusterSelection) {
                     Section {
                         ForEach(appModel.clusters) { cluster in
                             ClusterRow(cluster: cluster)
@@ -34,9 +34,13 @@ struct ClusterSidebarView: View {
             }
         }
         .background(.thinMaterial)
-        .onChange(of: appModel.selectedClusterID) { _, selectedClusterID in
-            appModel.selectCluster(id: selectedClusterID)
-        }
+    }
+
+    private var clusterSelection: Binding<ClusterSummary.ID?> {
+        Binding(
+            get: { appModel.selectedClusterID },
+            set: { appModel.selectCluster(id: $0) }
+        )
     }
 
     private var sidebarHeader: some View {

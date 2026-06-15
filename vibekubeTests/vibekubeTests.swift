@@ -20,6 +20,47 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelRestoresRouteFromPreferences() {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            userPreferences: InMemoryUserPreferences(
+                selectedContextID: "staging",
+                selectedResourceID: ResourceNavigationItem.services.rawValue,
+                selectedNamespaceByContextID: ["staging": "payments"]
+            )
+        )
+
+        #expect(model.route == AppRoute(clusterID: "staging", resource: .services))
+        #expect(model.selectedClusterID == "staging")
+        #expect(model.selectedResource == .services)
+        #expect(model.selectedNamespaceSelection == "payments")
+    }
+
+    @MainActor
+    @Test func appModelIgnoresInvalidRestoredRouteResource() {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            userPreferences: InMemoryUserPreferences(
+                selectedContextID: "missing",
+                selectedResourceID: "not-a-resource"
+            )
+        )
+
+        #expect(model.selectedClusterID == "kind-vibekube-dev")
+        #expect(model.selectedResource == .dashboard)
+    }
+
+    @MainActor
+    @Test func appModelResetsToDashboardWhenClusterChanges() {
+        let model = AppModel(clusters: ClusterSummary.preview)
+
+        model.selectResource(.pods)
+        model.selectCluster(id: "staging")
+
+        #expect(model.route == AppRoute(clusterID: "staging", resource: .dashboard))
+    }
+
+    @MainActor
     @Test func appModelConnectsAndDisconnectsSelectedCluster() {
         let model = AppModel(clusters: ClusterSummary.preview)
 

@@ -204,6 +204,15 @@ enum ResourceNavigationItem: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    var requiresDiscoveredResource: Bool {
+        switch self {
+        case .dashboard, .logs, .customResources, .aiAssistant, .settings:
+            false
+        default:
+            true
+        }
+    }
+
     static func items(in section: ResourceNavigationSection) -> [ResourceNavigationItem] {
         allCases.filter { $0.section == section }
     }

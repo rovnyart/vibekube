@@ -33,7 +33,8 @@ struct ResourceSidebarView: View {
                 ResourceNavigationRow(
                     item: item,
                     isSelected: appModel.selectedResource == item,
-                    discoveredResource: item.discoveredResource(in: appModel.selectedDiscovery)
+                    discoveredResource: item.discoveredResource(in: appModel.selectedDiscovery),
+                    connectionState: appModel.selectedConnectionState
                 )
             }
             .buttonStyle(.plain)
@@ -46,11 +47,12 @@ private struct ResourceNavigationRow: View {
     var item: ResourceNavigationItem
     var isSelected: Bool
     var discoveredResource: KubernetesDiscoveredResource?
+    var connectionState: ConnectionState
 
     var body: some View {
         HStack(spacing: 8) {
             Label(item.title, systemImage: item.systemImage)
-                .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                .foregroundStyle(labelColor)
 
             Spacer(minLength: 6)
 
@@ -59,6 +61,11 @@ private struct ResourceNavigationRow: View {
                     .font(.caption2)
                     .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
                     .help(discoveredResource.scopeTitle)
+            } else if shouldShowUnavailableIndicator {
+                Image(systemName: "slash.circle")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .help("Not discovered on this cluster")
             }
         }
         .font(.callout)
@@ -72,5 +79,19 @@ private struct ResourceNavigationRow: View {
                     .fill(Color.accentColor.opacity(0.14))
             }
         }
+    }
+
+    private var labelColor: Color {
+        if isSelected {
+            return .accentColor
+        }
+
+        return shouldShowUnavailableIndicator ? .secondary : .primary
+    }
+
+    private var shouldShowUnavailableIndicator: Bool {
+        connectionState == .connected &&
+            item.requiresDiscoveredResource &&
+            discoveredResource == nil
     }
 }

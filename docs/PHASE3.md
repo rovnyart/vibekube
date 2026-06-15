@@ -12,7 +12,7 @@ Goal: make the app navigation feel like a real Kubernetes client: cluster, dashb
 - [x] Resource groups are navigable.
 - [x] Toolbar exposes cluster, namespace, search, refresh, and settings controls.
 - [x] Basic keyboard shortcuts exist for dashboard, pods, logs, and refresh.
-- [ ] Formal app route model with restoration exists.
+- [x] Formal top-level app route model with selected cluster/resource restoration exists.
 - [ ] Toolbar is fully route-aware for resource detail/YAML/log actions.
 - [ ] Keyboard shortcut coverage is complete.
 
@@ -23,18 +23,18 @@ Goal: make the app navigation feel like a real Kubernetes client: cluster, dashb
 - Resource navigation is grouped into Overview, Workloads, Network, Config, Storage, Access Control, Cluster, and Custom.
 - Built-in resource groups route to live list views when discovery finds the matching API resource.
 - Dashboard, Logs, Settings, Custom Resources, resource lists, bottom detail inspector tabs, and placeholder states are reachable without dead ends.
-- The current shell is functional, but not yet a formal persisted route system. Deep links, restoration, quick-open, and route-aware detail commands remain future work.
+- The current shell has a persisted top-level `AppRoute` for selected cluster and resource. Deep links, resource-detail routes, quick-open, and route-aware detail commands remain future work.
 
 ## Implementation Slices
 
 ### 3.1 Navigation State
 
-- [ ] Define formal `AppRoute`.
+- [x] Define formal `AppRoute`.
 - [ ] Define formal `ClusterRoute`.
 - [x] Define resource navigation item model.
 - [x] Define resource navigation sections.
-- [ ] Add route restoration for selected cluster and view.
-- [ ] Keep routing independent from individual SwiftUI views.
+- [x] Add route restoration for selected cluster and view.
+- [x] Keep top-level routing independent from individual SwiftUI views.
 
 ### 3.2 Resource Navigation
 
@@ -46,7 +46,7 @@ Goal: make the app navigation feel like a real Kubernetes client: cluster, dashb
 - [x] Add Cluster section with Nodes, Namespaces, and Events.
 - [x] Add Custom Resources section.
 - [x] Show discovery/scope indicators for available resources.
-- [ ] Hide or dim unavailable groups based on discovery state.
+- [x] Dim unavailable resources based on discovery state.
 
 ### 3.3 Toolbar And Commands
 
@@ -72,7 +72,7 @@ Checkpoint: stop when navigation is complete even if data is still placeholder/m
 
 ### 3.5 Tests
 
-- [ ] Unit tests for route transitions.
+- [x] Unit tests for route transitions.
 - [x] Preview UI smoke test opens resource detail overview.
 - [ ] UI test for dashboard to pods to placeholder detail.
 - [ ] UI test for keyboard shortcut focus behavior.
@@ -80,7 +80,7 @@ Checkpoint: stop when navigation is complete even if data is still placeholder/m
 ## Acceptance Criteria
 
 - [x] User can move through the app without dead ends.
-- [ ] Route state survives app relaunch.
+- [x] Top-level selected cluster/resource route state survives app relaunch.
 - [ ] Toolbar actions fully reflect the current screen.
 - [x] Main navigation works with pointer.
 - [ ] Main navigation works comprehensively with keyboard.

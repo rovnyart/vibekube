@@ -35,6 +35,10 @@ struct ResourcePlaceholderView: View {
             return "API resource discovered"
         }
 
+        if appModel.selectedConnectionState == .connected, item.requiresDiscoveredResource {
+            return "This API resource was not discovered on the selected cluster."
+        }
+
         return appModel.selectedConnectionState == .connected ? "No data loaded" : "Disconnected"
     }
 }

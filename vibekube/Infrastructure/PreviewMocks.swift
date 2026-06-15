@@ -15,5 +15,6 @@ struct PreviewResourceStore: ResourceStoring {
 
 struct PreviewUserPreferences: UserPreferencesProviding {
     var selectedContextID: String?
+    var selectedResourceID: String?
     var selectedNamespaceByContextID: [String: String] = [:]
 }

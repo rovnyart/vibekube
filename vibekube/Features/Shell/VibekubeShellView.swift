@@ -13,7 +13,7 @@ struct VibekubeShellView: View {
                 .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 300)
         } detail: {
             detailView
-                .navigationTitle(appModel.selectedResource?.title ?? "Dashboard")
+                .navigationTitle(appModel.route.title)
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -70,7 +70,7 @@ private struct ClusterPicker: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Picker("Cluster", selection: $appModel.selectedClusterID) {
+            Picker("Cluster", selection: clusterSelection) {
                 ForEach(appModel.clusters) { cluster in
                     Text(cluster.name)
                         .tag(cluster.id as String?)
@@ -78,9 +78,6 @@ private struct ClusterPicker: View {
             }
             .pickerStyle(.menu)
             .frame(width: 180)
-            .onChange(of: appModel.selectedClusterID) { _, selectedClusterID in
-                appModel.selectCluster(id: selectedClusterID)
-            }
 
             StatusBadge(state: appModel.selectedConnectionState)
 
@@ -128,6 +125,13 @@ private struct ClusterPicker: View {
         appModel.selectedConnectionState == .connected ||
             appModel.selectedConnectionState == .connecting ||
             appModel.canConnectSelectedCluster
+    }
+
+    private var clusterSelection: Binding<ClusterSummary.ID?> {
+        Binding(
+            get: { appModel.selectedClusterID },
+            set: { appModel.selectCluster(id: $0) }
+        )
     }
 }
 

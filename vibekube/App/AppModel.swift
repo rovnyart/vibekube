@@ -4,8 +4,7 @@ import Foundation
 @MainActor
 final class AppModel: ObservableObject {
     @Published var clusters: [ClusterSummary]
-    @Published var selectedClusterID: ClusterSummary.ID?
-    @Published var selectedResource: ResourceNavigationItem?
+    @Published private(set) var route: AppRoute
     @Published var searchText = ""
     @Published private(set) var kubeconfigState: KubeconfigDiscoveryState
     @Published private(set) var lastRefreshedAt: Date?
@@ -22,6 +21,7 @@ final class AppModel: ObservableObject {
     private let resourceListService: KubernetesResourceListServicing?
     private let resourceDetailService: KubernetesResourceDetailServicing?
     private let resourceEventService: KubernetesResourceEventServicing?
+    private var userPreferences: UserPreferencesProviding
     private var loadedKubeconfig: Kubeconfig
     private var connectionTask: Task<Void, Never>?
     private var resourceListTask: Task<Void, Never>?
@@ -42,7 +42,8 @@ final class AppModel: ObservableObject {
                 connectionService: usePreviewData ? PreviewKubernetesConnectionService() : nil,
                 resourceListService: usePreviewData ? PreviewKubernetesResourceListService() : nil,
                 resourceDetailService: usePreviewData ? PreviewKubernetesResourceDetailService() : nil,
-                resourceEventService: usePreviewData ? PreviewKubernetesResourceEventService() : nil
+                resourceEventService: usePreviewData ? PreviewKubernetesResourceEventService() : nil,
+                userPreferences: InMemoryUserPreferences()
             )
         } else {
             let execCredentialProvider = DefaultKubernetesExecCredentialProvider()
@@ -53,7 +54,8 @@ final class AppModel: ObservableObject {
                 connectionService: KubernetesConnectionService(execCredentialProvider: execCredentialProvider),
                 resourceListService: KubernetesResourceListService(execCredentialProvider: execCredentialProvider),
                 resourceDetailService: KubernetesResourceDetailService(execCredentialProvider: execCredentialProvider),
-                resourceEventService: KubernetesResourceEventService(execCredentialProvider: execCredentialProvider)
+                resourceEventService: KubernetesResourceEventService(execCredentialProvider: execCredentialProvider),
+                userPreferences: UserDefaultsUserPreferences()
             )
             reloadKubeconfig()
         }
@@ -67,6 +69,7 @@ final class AppModel: ObservableObject {
         resourceListService: KubernetesResourceListServicing? = nil,
         resourceDetailService: KubernetesResourceDetailServicing? = nil,
         resourceEventService: KubernetesResourceEventServicing? = nil,
+        userPreferences: UserPreferencesProviding? = nil,
         loadedKubeconfig: Kubeconfig? = nil,
         discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot] = [:],
         resourceListStateByQuery: [ResourceListQuery: ResourceListLoadState]? = nil,
@@ -75,24 +78,47 @@ final class AppModel: ObservableObject {
         envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]? = nil,
         selectedNamespaceByContextID: [ClusterSummary.ID: String] = [:]
     ) {
+        var userPreferences = userPreferences ?? InMemoryUserPreferences()
+        let initialClusterID = Self.initialClusterID(
+            in: clusters,
+            preferredClusterID: userPreferences.selectedContextID
+        )
+        let initialResource = Self.resourceNavigationItem(
+            forID: userPreferences.selectedResourceID
+        ) ?? .dashboard
+
         self.clusters = clusters
-        self.selectedClusterID = clusters.first?.id
-        self.selectedResource = .dashboard
+        self.route = AppRoute(clusterID: initialClusterID, resource: initialResource)
         self.kubeconfigState = kubeconfigState ?? .loaded(contextCount: clusters.count, sourceCount: 1)
         self.kubeconfigLoader = kubeconfigLoader
         self.connectionService = connectionService
         self.resourceListService = resourceListService
         self.resourceDetailService = resourceDetailService
         self.resourceEventService = resourceEventService
+        self.userPreferences = userPreferences
         self.loadedKubeconfig = loadedKubeconfig ?? .empty
         self.discoveryByContextID = discoveryByContextID
         self.resourceListStateByQuery = resourceListStateByQuery ?? [:]
         self.resourceDetailStateByQuery = resourceDetailStateByQuery ?? [:]
         self.resourceEventsStateByQuery = resourceEventsStateByQuery ?? [:]
         self.envSecretValueStateByQuery = envSecretValueStateByQuery ?? [:]
-        self.selectedNamespaceByContextID = selectedNamespaceByContextID
+        self.selectedNamespaceByContextID = selectedNamespaceByContextID.isEmpty
+            ? userPreferences.selectedNamespaceByContextID
+            : selectedNamespaceByContextID
         self.resourceEventsTask = nil
         self.envSecretValueTasksByQuery = [:]
+
+        userPreferences.selectedContextID = initialClusterID
+        userPreferences.selectedResourceID = initialResource.rawValue
+        self.userPreferences = userPreferences
+    }
+
+    var selectedClusterID: ClusterSummary.ID? {
+        route.clusterID
+    }
+
+    var selectedResource: ResourceNavigationItem? {
+        route.resource
     }
 
     var selectedCluster: ClusterSummary? {
@@ -144,18 +170,25 @@ final class AppModel: ObservableObject {
     }
 
     func selectCluster(id: ClusterSummary.ID?) {
+        guard route.clusterID != id else {
+            return
+        }
+
         connectionTask?.cancel()
         resourceListTask?.cancel()
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
         cancelEnvSecretValueTasks()
-        selectedClusterID = id
-        selectedResource = .dashboard
+        navigate(clusterID: id, resource: .dashboard)
         connectionErrorMessage = nil
     }
 
     func selectResource(_ resource: ResourceNavigationItem) {
-        selectedResource = resource
+        guard route.resource != resource else {
+            return
+        }
+
+        navigate(clusterID: selectedClusterID, resource: resource)
         loadResourceList(for: resource)
     }
 
@@ -165,6 +198,7 @@ final class AppModel: ObservableObject {
         }
 
         selectedNamespaceByContextID[selectedClusterID] = namespace
+        userPreferences.selectedNamespaceByContextID = selectedNamespaceByContextID
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
         if let selectedResource {
@@ -191,7 +225,7 @@ final class AppModel: ObservableObject {
     func reloadKubeconfig() {
         guard let kubeconfigLoader else { return }
 
-        let previousSelection = selectedClusterID
+        let previousRoute = route
         let result = kubeconfigLoader.load()
         let discoveredClusters = result.kubeconfig.clusterSummaries()
         loadedKubeconfig = result.kubeconfig
@@ -206,20 +240,24 @@ final class AppModel: ObservableObject {
         selectedNamespaceByContextID = selectedNamespaceByContextID.filter { validContextIDs.contains($0.key) }
 
         if discoveredClusters.isEmpty {
-            selectedClusterID = nil
+            navigate(clusterID: nil, resource: previousRoute.resource, persist: false)
             kubeconfigState = result.hasExistingSource
                 ? .failed(message: result.issueSummary ?? "No contexts were found in kubeconfig.")
                 : .missing(paths: result.requestedPaths.map(\.displayPath))
             return
         }
 
-        if let previousSelection,
+        let preferredSelection = userPreferences.selectedContextID
+        if let previousSelection = previousRoute.clusterID,
            discoveredClusters.contains(where: { $0.id == previousSelection }) {
-            selectedClusterID = previousSelection
+            navigate(clusterID: previousSelection, resource: previousRoute.resource, persist: false)
+        } else if let preferredSelection,
+                  discoveredClusters.contains(where: { $0.id == preferredSelection }) {
+            navigate(clusterID: preferredSelection, resource: previousRoute.resource, persist: false)
         } else if let current = discoveredClusters.first(where: \.isCurrentContext) {
-            selectedClusterID = current.id
+            navigate(clusterID: current.id, resource: previousRoute.resource, persist: false)
         } else {
-            selectedClusterID = discoveredClusters.first?.id
+            navigate(clusterID: discoveredClusters.first?.id, resource: previousRoute.resource, persist: false)
         }
 
         kubeconfigState = .loaded(
@@ -715,6 +753,19 @@ final class AppModel: ObservableObject {
         envSecretValueTasksByQuery.removeAll()
     }
 
+    private func navigate(
+        clusterID: ClusterSummary.ID?,
+        resource: ResourceNavigationItem,
+        persist: Bool = true
+    ) {
+        route = AppRoute(clusterID: clusterID, resource: resource)
+
+        if persist {
+            userPreferences.selectedContextID = clusterID
+            userPreferences.selectedResourceID = resource.rawValue
+        }
+    }
+
     private func updateSelectedCluster(_ update: (inout ClusterSummary) -> Void) {
         guard let selectedClusterID else {
             return
@@ -851,6 +902,26 @@ final class AppModel: ObservableObject {
         return values.filter { value in
             !value.isEmpty && seen.insert(value).inserted
         }
+    }
+
+    private static func initialClusterID(
+        in clusters: [ClusterSummary],
+        preferredClusterID: ClusterSummary.ID?
+    ) -> ClusterSummary.ID? {
+        if let preferredClusterID,
+           clusters.contains(where: { $0.id == preferredClusterID }) {
+            return preferredClusterID
+        }
+
+        return clusters.first(where: \.isCurrentContext)?.id ?? clusters.first?.id
+    }
+
+    private static func resourceNavigationItem(forID id: String?) -> ResourceNavigationItem? {
+        guard let id else {
+            return nil
+        }
+
+        return ResourceNavigationItem(rawValue: id)
     }
 }
 
