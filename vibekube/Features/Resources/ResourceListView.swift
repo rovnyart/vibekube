@@ -265,14 +265,7 @@ private struct ResourceDetailView: View {
             ProgressView("Loading Manifest")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .loaded(let snapshot):
-            ScrollView {
-                Text(snapshot.yaml)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(14)
-            }
-            .accessibilityIdentifier("resource.detail.yaml")
+            ManifestYAMLView(yaml: snapshot.yaml)
         case .failed(let message):
             VStack(spacing: 12) {
                 EmptyStateView(

@@ -18,9 +18,9 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 
 - Resource table row selection now opens a side inspector.
 - The inspector fetches the full object through generic discovery-derived `get` endpoints.
-- The manifest view is read-only and selectable.
+- The manifest view is read-only, selectable, line-numbered, searchable, copyable, and lightly syntax-highlighted.
 - Secret manifests redact top-level `data`, `stringData`, and `binaryData`.
-- The richer Phase 6 detail experience still needs dedicated tabs, search/copy/save YAML tools, conditions, events, relationships, and custom metadata sections.
+- The richer Phase 6 detail experience still needs dedicated tabs, save/export YAML tools, conditions, events, relationships, and custom metadata sections.
 
 ## Implementation Slices
 
@@ -37,9 +37,9 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 ### 6.2 YAML Viewer
 
 - [x] Convert resource object to readable YAML.
-- [ ] Add syntax highlighting.
-- [ ] Add find-in-YAML.
-- [ ] Add copy YAML.
+- [x] Add basic syntax highlighting.
+- [x] Add find-in-YAML.
+- [x] Add copy YAML.
 - [ ] Add save YAML.
 - [x] Keep YAML read-only in this phase.
 - [x] Redact secret data by default or require explicit reveal.
@@ -79,13 +79,14 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 
 - [x] YAML rendering tests.
 - [x] Secret redaction tests.
+- [x] YAML search indexing tests.
 - [ ] Relationship resolver tests.
 - [ ] UI navigation tests from resource list to detail and related resource.
 
 ## Acceptance Criteria
 
 - [x] User can open any listed get-capable resource from a table row.
-- [ ] YAML is readable, searchable, copyable, and safe for secrets.
+- [x] YAML is readable, searchable, copyable, and safe for secrets.
 - [ ] Events and conditions explain resource state.
 - [ ] Related resources are navigable.
 

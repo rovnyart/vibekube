@@ -223,4 +223,34 @@ struct KubernetesResourceListTests {
         #expect(!detail.yaml.contains("c2VjcmV0"))
         #expect(!detail.yaml.contains("plain-token"))
     }
+
+    @Test func indexesManifestSearchMatchesAcrossLines() {
+        let yaml = """
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: web-0
+          namespace: vibekube-demo
+        spec:
+          containers:
+          - name: web
+            image: nginx:1.27
+        """
+
+        let matches = ManifestSearchIndex.matches(in: yaml, query: "web")
+
+        #expect(matches.map(\.lineNumber) == [4, 8])
+        #expect(matches.map(\.ordinal) == [1, 2])
+    }
+
+    @Test func manifestSearchIgnoresEmptyAndWhitespaceQueries() {
+        let yaml = """
+        kind: Service
+        metadata:
+          name: web
+        """
+
+        #expect(ManifestSearchIndex.matches(in: yaml, query: "").isEmpty)
+        #expect(ManifestSearchIndex.matches(in: yaml, query: "   ").isEmpty)
+    }
 }

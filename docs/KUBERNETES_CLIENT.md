@@ -40,7 +40,7 @@ Implemented:
 
 Not implemented yet:
 
-- syntax-highlighted/searchable YAML detail tools
+- save/export YAML detail tools
 - watch/streaming updates
 - pagination follow-up requests for large resource lists
 - dedicated signing-in UI for long-running exec auth
@@ -137,8 +137,9 @@ Current detail behavior:
 - Namespaced detail requests prefer the row's `metadata.namespace`, which keeps `All Namespaces` list results accurate.
 - If a namespaced row has no namespace while `All Namespaces` is selected, Vibekube does not guess and leaves the detail state idle.
 - The manifest viewer is read-only and renders a deterministic YAML-like view from the returned object.
+- The manifest viewer includes line numbers, lightweight syntax highlighting, find navigation, and copy-to-clipboard.
 - Secret manifests redact top-level `data`, `stringData`, and `binaryData` by default.
-- Syntax highlighting, find, copy, save, events, and relationships belong to the dedicated detail phase.
+- Save/export, events, conditions, and relationships belong to the dedicated detail phase.
 
 ## References
 
