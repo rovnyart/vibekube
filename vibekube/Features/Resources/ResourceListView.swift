@@ -134,7 +134,8 @@ struct ResourceListView: View {
                 TableColumn("Name", value: \.displayName) { resource in
                     ResourceNameCell(
                         resource: resource,
-                        isRecentlyUpdated: recentlyUpdatedRowIDs.contains(resource.id)
+                        isRecentlyUpdated: recentlyUpdatedRowIDs.contains(resource.id),
+                        density: appModel.tableDensity
                     )
                 }
                 TableColumn("Namespace", value: \.displayNamespace)
@@ -146,6 +147,9 @@ struct ResourceListView: View {
                 TableColumn("Labels", value: \.labelsSummary)
             }
             .tableStyle(.inset)
+            .font(appModel.tableDensity.tableFont)
+            .controlSize(appModel.tableDensity.controlSize)
+            .environment(\.defaultMinListRowHeight, appModel.tableDensity.rowHeight)
             .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
             .onChange(of: selectedResourceID) {
                 openDetailTab(for: selectedResourceID, in: visibleRows)
@@ -408,9 +412,10 @@ private struct ResourceRowVersionSignature: Equatable {
 private struct ResourceNameCell: View {
     let resource: KubernetesUnstructuredResource
     let isRecentlyUpdated: Bool
+    let density: TableDensity
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: density.nameCellSpacing) {
             Text(resource.displayName)
                 .lineLimit(1)
 
@@ -430,6 +435,52 @@ private struct ResourceNameCell: View {
             .help("Updated by live watch")
             .accessibilityLabel("Recently updated")
             .accessibilityHidden(!isRecentlyUpdated)
+        }
+    }
+}
+
+private extension TableDensity {
+    var rowHeight: CGFloat {
+        switch self {
+        case .compact:
+            22
+        case .comfortable:
+            28
+        case .spacious:
+            36
+        }
+    }
+
+    var tableFont: Font {
+        switch self {
+        case .compact:
+            .callout
+        case .comfortable:
+            .body
+        case .spacious:
+            .body
+        }
+    }
+
+    var controlSize: ControlSize {
+        switch self {
+        case .compact:
+            .small
+        case .comfortable:
+            .regular
+        case .spacious:
+            .large
+        }
+    }
+
+    var nameCellSpacing: CGFloat {
+        switch self {
+        case .compact:
+            5
+        case .comfortable:
+            7
+        case .spacious:
+            9
         }
     }
 }

@@ -16,6 +16,25 @@ enum DefaultNamespaceBehavior: String, CaseIterable, Identifiable {
     }
 }
 
+enum TableDensity: String, CaseIterable, Identifiable {
+    case compact
+    case comfortable
+    case spacious
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .compact:
+            "Compact"
+        case .comfortable:
+            "Comfortable"
+        case .spacious:
+            "Spacious"
+        }
+    }
+}
+
 protocol ClusterRegistry {
     var clusters: [ClusterSummary] { get }
 }
@@ -41,4 +60,5 @@ protocol UserPreferencesProviding {
     var defaultNamespaceBehavior: DefaultNamespaceBehavior { get set }
     var resourceWatchesEnabled: Bool { get set }
     var kubeconfigPathOverride: String? { get set }
+    var tableDensity: TableDensity { get set }
 }

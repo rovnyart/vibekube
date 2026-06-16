@@ -84,6 +84,19 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelUpdatesTableDensitySetting() {
+        let model = AppModel(clusters: ClusterSummary.preview)
+
+        #expect(model.tableDensity == .comfortable)
+
+        model.setTableDensity(.compact)
+        #expect(model.tableDensity == .compact)
+
+        model.setTableDensity(.spacious)
+        #expect(model.tableDensity == .spacious)
+    }
+
+    @MainActor
     @Test func appModelReloadsKubeconfigWhenPathOverrideChanges() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

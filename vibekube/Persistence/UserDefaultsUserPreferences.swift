@@ -13,6 +13,7 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         static let defaultNamespaceBehavior = "vibekube.namespace.defaultBehavior"
         static let resourceWatchesEnabled = "vibekube.watches.enabled"
         static let kubeconfigPathOverride = "vibekube.kubeconfig.pathOverride"
+        static let tableDensity = "vibekube.table.density"
     }
 
     var defaults: UserDefaults = .standard
@@ -114,6 +115,19 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         set {
             let normalized = newValue?.trimmingCharacters(in: .whitespacesAndNewlines)
             defaults.setOrRemove(normalized?.isEmpty == false ? normalized : nil, forKey: Key.kubeconfigPathOverride)
+        }
+    }
+
+    var tableDensity: TableDensity {
+        get {
+            guard let rawValue = defaults.string(forKey: Key.tableDensity),
+                  let density = TableDensity(rawValue: rawValue) else {
+                return .comfortable
+            }
+            return density
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Key.tableDensity)
         }
     }
 }

@@ -32,6 +32,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var defaultNamespaceBehavior: DefaultNamespaceBehavior
     @Published private(set) var resourceWatchesEnabled: Bool
     @Published private(set) var kubeconfigPathOverride: String?
+    @Published private(set) var tableDensity: TableDensity
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
     private var kubeconfigLoader: KubeconfigLoader?
@@ -169,6 +170,7 @@ final class AppModel: ObservableObject {
         self.defaultNamespaceBehavior = userPreferences.defaultNamespaceBehavior
         self.resourceWatchesEnabled = userPreferences.resourceWatchesEnabled
         self.kubeconfigPathOverride = userPreferences.kubeconfigPathOverride
+        self.tableDensity = userPreferences.tableDensity
         self.selectedNamespaceByContextID = selectedNamespaceByContextID.isEmpty
             ? userPreferences.selectedNamespaceByContextID
             : selectedNamespaceByContextID
@@ -526,6 +528,21 @@ final class AppModel: ObservableObject {
             metadata: ["customPath": normalized == nil ? "false" : "true"]
         )
         reloadKubeconfig()
+    }
+
+    func setTableDensity(_ density: TableDensity) {
+        guard tableDensity != density else {
+            return
+        }
+
+        tableDensity = density
+        userPreferences.tableDensity = density
+        recordDiagnostic(
+            .info,
+            category: "settings",
+            message: "Table density changed.",
+            metadata: ["density": density.rawValue]
+        )
     }
 
     func clearRecentDiagnostics() {

@@ -100,7 +100,7 @@ struct LogsView: View {
                     ForEach(pods) { pod in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(pod.displayName)
-                                .font(.callout.weight(.semibold))
+                                .font(appModel.tableDensity.logsPodTitleFont.weight(.semibold))
                                 .lineLimit(1)
 
                             HStack(spacing: 8) {
@@ -111,10 +111,11 @@ struct LogsView: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                         }
-                        .padding(.vertical, 3)
+                        .padding(.vertical, appModel.tableDensity.logsPodRowVerticalPadding)
                         .tag(pod.id)
                     }
                 }
+                .environment(\.defaultMinListRowHeight, appModel.tableDensity.logsPodRowHeight)
                 .onAppear {
                     reconcileSelection(with: pods)
                 }
@@ -320,6 +321,41 @@ struct LogsView: View {
         }
 
         selectedContainerName = containers.first ?? ""
+    }
+}
+
+private extension TableDensity {
+    var logsPodTitleFont: Font {
+        switch self {
+        case .compact:
+            .caption
+        case .comfortable:
+            .callout
+        case .spacious:
+            .body
+        }
+    }
+
+    var logsPodRowVerticalPadding: CGFloat {
+        switch self {
+        case .compact:
+            1
+        case .comfortable:
+            3
+        case .spacious:
+            6
+        }
+    }
+
+    var logsPodRowHeight: CGFloat {
+        switch self {
+        case .compact:
+            34
+        case .comfortable:
+            44
+        case .spacious:
+            56
+        }
     }
 }
 

@@ -25,4 +25,5 @@ struct PreviewUserPreferences: UserPreferencesProviding {
     var defaultNamespaceBehavior: DefaultNamespaceBehavior = .allNamespaces
     var resourceWatchesEnabled = true
     var kubeconfigPathOverride: String?
+    var tableDensity: TableDensity = .comfortable
 }
