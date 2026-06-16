@@ -1,75 +1,97 @@
 # Phase 7: Logs
 
-Status: Not started.
+Status: Started.
 
 Goal: provide a fast, native log viewer for pods, containers, and common workload-owned pods.
 
 ## Current Progress
 
 - [x] Phase plan exists.
-- [ ] Pod log request builder exists.
-- [ ] Streaming log client exists.
-- [ ] Logs route exists.
-- [ ] Container selector exists.
-- [ ] Follow, pause, search, copy, and save controls exist.
+- [x] Pod log request builder exists.
+- [x] Streaming log client exists.
+- [x] Pod detail Logs tab exists.
+- [x] Container selector exists for multi-container Pods.
+- [x] Timestamp, live/follow, search, grep/filter, copy, and expanded-view controls exist.
+- [x] Previous terminated-container logs, tail selector, download-all, and save-current-view controls exist.
+- [ ] Pause/resume and since selector exist.
+
+## Checkpoint Notes
+
+- The primary logs entry point is the Pod detail inspector: open Pods, select a Pod, then choose the Logs tab.
+- The standalone Logs route is hidden from primary navigation until it has a clearer product role.
+- The Logs tab supports bounded tail loading and live streaming via Kubernetes `follow=true`.
+- Live streaming starts with `tailLines=0` and seeds from the already-loaded recent tail, so enabling Live appends new lines instead of replaying the pod log backlog.
+- Log requests support container, previous, follow, tailLines, sinceSeconds, and timestamps at the request model level.
+- The UI can toggle timestamps, live streaming, search highlighting, grep-style line filtering, manual refresh, displayed-log copy, and an expanded log sheet.
+- Live logs are capped in memory to the most recent 5,000 lines.
+- Previous terminated-container logs, tail selector, download-all logs, and save-current-view are wired through the Pod detail Logs tab.
+- Pause/resume and since controls remain pending.
 
 ## Implementation Slices
 
 ### 7.1 Log API
 
-- [ ] Build pod log endpoint.
-- [ ] Support `container`.
-- [ ] Support `previous`.
-- [ ] Support `follow`.
-- [ ] Support `tailLines`.
-- [ ] Support `sinceSeconds`.
-- [ ] Support `timestamps`.
-- [ ] Map log API errors to user-facing states.
+- [x] Build pod log endpoint.
+- [x] Support `container`.
+- [x] Support `previous`.
+- [x] Support `follow`.
+- [x] Support `tailLines`.
+- [x] Support `sinceSeconds`.
+- [x] Support `timestamps`.
+- [x] Map log API errors to user-facing states.
 
 ### 7.2 Streaming Engine
 
-- [ ] Represent logs as cancellable async sequence.
-- [ ] Buffer log chunks off the main actor.
-- [ ] Cap memory for long streams.
+- [x] Represent logs as cancellable async sequence.
+- [x] Buffer log chunks off the main actor.
+- [x] Cap memory for long streams.
 - [ ] Strip or render ANSI sequences.
 - [ ] Handle reconnect/retry manually.
-- [ ] Cancel streams on route/context change.
+- [x] Cancel streams on route/context change.
 
 ### 7.3 Logs UI
 
-- [ ] Monospaced log view.
-- [ ] Container selector.
-- [ ] Follow toggle.
-- [ ] Previous logs toggle.
-- [ ] Tail line selector.
+- [x] Monospaced log view.
+- [x] Container selector.
+- [x] Follow toggle.
+- [x] Previous terminated-container logs toggle.
+- [x] Tail line selector.
 - [ ] Since selector.
-- [ ] Timestamp toggle.
-- [ ] Search/filter.
+- [x] Timestamp toggle.
+- [x] Search/filter target Pods through toolbar search.
+- [x] Search current logs with highlighted matches.
+- [x] Grep-style filter for matching log lines.
+- [x] Expanded log view.
 - [ ] Pause/resume.
-- [ ] Copy selected lines.
-- [ ] Save logs.
+- [x] Copy displayed lines.
+- [x] Download all available logs for the selected pod/container.
+- [x] Save currently displayed/filtered logs.
 - [ ] Inline retry on stream failure.
+- [x] Manual refresh for current Pod logs.
 
-Checkpoint: stop when `log-counter` streams smoothly in the demo cluster.
+Checkpoint: stop when selecting `log-counter` can tail, stream, search, grep-filter, copy, and expand logs without freezing.
 
 ### 7.4 Workload Logs
 
-- [ ] Open logs from a Pod.
+- [x] Open logs from a Pod through the Pod detail inspector.
 - [ ] Open logs from a Deployment by selecting owned Pods.
 - [ ] Open logs from a Job by selecting owned Pods.
 - [ ] Add multi-pod aggregation plan but defer if it risks Phase 7 scope.
 
 ### 7.5 Tests
 
-- [ ] Log URL construction tests.
+- [x] Log query construction tests.
+- [x] App model log route and Pod log load tests.
+- [x] App model streaming append tests.
 - [ ] Streaming parser tests.
 - [ ] Buffer limit tests.
 - [ ] Integration/manual QA against `vibekube-demo/log-counter`.
 
 ## Acceptance Criteria
 
-- [ ] User can stream live logs from the demo `log-counter` pod.
-- [ ] User can pause, search, copy, and save logs.
+- [x] User can stream live logs from the demo `log-counter` pod.
+- [ ] User can pause logs.
+- [x] User can search, copy, download all logs, save displayed logs, and view previous terminated-container logs.
 - [ ] Scrolling away from the bottom disables aggressive auto-follow behavior.
 - [ ] Large logs do not freeze the app.
 

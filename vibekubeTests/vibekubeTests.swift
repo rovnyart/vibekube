@@ -329,6 +329,180 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelLoadsPodsWhenSelectingLogsRoute() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.logs)
+        try await waitForResourceList(model, .pods)
+
+        guard case .loaded(let snapshot) = model.resourceListState(for: .pods) else {
+            Issue.record("Expected pods to be loaded for Logs")
+            return
+        }
+
+        #expect(model.selectedResource == .logs)
+        #expect(snapshot.items.first?.displayName == "web-0")
+    }
+
+    @MainActor
+    @Test func appModelLoadsPodLogsForSelectedPod() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            logService: SucceedingLogService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.logs)
+        try await waitForResourceList(model, .pods)
+
+        guard case .loaded(let listSnapshot) = model.resourceListState(for: .pods),
+              let pod = listSnapshot.items.first else {
+            Issue.record("Expected pod row")
+            return
+        }
+
+        model.loadPodLogs(for: pod, containerName: "web")
+        try await waitForPodLogs(model, pod: pod, containerName: "web")
+
+        guard case .loaded(let logSnapshot) = model.podLogState(for: pod, containerName: "web") else {
+            Issue.record("Expected loaded pod logs")
+            return
+        }
+
+        #expect(logSnapshot.query.namespace == "vibekube-demo")
+        #expect(logSnapshot.query.podName == "web-0")
+        #expect(logSnapshot.query.containerName == "web")
+        #expect(logSnapshot.text.contains("hello from web-0"))
+    }
+
+    @MainActor
+    @Test func appModelInfersMissingPodKindAndLoadsLogs() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: MissingKindPodResourceListService(),
+            logService: SucceedingLogService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitForResourceList(model, .pods)
+
+        guard case .loaded(let listSnapshot) = model.resourceListState(for: .pods),
+              let pod = listSnapshot.items.first else {
+            Issue.record("Expected pod row")
+            return
+        }
+
+        #expect(pod.displayKind == "Pod")
+
+        model.loadPodLogs(for: pod, containerName: "web")
+        try await waitForPodLogs(model, pod: pod, containerName: "web")
+
+        guard case .loaded(let logSnapshot) = model.podLogState(for: pod, containerName: "web") else {
+            Issue.record("Expected loaded pod logs")
+            return
+        }
+
+        #expect(logSnapshot.query.podName == "web-0")
+        #expect(logSnapshot.text.contains("hello from web-0"))
+    }
+
+    @MainActor
+    @Test func appModelStreamsPodLogs() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            logService: SucceedingLogService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitForResourceList(model, .pods)
+
+        guard case .loaded(let listSnapshot) = model.resourceListState(for: .pods),
+              let pod = listSnapshot.items.first else {
+            Issue.record("Expected pod row")
+            return
+        }
+
+        model.loadPodLogs(for: pod, containerName: "web")
+        try await waitForPodLogs(model, pod: pod, containerName: "web")
+
+        model.loadPodLogs(for: pod, containerName: "web", follow: true)
+        try await waitUntil("streaming pod logs appended") {
+            if case .loaded(let snapshot) = model.podLogState(for: pod, containerName: "web", follow: true) {
+                return snapshot.text.contains("still running")
+            }
+            return false
+        }
+
+        guard case .loaded(let logSnapshot) = model.podLogState(for: pod, containerName: "web", follow: true) else {
+            Issue.record("Expected streaming pod logs")
+            return
+        }
+
+        #expect(logSnapshot.query.follow)
+        #expect(logSnapshot.query.tailLines == 200)
+        #expect(logSnapshot.text.contains("hello from web-0"))
+        #expect(logSnapshot.text.contains("still running"))
+        #expect(logSnapshot.text.components(separatedBy: "hello from web-0").count == 2)
+    }
+
+    @MainActor
+    @Test func appModelDownloadsAllPreviousPodLogs() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            logService: AllPreviousLogService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitForResourceList(model, .pods)
+
+        guard case .loaded(let listSnapshot) = model.resourceListState(for: .pods),
+              let pod = listSnapshot.items.first else {
+            Issue.record("Expected pod row")
+            return
+        }
+
+        let text = try await model.podLogsText(
+            for: pod,
+            containerName: "web",
+            timestamps: true,
+            previous: true,
+            tailLines: nil
+        )
+
+        #expect(text.contains("previous crash"))
+    }
+
+    @MainActor
     @Test func appModelRevealsEnvSecretValue() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -411,6 +585,21 @@ private func waitForResourceEvents(
 ) async throws {
     try await waitUntil("resource events loaded") {
         if case .loaded = model.resourceEventsState(for: detail) {
+            return true
+        }
+        return false
+    }
+}
+
+@MainActor
+private func waitForPodLogs(
+    _ model: AppModel,
+    pod: KubernetesUnstructuredResource,
+    containerName: String?,
+    follow: Bool = false
+) async throws {
+    try await waitUntil("pod logs loaded") {
+        if case .loaded = model.podLogState(for: pod, containerName: containerName, follow: follow) {
             return true
         }
         return false
@@ -597,6 +786,36 @@ private struct SucceedingResourceListService: KubernetesResourceListServicing {
     }
 }
 
+private struct MissingKindPodResourceListService: KubernetesResourceListServicing {
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "metadata": {
+                        "name": "web-0",
+                        "namespace": "\(namespace ?? "vibekube-demo")"
+                      },
+                      "status": {
+                        "phase": "Running"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+    }
+}
+
 private struct SucceedingResourceDetailService: KubernetesResourceDetailServicing {
     func resourceDetail(
         contextName: String,
@@ -704,6 +923,79 @@ private struct SucceedingResourceEventService: KubernetesResourceEventServicing 
                 """.utf8
             )
         )
+    }
+}
+
+private struct SucceedingLogService: KubernetesLogServicing {
+    func podLogs(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) async throws -> String {
+        #expect(contextName == "kind-vibekube-dev")
+        #expect(namespace == "vibekube-demo")
+        #expect(podName == "web-0")
+        #expect(options.container == "web")
+        #expect(options.tailLines == 200)
+        #expect(options.timestamps == true)
+        #expect(options.follow == false)
+
+        return "2026-06-15T10:01:00Z hello from web-0"
+    }
+
+    func podLogStream(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            #expect(contextName == "kind-vibekube-dev")
+            #expect(namespace == "vibekube-demo")
+            #expect(podName == "web-0")
+            #expect(options.container == "web")
+            #expect(options.follow == true)
+            #expect(options.tailLines == 0)
+
+            continuation.yield("2026-06-15T10:01:01Z still running\n")
+            continuation.finish()
+        }
+    }
+}
+
+private struct AllPreviousLogService: KubernetesLogServicing {
+    func podLogs(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) async throws -> String {
+        #expect(contextName == "kind-vibekube-dev")
+        #expect(namespace == "vibekube-demo")
+        #expect(podName == "web-0")
+        #expect(options.container == "web")
+        #expect(options.previous == true)
+        #expect(options.tailLines == nil)
+        #expect(options.timestamps == true)
+        #expect(options.follow == false)
+
+        return "2026-06-15T10:00:59Z previous crash"
+    }
+
+    func podLogStream(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish()
+        }
     }
 }
 

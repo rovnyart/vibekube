@@ -4,8 +4,8 @@ This is a tiny disposable Kubernetes cluster for developing Vibekube against a r
 
 It uses [kind](https://kind.sigs.k8s.io/) on top of Docker and creates:
 
-- `vibekube-demo/echo-web`: two small nginx pods behind a service.
-- `vibekube-demo/log-counter`: a pod that writes a log line every two seconds.
+- `vibekube-demo/echo-web`: two small nginx pods behind a service, with nginx access logs disabled to avoid noisy readiness-probe logs.
+- `vibekube-demo/log-counter`: a pod that writes a controlled log line every two seconds.
 - `vibekube-demo/tiny-heartbeat`: a CronJob that creates short-lived job pods every two minutes.
 - Demo ConfigMaps and Secrets referenced through pod `env`, `envFrom`, `configMapKeyRef`, and `secretKeyRef` so the resource inspector has real data to render.
 

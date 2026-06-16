@@ -222,8 +222,17 @@ enum ResourceNavigationItem: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    var isPrimaryNavigationVisible: Bool {
+        switch self {
+        case .logs:
+            false
+        default:
+            true
+        }
+    }
+
     static func items(in section: ResourceNavigationSection) -> [ResourceNavigationItem] {
-        allCases.filter { $0.section == section }
+        allCases.filter { $0.section == section && $0.isPrimaryNavigationVisible }
     }
 }
 

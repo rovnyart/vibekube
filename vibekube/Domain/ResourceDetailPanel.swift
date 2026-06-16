@@ -3,6 +3,7 @@ import Foundation
 enum ResourceDetailPanel: String, CaseIterable, Identifiable {
     case overview
     case events
+    case logs
     case environment
     case yaml
     case metadata
@@ -18,6 +19,8 @@ enum ResourceDetailPanel: String, CaseIterable, Identifiable {
             "Overview"
         case .events:
             "Events"
+        case .logs:
+            "Logs"
         case .environment:
             "Env"
         case .yaml:
@@ -35,6 +38,8 @@ enum ResourceDetailPanel: String, CaseIterable, Identifiable {
             "list.bullet.rectangle"
         case .events:
             "waveform.path.ecg"
+        case .logs:
+            "terminal"
         case .environment:
             "switch.2"
         case .yaml:

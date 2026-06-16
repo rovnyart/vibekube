@@ -24,6 +24,16 @@ protocol KubernetesAPIClient {
     ) async throws -> KubernetesResourceEventList
     func nodeMetrics() async throws -> KubernetesNodeMetricsList
     func podMetrics(namespace: String?) async throws -> KubernetesPodMetricsList
+    func podLogs(
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) async throws -> String
+    func podLogStream(
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) -> AsyncThrowingStream<String, Error>
 }
 
 struct KubernetesVersion: Decodable, Equatable {

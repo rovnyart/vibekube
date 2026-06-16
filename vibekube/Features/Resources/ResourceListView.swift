@@ -507,6 +507,8 @@ private struct ResourceDetailView: View {
             )
         case .events:
             ResourceDetailEventsView(detail: snapshot)
+        case .logs:
+            ResourceDetailLogsView(row: row, summary: snapshot.summary)
         case .environment:
             ResourceDetailEnvironmentView(summary: snapshot.summary)
         case .yaml:
@@ -868,6 +870,802 @@ private struct ResourceDetailEventsView: View {
             }
             .background(Color(nsColor: .textBackgroundColor))
         }
+    }
+}
+
+private struct ResourceDetailLogsView: View {
+    @EnvironmentObject private var appModel: AppModel
+    @State private var selectedContainerName = ""
+    @State private var showsTimestamps = true
+    @State private var showsPreviousLogs = false
+    @State private var tailSelection: LogTailSelection = .last200
+    @State private var followsLogs = false
+    @State private var searchText = ""
+    @State private var filtersMatches = false
+    @State private var isExpanded = false
+    @State private var isSavingLogs = false
+    @State private var saveErrorMessage: String?
+
+    let row: KubernetesUnstructuredResource
+    let summary: KubernetesResourceDetailSummary
+
+    var body: some View {
+        Group {
+            if isPod {
+                podLogSurface
+            } else {
+                EmptyStateView(
+                    title: "Logs Are Pod-Only",
+                    subtitle: "Open a Pod row to load recent container logs.",
+                    systemImage: "terminal"
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .textBackgroundColor))
+            }
+        }
+        .onAppear {
+            reconcileContainer()
+        }
+        .onChange(of: containerNames) {
+            reconcileContainer()
+        }
+        .onChange(of: showsPreviousLogs) {
+            if showsPreviousLogs {
+                followsLogs = false
+            }
+        }
+        .onChange(of: followsLogs) {
+            if followsLogs {
+                showsPreviousLogs = false
+            }
+        }
+        .onDisappear {
+            if followsLogs {
+                appModel.stopPodLogs()
+            }
+        }
+        .sheet(isPresented: $isExpanded) {
+            expandedLogSheet
+        }
+        .alert(
+            "Could Not Save Logs",
+            isPresented: Binding(
+                get: { saveErrorMessage != nil },
+                set: { if !$0 { saveErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(saveErrorMessage ?? "Unknown error")
+        }
+        .accessibilityIdentifier("resource.detail.logs")
+    }
+
+    @ViewBuilder
+    private var podLogSurface: some View {
+        let containerName = selectedContainerForRequest
+        let state = currentLogState
+
+        VStack(spacing: 0) {
+            header
+
+            Divider()
+
+            logContent(state)
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+        .task(id: currentTaskID) {
+            appModel.loadPodLogs(
+                for: row,
+                containerName: containerName,
+                timestamps: showsTimestamps,
+                previous: showsPreviousLogs,
+                tailLines: tailSelection.lineCount,
+                follow: followsLogs
+            )
+        }
+    }
+
+    private var header: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(followsLogs ? "Live Logs" : "Recent Logs")
+                        .font(.headline)
+
+                    Text(logSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                }
+
+                Spacer()
+
+                if containerNames.count > 1 {
+                    Picker("Container", selection: $selectedContainerName) {
+                        ForEach(containerNames, id: \.self) { containerName in
+                            Text(containerName).tag(containerName)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 180)
+                }
+
+                Button {
+                    isExpanded = true
+                } label: {
+                    Label("Expand Logs", systemImage: "arrow.up.left.and.arrow.down.right")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .help("Expand Logs")
+
+                Button {
+                    refreshLogs()
+                } label: {
+                    Label("Refresh Logs", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .disabled(appModel.selectedConnectionState != .connected)
+                .help("Refresh Logs")
+            }
+
+            HStack(spacing: 12) {
+                Toggle("Timestamps", isOn: $showsTimestamps)
+                    .toggleStyle(.checkbox)
+
+                Toggle("Previous", isOn: $showsPreviousLogs)
+                    .toggleStyle(.checkbox)
+                    .help("Show logs from the previously terminated container instance")
+
+                Toggle("Live", isOn: $followsLogs)
+                    .toggleStyle(.checkbox)
+                    .disabled(showsPreviousLogs)
+
+                Picker("Tail", selection: $tailSelection) {
+                    ForEach(LogTailSelection.allCases) { selection in
+                        Text(selection.title).tag(selection)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 110)
+                .disabled(followsLogs)
+
+                Divider()
+                    .frame(height: 18)
+
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+
+                TextField("Search logs", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 180, idealWidth: 260, maxWidth: 360)
+
+                Toggle("Grep", isOn: $filtersMatches)
+                    .toggleStyle(.checkbox)
+                    .disabled(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                Spacer()
+
+                Button {
+                    saveDisplayedLogs()
+                } label: {
+                    Label("Save Displayed", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSavingLogs || displayedLogTextForCurrentState.isEmpty)
+
+                Button {
+                    Task {
+                        await downloadAllLogs()
+                    }
+                } label: {
+                    Label("Download All", systemImage: "arrow.down.doc")
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSavingLogs || appModel.selectedConnectionState != .connected)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.bar)
+    }
+
+    @ViewBuilder
+    private func logContent(_ state: PodLogLoadState) -> some View {
+        switch state {
+        case .idle, .loading:
+            ProgressView("Loading Logs")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .textBackgroundColor))
+        case .failed(let message):
+            VStack(spacing: 12) {
+                EmptyStateView(
+                    title: "Could Not Load Logs",
+                    subtitle: message,
+                    systemImage: "exclamationmark.triangle"
+                )
+
+                Button {
+                    appModel.loadPodLogs(
+                        for: row,
+                        containerName: selectedContainerForRequest,
+                        timestamps: showsTimestamps,
+                        previous: showsPreviousLogs,
+                        tailLines: tailSelection.lineCount,
+                        follow: followsLogs,
+                        force: true
+                    )
+                } label: {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .textBackgroundColor))
+        case .loaded(let snapshot):
+            VStack(spacing: 0) {
+                HStack {
+                    Text(statusText(for: snapshot))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(displayedLogText(snapshot.text), forType: .string)
+                    } label: {
+                        Label("Copy Displayed Logs", systemImage: "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Copy Displayed Logs")
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color(nsColor: .textBackgroundColor))
+
+                Divider()
+
+                LogTextSurface(
+                    text: snapshot.text,
+                    searchText: searchText,
+                    filtersMatches: filtersMatches,
+                    followsLogs: followsLogs
+                )
+            }
+        }
+    }
+
+    private var expandedLogSheet: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(row.displayName)
+                        .font(.title3.weight(.semibold))
+                        .lineLimit(1)
+
+                    Text(logSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button("Close") {
+                    isExpanded = false
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+            .padding(.bottom, 10)
+            .background(.bar)
+
+            expandedControls
+
+            Divider()
+
+            logContent(currentLogState)
+        }
+        .frame(width: expandedSheetSize.width, height: expandedSheetSize.height)
+    }
+
+    private var expandedControls: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 14) {
+                Toggle("Timestamps", isOn: $showsTimestamps)
+                    .toggleStyle(.checkbox)
+                    .fixedSize()
+
+                Toggle("Previous", isOn: $showsPreviousLogs)
+                    .toggleStyle(.checkbox)
+                    .fixedSize()
+
+                Toggle("Live", isOn: $followsLogs)
+                    .toggleStyle(.checkbox)
+                    .disabled(showsPreviousLogs)
+                    .fixedSize()
+
+                HStack(spacing: 6) {
+                    Text("Tail")
+                        .foregroundStyle(.secondary)
+
+                    Picker("Tail", selection: $tailSelection) {
+                        ForEach(LogTailSelection.allCases) { selection in
+                            Text(selection.title).tag(selection)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 105)
+                    .disabled(followsLogs)
+                }
+
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+
+                    TextField("Search logs", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(minWidth: 260, idealWidth: 360)
+
+                    Toggle("Grep", isOn: $filtersMatches)
+                        .toggleStyle(.checkbox)
+                        .disabled(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .fixedSize()
+                }
+
+                Spacer(minLength: 12)
+            }
+
+            HStack(spacing: 10) {
+                Spacer()
+
+                Button {
+                    refreshLogs()
+                } label: {
+                    Label("Refresh Logs", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    saveDisplayedLogs()
+                } label: {
+                    Label("Save Displayed", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSavingLogs || displayedLogTextForCurrentState.isEmpty)
+
+                Button {
+                    Task {
+                        await downloadAllLogs()
+                    }
+                } label: {
+                    Label("Download All", systemImage: "arrow.down.doc")
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSavingLogs || appModel.selectedConnectionState != .connected)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.bottom, 12)
+        .background(.bar)
+    }
+
+    private var containerNames: [String] {
+        summary.containers.map(\.name)
+    }
+
+    private var isPod: Bool {
+        row.kind == "Pod" || summary.kind == "Pod"
+    }
+
+    private var selectedContainerForRequest: String? {
+        guard containerNames.count > 1 else {
+            return nil
+        }
+
+        if containerNames.contains(selectedContainerName) {
+            return selectedContainerName
+        }
+
+        return containerNames.first
+    }
+
+    private var expandedSheetSize: CGSize {
+        let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        return CGSize(
+            width: max(1_180, visibleFrame.width * 0.88),
+            height: max(720, visibleFrame.height * 0.86)
+        )
+    }
+
+    private var logSubtitle: String {
+        let namespace = row.displayNamespace == "-" ? "cluster scoped" : row.displayNamespace
+        let scope = showsPreviousLogs ? "previous" : "current"
+        let mode = followsLogs ? "live" : tailSelection.subtitle
+        if let containerName = selectedContainerForRequest {
+            return "\(namespace) - \(containerName) - \(scope) - \(mode)"
+        }
+
+        return "\(namespace) - \(scope) - \(mode)"
+    }
+
+    private var currentLogState: PodLogLoadState {
+        appModel.podLogState(
+            for: row,
+            containerName: selectedContainerForRequest,
+            timestamps: showsTimestamps,
+            previous: showsPreviousLogs,
+            tailLines: tailSelection.lineCount,
+            follow: followsLogs
+        )
+    }
+
+    private var currentTaskID: String {
+        appModel.podLogTaskID(
+            for: row,
+            containerName: selectedContainerForRequest,
+            timestamps: showsTimestamps,
+            previous: showsPreviousLogs,
+            tailLines: tailSelection.lineCount,
+            follow: followsLogs
+        )
+    }
+
+    private func refreshLogs() {
+        appModel.loadPodLogs(
+            for: row,
+            containerName: selectedContainerForRequest,
+            timestamps: showsTimestamps,
+            previous: showsPreviousLogs,
+            tailLines: tailSelection.lineCount,
+            follow: followsLogs,
+            force: true
+        )
+    }
+
+    private func statusText(for snapshot: PodLogSnapshot) -> String {
+        let displayLineCount = LogTextSurface.lines(
+            in: snapshot.text,
+            searchText: searchText,
+            filtersMatches: filtersMatches
+        ).count
+        let totalLineCount = LogTextSurface.lines(
+            in: snapshot.text,
+            searchText: "",
+            filtersMatches: false
+        ).count
+        let loadedText = followsLogs ? "Streaming" : "Loaded"
+        if displayLineCount == totalLineCount {
+            return "\(loadedText) \(snapshot.loadedAt.formatted(date: .omitted, time: .standard)) - \(totalLineCount) lines"
+        }
+
+        return "\(loadedText) \(snapshot.loadedAt.formatted(date: .omitted, time: .standard)) - \(displayLineCount)/\(totalLineCount) lines"
+    }
+
+    private func displayedLogText(_ text: String) -> String {
+        LogTextSurface.lines(
+            in: text,
+            searchText: searchText,
+            filtersMatches: filtersMatches
+        )
+        .joined(separator: "\n")
+    }
+
+    private var displayedLogTextForCurrentState: String {
+        guard case .loaded(let snapshot) = currentLogState else {
+            return ""
+        }
+
+        return displayedLogText(snapshot.text)
+    }
+
+    private func saveDisplayedLogs() {
+        let text = displayedLogTextForCurrentState
+        guard !text.isEmpty,
+              let url = chooseLogSaveURL(kind: "displayed") else {
+            return
+        }
+
+        do {
+            try writeLogText(text, to: url)
+        } catch {
+            saveErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func downloadAllLogs() async {
+        guard let url = chooseLogSaveURL(kind: "all") else {
+            return
+        }
+
+        isSavingLogs = true
+        defer {
+            isSavingLogs = false
+        }
+
+        do {
+            let text = try await appModel.podLogsText(
+                for: row,
+                containerName: selectedContainerForRequest,
+                timestamps: showsTimestamps,
+                previous: showsPreviousLogs,
+                tailLines: nil
+            )
+            try writeLogText(text, to: url)
+        } catch {
+            saveErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func chooseLogSaveURL(kind: String) -> URL? {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = defaultLogFilename(kind: kind)
+
+        guard panel.runModal() == .OK else {
+            return nil
+        }
+
+        return panel.url
+    }
+
+    private func writeLogText(_ text: String, to url: URL) throws {
+        let normalizedText = text.hasSuffix("\n") ? text : text + "\n"
+        try normalizedText.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private func defaultLogFilename(kind: String) -> String {
+        let container = selectedContainerForRequest.map { "-\($0)" } ?? ""
+        let previous = showsPreviousLogs ? "-previous" : ""
+        return "\(sanitizedFilenameComponent(row.displayName))\(sanitizedFilenameComponent(container))\(previous)-\(kind).log"
+    }
+
+    private func sanitizedFilenameComponent(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
+        let scalars = value.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? scalar : UnicodeScalar("-")
+        }
+        let result = String(String.UnicodeScalarView(scalars))
+        return result.isEmpty ? "logs" : result
+    }
+
+    private func reconcileContainer() {
+        guard !containerNames.isEmpty else {
+            selectedContainerName = ""
+            return
+        }
+
+        if containerNames.contains(selectedContainerName) {
+            return
+        }
+
+        selectedContainerName = containerNames.first ?? ""
+    }
+}
+
+private enum LogTailSelection: String, CaseIterable, Identifiable {
+    case last200
+    case last1000
+    case all
+
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .last200:
+            "200"
+        case .last1000:
+            "1,000"
+        case .all:
+            "All"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .last200:
+            "tail 200 lines"
+        case .last1000:
+            "tail 1,000 lines"
+        case .all:
+            "all logs"
+        }
+    }
+
+    var lineCount: Int? {
+        switch self {
+        case .last200:
+            200
+        case .last1000:
+            1_000
+        case .all:
+            nil
+        }
+    }
+}
+
+private struct LogTextSurface: View {
+    let text: String
+    let searchText: String
+    let filtersMatches: Bool
+    let followsLogs: Bool
+
+    private var displayedLines: [String] {
+        Self.lines(in: text, searchText: searchText, filtersMatches: filtersMatches)
+    }
+
+    private var displayedText: String {
+        displayedLines.joined(separator: "\n")
+    }
+
+    var body: some View {
+        Group {
+            if text.isEmpty {
+                EmptyStateView(
+                    title: "No Log Lines",
+                    subtitle: "Kubernetes returned an empty log response for this Pod.",
+                    systemImage: "terminal"
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .textBackgroundColor))
+            } else if displayedLines.isEmpty {
+                EmptyStateView(
+                    title: "No Matches",
+                    subtitle: "No log lines match the current search.",
+                    systemImage: "line.3.horizontal.decrease.circle"
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .textBackgroundColor))
+            } else {
+                SelectableLogTextView(
+                    text: displayedText,
+                    searchText: searchText,
+                    followsLogs: followsLogs
+                )
+                .accessibilityIdentifier("resource.detail.logs.text")
+            }
+        }
+    }
+
+    static func lines(
+        in text: String,
+        searchText: String,
+        filtersMatches: Bool
+    ) -> [String] {
+        var lines = text.components(separatedBy: .newlines)
+        if lines.last == "" {
+            lines.removeLast()
+        }
+
+        let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard filtersMatches, !needle.isEmpty else {
+            return lines
+        }
+
+        return lines.filter { line in
+            line.range(of: needle, options: [.caseInsensitive]) != nil
+        }
+    }
+}
+
+private struct SelectableLogTextView: NSViewRepresentable {
+    let text: String
+    let searchText: String
+    let followsLogs: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = true
+        scrollView.autohidesScrollers = false
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = .textBackgroundColor
+
+        let textView = NSTextView(frame: .zero)
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.allowsUndo = false
+        textView.drawsBackground = true
+        textView.backgroundColor = .textBackgroundColor
+        textView.textColor = .labelColor
+        textView.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        textView.textContainerInset = NSSize(width: 14, height: 14)
+        textView.isHorizontallyResizable = true
+        textView.isVerticallyResizable = true
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.containerSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+
+        scrollView.documentView = textView
+        context.coordinator.textView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = context.coordinator.textView else {
+            return
+        }
+
+        let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if context.coordinator.text != text || context.coordinator.searchText != needle {
+            textView.textStorage?.setAttributedString(Self.attributedText(text, searchText: needle))
+            context.coordinator.text = text
+            context.coordinator.searchText = needle
+        }
+
+        if followsLogs {
+            DispatchQueue.main.async {
+                textView.scrollToEndOfDocument(nil)
+            }
+        }
+    }
+
+    private static func attributedText(_ text: String, searchText: String) -> NSAttributedString {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byClipping
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraphStyle
+        ]
+        let result = NSMutableAttributedString(string: text, attributes: attributes)
+
+        guard !searchText.isEmpty else {
+            return result
+        }
+
+        let nsText = text as NSString
+        var searchRange = NSRange(location: 0, length: nsText.length)
+        while searchRange.length > 0 {
+            let matchRange = nsText.range(
+                of: searchText,
+                options: [.caseInsensitive],
+                range: searchRange
+            )
+            if matchRange.location == NSNotFound {
+                break
+            }
+
+            result.addAttributes(
+                [
+                    .backgroundColor: NSColor.selectedContentBackgroundColor.withAlphaComponent(0.22),
+                    .foregroundColor: NSColor.controlAccentColor,
+                    .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold)
+                ],
+                range: matchRange
+            )
+
+            let nextLocation = matchRange.location + matchRange.length
+            searchRange = NSRange(location: nextLocation, length: nsText.length - nextLocation)
+        }
+        return result
+    }
+
+    final class Coordinator {
+        weak var textView: NSTextView?
+        var text = ""
+        var searchText = ""
     }
 }
 

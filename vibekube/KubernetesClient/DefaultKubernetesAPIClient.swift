@@ -99,6 +99,46 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         return try await get(path: "/apis/metrics.k8s.io/v1beta1/pods")
     }
 
+    func podLogs(
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) async throws -> String {
+        try await getText(
+            path: Self.podLogPath(namespace: namespace, podName: podName),
+            queryItems: options.queryItems
+        )
+    }
+
+    func podLogStream(
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            var request = Self.textRequest(
+                configuration: configuration,
+                path: Self.podLogPath(namespace: namespace, podName: podName),
+                queryItems: options.queryItems
+            )
+            request.timeoutInterval = 3_600
+            applyAuthentication(to: &request)
+
+            let task = session.dataTask(with: request)
+            delegate.registerStream(
+                task: task,
+                continuation: continuation,
+                errorMapper: Self.error(from:statusCode:)
+            )
+            task.resume()
+
+            continuation.onTermination = { _ in
+                task.cancel()
+                self.delegate.unregisterStream(task: task)
+            }
+        }
+    }
+
     private func get<Response: Decodable>(
         path: String,
         queryItems: [URLQueryItem] = []
@@ -132,6 +172,50 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         } catch {
             throw KubernetesClientError.unavailable(error.localizedDescription)
         }
+    }
+
+    private func getText(
+        path: String,
+        queryItems: [URLQueryItem] = []
+    ) async throws -> String {
+        var request = Self.textRequest(configuration: configuration, path: path, queryItems: queryItems)
+        applyAuthentication(to: &request)
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw KubernetesClientError.badResponse
+            }
+
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                throw Self.error(from: data, statusCode: httpResponse.statusCode)
+            }
+
+            return String(decoding: data, as: UTF8.self)
+        } catch let error as KubernetesClientError {
+            throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw KubernetesClientError.unavailable(error.localizedDescription)
+        }
+    }
+
+    private static func textRequest(
+        configuration: KubernetesClientConfiguration,
+        path: String,
+        queryItems: [URLQueryItem]
+    ) -> URLRequest {
+        var components = URLComponents(url: configuration.url(path: path), resolvingAgainstBaseURL: false)
+        components?.queryItems = queryItems.isEmpty ? nil : queryItems
+        var request = URLRequest(url: components?.url ?? configuration.url(path: path))
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return request
+    }
+
+    private static func podLogPath(namespace: String, podName: String) -> String {
+        "/api/v1/namespaces/\(namespace.kubernetesPathSegment)/pods/\(podName.kubernetesPathSegment)/log"
     }
 
     private func applyAuthentication(to request: inout URLRequest) {

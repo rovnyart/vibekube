@@ -1,10 +1,12 @@
 import Foundation
 import Security
 
-final class KubernetesURLSessionDelegate: NSObject, URLSessionDelegate {
+final class KubernetesURLSessionDelegate: NSObject, URLSessionDataDelegate {
     private let insecureSkipTLSVerify: Bool
     private let caCertificates: [SecCertificate]
     private let clientIdentity: TemporaryClientIdentity?
+    private let streamLock = NSLock()
+    private var streamHandlers: [Int: KubernetesStreamingResponseHandler] = [:]
 
     init(configuration: KubernetesClientConfiguration) throws {
         self.insecureSkipTLSVerify = configuration.insecureSkipTLSVerify
@@ -30,6 +32,82 @@ final class KubernetesURLSessionDelegate: NSObject, URLSessionDelegate {
         default:
             completionHandler(.performDefaultHandling, nil)
         }
+    }
+
+    func registerStream(
+        task: URLSessionDataTask,
+        continuation: AsyncThrowingStream<String, Error>.Continuation,
+        errorMapper: @escaping (Data, Int) -> KubernetesClientError
+    ) {
+        streamLock.lock()
+        streamHandlers[task.taskIdentifier] = KubernetesStreamingResponseHandler(
+            continuation: continuation,
+            errorMapper: errorMapper
+        )
+        streamLock.unlock()
+    }
+
+    func unregisterStream(task: URLSessionTask) {
+        streamLock.lock()
+        streamHandlers.removeValue(forKey: task.taskIdentifier)
+        streamLock.unlock()
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let handler = streamHandler(for: dataTask) else {
+            completionHandler(.allow)
+            return
+        }
+
+        if let httpResponse = response as? HTTPURLResponse {
+            handler.receive(statusCode: httpResponse.statusCode)
+            completionHandler(.allow)
+        } else {
+            handler.finish(throwing: KubernetesClientError.badResponse)
+            unregisterStream(task: dataTask)
+            completionHandler(.cancel)
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive data: Data
+    ) {
+        streamHandler(for: dataTask)?.receive(data: data)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        guard let handler = streamHandler(for: task) else {
+            return
+        }
+
+        unregisterStream(task: task)
+        if let error {
+            if (error as NSError).code == NSURLErrorCancelled {
+                handler.finish()
+            } else {
+                handler.finish(throwing: KubernetesClientError.unavailable(error.localizedDescription))
+            }
+        } else {
+            handler.finish()
+        }
+    }
+
+    private func streamHandler(for task: URLSessionTask) -> KubernetesStreamingResponseHandler? {
+        streamLock.lock()
+        let handler = streamHandlers[task.taskIdentifier]
+        streamLock.unlock()
+        return handler
     }
 
     private func handleServerTrust(
@@ -87,6 +165,93 @@ final class KubernetesURLSessionDelegate: NSObject, URLSessionDelegate {
         }
 
         return certificates
+    }
+}
+
+private final class KubernetesStreamingResponseHandler {
+    private let continuation: AsyncThrowingStream<String, Error>.Continuation
+    private let errorMapper: (Data, Int) -> KubernetesClientError
+    private let lock = NSLock()
+    private var statusCode: Int?
+    private var pendingText = ""
+    private var errorData = Data()
+    private var isFinished = false
+
+    init(
+        continuation: AsyncThrowingStream<String, Error>.Continuation,
+        errorMapper: @escaping (Data, Int) -> KubernetesClientError
+    ) {
+        self.continuation = continuation
+        self.errorMapper = errorMapper
+    }
+
+    func receive(statusCode: Int) {
+        lock.lock()
+        self.statusCode = statusCode
+        lock.unlock()
+    }
+
+    func receive(data: Data) {
+        lock.lock()
+        guard !isFinished else {
+            lock.unlock()
+            return
+        }
+
+        guard let statusCode, (200..<300).contains(statusCode) else {
+            errorData.append(data)
+            lock.unlock()
+            return
+        }
+
+        pendingText += String(decoding: data, as: UTF8.self)
+        let lines = completeLines()
+        lock.unlock()
+
+        for line in lines {
+            continuation.yield(line)
+        }
+    }
+
+    func finish(throwing error: Error? = nil) {
+        lock.lock()
+        guard !isFinished else {
+            lock.unlock()
+            return
+        }
+        isFinished = true
+
+        if let error {
+            lock.unlock()
+            continuation.finish(throwing: error)
+            return
+        }
+
+        if let statusCode, !(200..<300).contains(statusCode) {
+            let mappedError = errorMapper(errorData, statusCode)
+            lock.unlock()
+            continuation.finish(throwing: mappedError)
+            return
+        }
+
+        let remainder = pendingText
+        pendingText = ""
+        lock.unlock()
+
+        if !remainder.isEmpty {
+            continuation.yield(remainder)
+        }
+        continuation.finish()
+    }
+
+    private func completeLines() -> [String] {
+        let parts = pendingText.components(separatedBy: "\n")
+        guard parts.count > 1 else {
+            return []
+        }
+
+        pendingText = parts.last ?? ""
+        return parts.dropLast().map { $0 + "\n" }
     }
 }
 

@@ -93,11 +93,6 @@ struct VibekubeCommands: Commands {
 
             Divider()
 
-            Button("Logs") {
-                appModel.selectResource(.logs)
-            }
-            .keyboardShortcut("l", modifiers: [.command, .option])
-
             Button("AI") {
                 appModel.selectResource(.aiAssistant)
             }
@@ -133,10 +128,16 @@ struct VibekubeCommands: Commands {
             .keyboardShortcut("2", modifiers: [.command, .option])
             .disabled(!canUseDetailCommands)
 
+            Button("Open Detail Logs") {
+                resourceDetailCommandContext?.selectPanel(.logs)
+            }
+            .keyboardShortcut("3", modifiers: [.command, .option])
+            .disabled(!canUseDetailCommands)
+
             Button("Open Detail Environment") {
                 resourceDetailCommandContext?.selectPanel(.environment)
             }
-            .keyboardShortcut("3", modifiers: [.command, .option])
+            .keyboardShortcut("4", modifiers: [.command, .option])
             .disabled(!canUseDetailCommands)
 
             Button("Open YAML") {
@@ -154,10 +155,10 @@ struct VibekubeCommands: Commands {
             Divider()
 
             Button("Open Logs For Current Resource") {
-                appModel.openLogsForSelectedRoute()
+                resourceDetailCommandContext?.selectPanel(.logs)
             }
             .keyboardShortcut("l", modifiers: [.command, .shift])
-            .disabled(!appModel.canOpenLogsForSelectedRoute)
+            .disabled(!canUseDetailCommands)
         }
     }
 

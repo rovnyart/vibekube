@@ -32,6 +32,47 @@ data:
   WEB_THEME: "liquid-glass-demo"
 ---
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: echo-web-nginx-config
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/part-of: vibekube
+    app.kubernetes.io/name: echo-web-nginx-config
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes 1;
+    error_log /dev/stderr warn;
+    pid /var/run/nginx.pid;
+
+    events {
+      worker_connections 1024;
+    }
+
+    http {
+      include /etc/nginx/mime.types;
+      default_type application/octet-stream;
+      access_log off;
+      sendfile on;
+      keepalive_timeout 65;
+      include /etc/nginx/conf.d/*.conf;
+    }
+  default.conf: |
+    server {
+      listen 80;
+      server_name _;
+
+      access_log off;
+      error_log /dev/stderr warn;
+
+      location / {
+        default_type text/plain;
+        return 200 "vibekube echo-web\n";
+      }
+    }
+---
+apiVersion: v1
 kind: Secret
 metadata:
   name: demo-credentials
@@ -78,9 +119,21 @@ spec:
       containers:
         - name: nginx
           image: nginx:1.27-alpine
+          command:
+            - nginx
+          args:
+            - -g
+            - daemon off;
           ports:
             - name: http
               containerPort: 80
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
           env:
             - name: APP_ENV
               value: "development"
@@ -133,6 +186,10 @@ spec:
             limits:
               cpu: 100m
               memory: 64Mi
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: echo-web-nginx-config
 ---
 apiVersion: v1
 kind: Service
@@ -183,6 +240,8 @@ spec:
                 configMapKeyRef:
                   name: demo-runtime-config
                   key: LOG_LEVEL
+            - name: LOG_INTERVAL_SECONDS
+              value: "2"
             - name: API_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -202,7 +261,7 @@ spec:
               while true; do
                 echo "$(date -Iseconds) vibekube demo log line $i from ${POD_NAME:-$(hostname)} env=${APP_ENV:-unset} log=${LOG_LEVEL:-unset}"
                 i=$((i + 1))
-                sleep 2
+                sleep "${LOG_INTERVAL_SECONDS:-2}"
               done
           resources:
             requests:

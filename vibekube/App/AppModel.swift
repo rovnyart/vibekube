@@ -15,6 +15,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var resourceEventsStateByQuery: [ResourceEventsQuery: ResourceEventsLoadState]
     @Published private(set) var envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]
     @Published private(set) var dashboardMetricsStateByQuery: [DashboardMetricsQuery: DashboardMetricsLoadState]
+    @Published private(set) var podLogStateByQuery: [PodLogQuery: PodLogLoadState]
     @Published private(set) var searchFocusRequestID = 0
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
@@ -24,6 +25,7 @@ final class AppModel: ObservableObject {
     private let resourceDetailService: KubernetesResourceDetailServicing?
     private let resourceEventService: KubernetesResourceEventServicing?
     private let metricsService: KubernetesMetricsServicing?
+    private let logService: KubernetesLogServicing?
     private var userPreferences: UserPreferencesProviding
     private var loadedKubeconfig: Kubeconfig
     private var connectionTask: Task<Void, Never>?
@@ -31,7 +33,9 @@ final class AppModel: ObservableObject {
     private var resourceDetailTask: Task<Void, Never>?
     private var resourceEventsTask: Task<Void, Never>?
     private var dashboardMetricsTask: Task<Void, Never>?
+    private var podLogTask: Task<Void, Never>?
     private var envSecretValueTasksByQuery: [ResourceEnvSecretValueQuery: Task<Void, Never>]
+    private static let podLogLineLimit = 5_000
 
     static let allNamespacesSelection = DashboardMetricsQuery.allNamespacesSelection
     static let dashboardResourceItems: [ResourceNavigationItem] = [
@@ -52,6 +56,7 @@ final class AppModel: ObservableObject {
                 resourceDetailService: usePreviewData ? PreviewKubernetesResourceDetailService() : nil,
                 resourceEventService: usePreviewData ? PreviewKubernetesResourceEventService() : nil,
                 metricsService: usePreviewData ? PreviewKubernetesMetricsService() : nil,
+                logService: usePreviewData ? PreviewKubernetesLogService() : nil,
                 userPreferences: InMemoryUserPreferences()
             )
         } else {
@@ -65,6 +70,7 @@ final class AppModel: ObservableObject {
                 resourceDetailService: KubernetesResourceDetailService(execCredentialProvider: execCredentialProvider),
                 resourceEventService: KubernetesResourceEventService(execCredentialProvider: execCredentialProvider),
                 metricsService: KubernetesMetricsService(execCredentialProvider: execCredentialProvider),
+                logService: KubernetesLogService(execCredentialProvider: execCredentialProvider),
                 userPreferences: UserDefaultsUserPreferences()
             )
             reloadKubeconfig()
@@ -80,6 +86,7 @@ final class AppModel: ObservableObject {
         resourceDetailService: KubernetesResourceDetailServicing? = nil,
         resourceEventService: KubernetesResourceEventServicing? = nil,
         metricsService: KubernetesMetricsServicing? = nil,
+        logService: KubernetesLogServicing? = nil,
         userPreferences: UserPreferencesProviding? = nil,
         loadedKubeconfig: Kubeconfig? = nil,
         discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot] = [:],
@@ -88,6 +95,7 @@ final class AppModel: ObservableObject {
         resourceEventsStateByQuery: [ResourceEventsQuery: ResourceEventsLoadState]? = nil,
         envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]? = nil,
         dashboardMetricsStateByQuery: [DashboardMetricsQuery: DashboardMetricsLoadState]? = nil,
+        podLogStateByQuery: [PodLogQuery: PodLogLoadState]? = nil,
         selectedNamespaceByContextID: [ClusterSummary.ID: String] = [:]
     ) {
         var userPreferences = userPreferences ?? InMemoryUserPreferences()
@@ -108,6 +116,7 @@ final class AppModel: ObservableObject {
         self.resourceDetailService = resourceDetailService
         self.resourceEventService = resourceEventService
         self.metricsService = metricsService
+        self.logService = logService
         self.userPreferences = userPreferences
         self.loadedKubeconfig = loadedKubeconfig ?? .empty
         self.discoveryByContextID = discoveryByContextID
@@ -116,12 +125,14 @@ final class AppModel: ObservableObject {
         self.resourceEventsStateByQuery = resourceEventsStateByQuery ?? [:]
         self.envSecretValueStateByQuery = envSecretValueStateByQuery ?? [:]
         self.dashboardMetricsStateByQuery = dashboardMetricsStateByQuery ?? [:]
+        self.podLogStateByQuery = podLogStateByQuery ?? [:]
         self.selectedNamespaceByContextID = selectedNamespaceByContextID.isEmpty
             ? userPreferences.selectedNamespaceByContextID
             : selectedNamespaceByContextID
         self.resourceListTasksByQuery = [:]
         self.resourceEventsTask = nil
         self.dashboardMetricsTask = nil
+        self.podLogTask = nil
         self.envSecretValueTasksByQuery = [:]
 
         userPreferences.selectedContextID = initialClusterID
@@ -249,6 +260,7 @@ final class AppModel: ObservableObject {
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
         cancelDashboardMetricsTask()
+        cancelPodLogTask()
         cancelEnvSecretValueTasks()
         navigate(clusterID: id, resource: .dashboard)
         connectionErrorMessage = nil
@@ -263,6 +275,8 @@ final class AppModel: ObservableObject {
         if resource == .dashboard {
             loadDashboardResources()
             loadDashboardMetrics()
+        } else if resource == .logs {
+            loadResourceList(for: .pods)
         } else {
             loadResourceList(for: resource)
         }
@@ -277,9 +291,12 @@ final class AppModel: ObservableObject {
         userPreferences.selectedNamespaceByContextID = selectedNamespaceByContextID
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
+        cancelPodLogTask()
         if selectedResource == .dashboard {
             loadDashboardResources(force: true)
             loadDashboardMetrics(force: true)
+        } else if selectedResource == .logs {
+            loadResourceList(for: .pods, force: true)
         } else if let selectedResource {
             loadResourceList(for: selectedResource, force: true)
         }
@@ -309,6 +326,8 @@ final class AppModel: ObservableObject {
         if selectedResource == .dashboard, selectedConnectionState == .connected {
             loadDashboardResources(force: true)
             loadDashboardMetrics(force: true)
+        } else if selectedResource == .logs, selectedConnectionState == .connected {
+            loadResourceList(for: .pods, force: true)
         } else if let selectedResource,
            selectedConnectionState == .connected,
            selectedResource.discoveredResource(in: selectedDiscovery) != nil {
@@ -336,6 +355,7 @@ final class AppModel: ObservableObject {
         resourceEventsStateByQuery = resourceEventsStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
         envSecretValueStateByQuery = envSecretValueStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
         dashboardMetricsStateByQuery = dashboardMetricsStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
+        podLogStateByQuery = podLogStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
         selectedNamespaceByContextID = selectedNamespaceByContextID.filter { validContextIDs.contains($0.key) }
 
         if discoveredClusters.isEmpty {
@@ -373,6 +393,7 @@ final class AppModel: ObservableObject {
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
         cancelDashboardMetricsTask()
+        cancelPodLogTask()
         cancelEnvSecretValueTasks()
         connectionErrorMessage = nil
 
@@ -385,6 +406,8 @@ final class AppModel: ObservableObject {
             if selectedResource == .dashboard {
                 loadDashboardResources()
                 loadDashboardMetrics()
+            } else if selectedResource == .logs {
+                loadResourceList(for: .pods)
             } else if let selectedResource {
                 loadResourceList(for: selectedResource)
             }
@@ -403,6 +426,7 @@ final class AppModel: ObservableObject {
         resourceEventsStateByQuery = resourceEventsStateByQuery.filter { $0.key.contextID != selectedClusterID }
         envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != selectedClusterID }
         dashboardMetricsStateByQuery = dashboardMetricsStateByQuery.filter { $0.key.contextID != selectedClusterID }
+        podLogStateByQuery = podLogStateByQuery.filter { $0.key.contextID != selectedClusterID }
 
         connectionTask = Task.detached(priority: .userInitiated) { [weak self, connectionService, kubeconfig] in
             do {
@@ -427,11 +451,13 @@ final class AppModel: ObservableObject {
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
         cancelDashboardMetricsTask()
+        cancelPodLogTask()
         cancelEnvSecretValueTasks()
         connectionTask = nil
         resourceDetailTask = nil
         resourceEventsTask = nil
         dashboardMetricsTask = nil
+        podLogTask = nil
         connectionErrorMessage = nil
 
         updateSelectedCluster { cluster in
@@ -447,6 +473,7 @@ final class AppModel: ObservableObject {
             resourceEventsStateByQuery = resourceEventsStateByQuery.filter { $0.key.contextID != selectedClusterID }
             envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != selectedClusterID }
             dashboardMetricsStateByQuery = dashboardMetricsStateByQuery.filter { $0.key.contextID != selectedClusterID }
+            podLogStateByQuery = podLogStateByQuery.filter { $0.key.contextID != selectedClusterID }
         }
     }
 
@@ -592,6 +619,174 @@ final class AppModel: ObservableObject {
                 await self?.failResourceList(query: query, error: error)
             }
         }
+    }
+
+    func podLogState(
+        for pod: KubernetesUnstructuredResource,
+        containerName: String?,
+        timestamps: Bool = true,
+        previous: Bool = false,
+        tailLines: Int? = 200,
+        follow: Bool = false
+    ) -> PodLogLoadState {
+        guard let query = podLogQuery(
+            for: pod,
+            containerName: containerName,
+            timestamps: timestamps,
+            previous: previous,
+            tailLines: tailLines,
+            follow: follow
+        ) else {
+            return .idle
+        }
+
+        return podLogStateByQuery[query] ?? .idle
+    }
+
+    func podLogTaskID(
+        for pod: KubernetesUnstructuredResource?,
+        containerName: String?,
+        timestamps: Bool = true,
+        previous: Bool = false,
+        tailLines: Int? = 200,
+        follow: Bool = false
+    ) -> String {
+        guard let pod,
+              let query = podLogQuery(
+                for: pod,
+                containerName: containerName,
+                timestamps: timestamps,
+                previous: previous,
+                tailLines: tailLines,
+                follow: follow
+              ) else {
+            return "\(selectedClusterID ?? "none")|logs|none|\(containerName ?? "")|\(timestamps)|\(previous)|\(tailLines.map(String.init) ?? "all")|\(follow)"
+        }
+
+        return query.id
+    }
+
+    func loadPodLogs(
+        for pod: KubernetesUnstructuredResource,
+        containerName: String?,
+        timestamps: Bool = true,
+        previous: Bool = false,
+        tailLines: Int? = 200,
+        follow: Bool = false,
+        force: Bool = false
+    ) {
+        guard selectedConnectionState == .connected,
+              let query = podLogQuery(
+                for: pod,
+                containerName: containerName,
+                timestamps: timestamps,
+                previous: previous,
+                tailLines: tailLines,
+                follow: follow
+              ) else {
+            return
+        }
+
+        if !force {
+            switch podLogStateByQuery[query] {
+            case .some(.loading):
+                return
+            case .some(.loaded) where !query.follow:
+                return
+            case .some(.loaded):
+                break
+            case .some(.idle), .some(.failed), .none:
+                break
+            }
+        }
+
+        podLogTask?.cancel()
+        if query.follow {
+            seedPodLogStream(query: query)
+        } else {
+            podLogStateByQuery[query] = .loading
+        }
+
+        guard let logService else {
+            finishPodLogs(query: query, text: PreviewKubernetesLogService.previewLogText)
+            return
+        }
+
+        let kubeconfig = loadedKubeconfig
+        let options = podLogOptions(for: query)
+
+        podLogTask = Task.detached(priority: .utility) { [weak self, logService, kubeconfig, query, options] in
+            do {
+                if query.follow {
+                    var receivedChunk = false
+                    for try await chunk in logService.podLogStream(
+                        contextName: query.contextID,
+                        kubeconfig: kubeconfig,
+                        namespace: query.namespace,
+                        podName: query.podName,
+                        options: options
+                    ) {
+                        try Task.checkCancellation()
+                        receivedChunk = true
+                        await self?.appendPodLogChunk(query: query, chunk: chunk)
+                    }
+
+                    try Task.checkCancellation()
+                    await self?.finishPodLogStream(query: query, receivedChunk: receivedChunk)
+                } else {
+                    let text = try await logService.podLogs(
+                        contextName: query.contextID,
+                        kubeconfig: kubeconfig,
+                        namespace: query.namespace,
+                        podName: query.podName,
+                        options: options
+                    )
+
+                    try Task.checkCancellation()
+                    await self?.finishPodLogs(query: query, text: text)
+                }
+            } catch is CancellationError {
+                await self?.cancelPodLogs(query: query)
+            } catch {
+                await self?.failPodLogs(query: query, error: error)
+            }
+        }
+    }
+
+    func stopPodLogs() {
+        cancelPodLogTask()
+    }
+
+    func podLogsText(
+        for pod: KubernetesUnstructuredResource,
+        containerName: String?,
+        timestamps: Bool = true,
+        previous: Bool = false,
+        tailLines: Int?
+    ) async throws -> String {
+        guard selectedConnectionState == .connected,
+              let query = podLogQuery(
+                for: pod,
+                containerName: containerName,
+                timestamps: timestamps,
+                previous: previous,
+                tailLines: tailLines,
+                follow: false
+              ) else {
+            throw KubernetesClientError.unavailable("Connect to a cluster before loading pod logs.")
+        }
+
+        guard let logService else {
+            return PreviewKubernetesLogService.previewLogText
+        }
+
+        return try await logService.podLogs(
+            contextName: query.contextID,
+            kubeconfig: loadedKubeconfig,
+            namespace: query.namespace,
+            podName: query.podName,
+            options: podLogOptions(for: query)
+        )
     }
 
     func resourceDetailState(
@@ -823,6 +1018,8 @@ final class AppModel: ObservableObject {
         if selectedClusterID == contextID, selectedResource == .dashboard {
             loadDashboardResources()
             loadDashboardMetrics()
+        } else if selectedClusterID == contextID, selectedResource == .logs {
+            loadResourceList(for: .pods)
         } else if selectedClusterID == contextID, let selectedResource {
             loadResourceList(for: selectedResource)
         }
@@ -845,6 +1042,7 @@ final class AppModel: ObservableObject {
         resourceEventsStateByQuery = resourceEventsStateByQuery.filter { $0.key.contextID != contextID }
         envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != contextID }
         dashboardMetricsStateByQuery = dashboardMetricsStateByQuery.filter { $0.key.contextID != contextID }
+        podLogStateByQuery = podLogStateByQuery.filter { $0.key.contextID != contextID }
     }
 
     private func finishResourceList(
@@ -855,7 +1053,16 @@ final class AppModel: ObservableObject {
         resourceListStateByQuery[query] = .loaded(
             ResourceListSnapshot(
                 query: query,
-                items: response.items,
+                items: response.items.map { item in
+                    var item = item
+                    if item.kind == nil {
+                        item.kind = query.resource.kind
+                    }
+                    if item.apiVersion == nil {
+                        item.apiVersion = query.resource.groupVersion
+                    }
+                    return item
+                },
                 resourceVersion: response.metadata?.resourceVersion,
                 continueToken: response.metadata?.continueToken,
                 loadedAt: Date()
@@ -904,6 +1111,83 @@ final class AppModel: ObservableObject {
         } else {
             dashboardMetricsStateByQuery[query] = .failed(error.localizedDescription)
         }
+    }
+
+    private func finishPodLogs(query: PodLogQuery, text: String) {
+        podLogTask = nil
+        podLogStateByQuery[query] = .loaded(
+            PodLogSnapshot(
+                query: query,
+                text: Self.cappedPodLogText(text),
+                loadedAt: Date()
+            )
+        )
+    }
+
+    private func seedPodLogStream(query: PodLogQuery) {
+        let tailQuery = PodLogQuery(
+            contextID: query.contextID,
+            namespace: query.namespace,
+            podName: query.podName,
+            containerName: query.containerName,
+            previous: query.previous,
+            tailLines: query.tailLines,
+            timestamps: query.timestamps,
+            follow: false
+        )
+
+        let seedText: String
+        if case .loaded(let liveSnapshot) = podLogStateByQuery[query] {
+            seedText = liveSnapshot.text
+        } else if case .loaded(let tailSnapshot) = podLogStateByQuery[tailQuery] {
+            seedText = tailSnapshot.text
+        } else {
+            seedText = ""
+        }
+
+        podLogStateByQuery[query] = .loaded(
+            PodLogSnapshot(
+                query: query,
+                text: seedText,
+                loadedAt: Date()
+            )
+        )
+    }
+
+    private func appendPodLogChunk(query: PodLogQuery, chunk: String) {
+        let currentText: String
+        if case .loaded(let snapshot) = podLogStateByQuery[query] {
+            currentText = snapshot.text
+        } else {
+            currentText = ""
+        }
+
+        podLogStateByQuery[query] = .loaded(
+            PodLogSnapshot(
+                query: query,
+                text: Self.cappedPodLogText(currentText + chunk),
+                loadedAt: Date()
+            )
+        )
+    }
+
+    private func finishPodLogStream(query: PodLogQuery, receivedChunk: Bool) {
+        podLogTask = nil
+        if !receivedChunk, podLogStateByQuery[query] == .loading {
+            finishPodLogs(query: query, text: "")
+        }
+    }
+
+    private func cancelPodLogs(query: PodLogQuery) {
+        podLogTask = nil
+        if podLogStateByQuery[query] == .loading {
+            podLogStateByQuery[query] = .idle
+        }
+    }
+
+    private func failPodLogs(query: PodLogQuery, error: Error) {
+        podLogTask = nil
+        podLogStateByQuery[query] = .failed(error.localizedDescription)
     }
 
     private func finishResourceDetail(
@@ -990,6 +1274,14 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func cancelPodLogTask() {
+        podLogTask?.cancel()
+        podLogTask = nil
+        for (query, state) in podLogStateByQuery where state == .loading {
+            podLogStateByQuery[query] = .idle
+        }
+    }
+
     private func navigate(
         clusterID: ClusterSummary.ID?,
         resource: ResourceNavigationItem,
@@ -1041,6 +1333,53 @@ final class AppModel: ObservableObject {
             contextID: selectedClusterID,
             namespaceSelection: selectedNamespaceSelection
         )
+    }
+
+    private func podLogQuery(
+        for pod: KubernetesUnstructuredResource,
+        containerName: String?,
+        timestamps: Bool,
+        previous: Bool,
+        tailLines: Int?,
+        follow: Bool
+    ) -> PodLogQuery? {
+        guard let selectedClusterID,
+              let podName = pod.metadata.name,
+              let namespace = pod.metadata.namespace,
+              !podName.isEmpty,
+              !namespace.isEmpty else {
+            return nil
+        }
+
+        return PodLogQuery(
+            contextID: selectedClusterID,
+            namespace: namespace,
+            podName: podName,
+            containerName: containerName,
+            previous: previous,
+            tailLines: tailLines,
+            timestamps: timestamps,
+            follow: follow
+        )
+    }
+
+    private func podLogOptions(for query: PodLogQuery) -> KubernetesPodLogOptions {
+        KubernetesPodLogOptions(
+            container: query.containerName,
+            previous: query.previous,
+            follow: query.follow,
+            tailLines: query.follow ? 0 : query.tailLines,
+            timestamps: query.timestamps
+        )
+    }
+
+    private static func cappedPodLogText(_ text: String) -> String {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard lines.count > podLogLineLimit else {
+            return text
+        }
+
+        return lines.suffix(podLogLineLimit).joined(separator: "\n")
     }
 
     private func dashboardResourceStates() -> [ResourceNavigationItem: ResourceListLoadState] {
@@ -1181,7 +1520,12 @@ final class AppModel: ObservableObject {
             return nil
         }
 
-        return ResourceNavigationItem(rawValue: id)
+        guard let item = ResourceNavigationItem(rawValue: id),
+              item.isPrimaryNavigationVisible else {
+            return nil
+        }
+
+        return item
     }
 }
 
@@ -1482,6 +1826,51 @@ private struct PreviewKubernetesMetricsService: KubernetesMetricsServicing {
             nodeMetrics: nodeMetrics.items,
             podMetrics: podMetrics.items
         )
+    }
+}
+
+private struct PreviewKubernetesLogService: KubernetesLogServicing {
+    static let previewLogText = """
+    2026-06-15T10:00:01Z web-0 starting preview server
+    2026-06-15T10:00:03Z web-0 listening on :8080
+    2026-06-15T10:00:07Z web-0 GET /healthz 200
+    2026-06-15T10:00:12Z web-0 GET / 200
+    """
+
+    func podLogs(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) async throws -> String {
+        Self.previewLogText
+    }
+
+    func podLogStream(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                for line in Self.previewLogText.split(separator: "\n", omittingEmptySubsequences: false) {
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                    if Task.isCancelled {
+                        continuation.finish()
+                        return
+                    }
+                    continuation.yield(String(line) + "\n")
+                }
+                continuation.finish()
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
     }
 }
 

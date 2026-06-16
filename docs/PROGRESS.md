@@ -13,7 +13,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Started | Dashboard is simplified to a fast nodes/pods/discovery/metrics overview while workload, event, and storage summaries wait for a non-blocking design |
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
 | 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, Environment, YAML, Metadata, and Conditions tabs with masked Secret env reveal |
-| 7 | [Logs](PHASE7.md) | Not started | Waiting for pod/resource detail support |
+| 7 | [Logs](PHASE7.md) | Started | Pod detail inspector can load and stream logs with timestamp, search, grep, copy, and expanded-view controls |
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Not started | Waiting for stable resource list model |
 | 9 | [Workload Debugging Basics](PHASE9.md) | Not started | Waiting for logs/detail foundations |
 | 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
@@ -46,7 +46,7 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Browse resources.
 - [x] Inspect YAML.
 - [x] Show dashboard health summaries from live cluster resources.
-- [ ] Stream logs.
+- [x] Stream logs.
 - [ ] Add real-time updates.
 - [ ] Add safe mutations.
 - [ ] Add AI explain/summarize flows.

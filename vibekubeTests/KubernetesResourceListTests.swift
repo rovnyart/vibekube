@@ -42,6 +42,25 @@ struct KubernetesResourceListTests {
         #expect(storageClasses.itemPath(namespace: "ignored", name: "fast") == "/apis/storage.k8s.io/v1/storageclasses/fast")
     }
 
+    @Test func buildsPodLogQueryItems() {
+        let options = KubernetesPodLogOptions(
+            container: "web",
+            previous: true,
+            follow: false,
+            tailLines: 200,
+            sinceSeconds: 3_600,
+            timestamps: true
+        )
+
+        let values = Dictionary(uniqueKeysWithValues: options.queryItems.map { ($0.name, $0.value) })
+        #expect(values["container"] == "web")
+        #expect(values["previous"] == "true")
+        #expect(values["tailLines"] == "200")
+        #expect(values["sinceSeconds"] == "3600")
+        #expect(values["timestamps"] == "true")
+        #expect(values["follow"] == nil)
+    }
+
     @Test func decodesResourceListMetadataAndRows() throws {
         let list = try JSONDecoder().decode(
             KubernetesUnstructuredResourceList.self,
