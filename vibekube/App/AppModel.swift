@@ -31,9 +31,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var secretRevealRequiresConfirmation: Bool
     @Published private(set) var defaultNamespaceBehavior: DefaultNamespaceBehavior
     @Published private(set) var resourceWatchesEnabled: Bool
+    @Published private(set) var kubeconfigPathOverride: String?
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
-    private let kubeconfigLoader: KubeconfigLoader?
+    private var kubeconfigLoader: KubeconfigLoader?
     private let connectionService: KubernetesConnectionServicing?
     private let resourceListService: KubernetesResourceListServicing?
     private let resourceDetailService: KubernetesResourceDetailServicing?
@@ -89,7 +90,10 @@ final class AppModel: ObservableObject {
             self.init(
                 clusters: [],
                 kubeconfigState: .notLoaded,
-                kubeconfigLoader: KubeconfigLoader(environment: environment),
+                kubeconfigLoader: KubeconfigLoader(
+                    environment: environment,
+                    pathOverride: UserDefaultsUserPreferences().kubeconfigPathOverride
+                ),
                 connectionService: KubernetesConnectionService(execCredentialProvider: execCredentialProvider),
                 resourceListService: KubernetesResourceListService(execCredentialProvider: execCredentialProvider),
                 resourceDetailService: KubernetesResourceDetailService(execCredentialProvider: execCredentialProvider),
@@ -138,7 +142,7 @@ final class AppModel: ObservableObject {
         self.clusters = clusters
         self.route = AppRoute(clusterID: initialClusterID, resource: initialResource)
         self.kubeconfigState = kubeconfigState ?? .loaded(contextCount: clusters.count, sourceCount: 1)
-        self.kubeconfigLoader = kubeconfigLoader
+        self.kubeconfigLoader = kubeconfigLoader?.withPathOverride(userPreferences.kubeconfigPathOverride)
         self.connectionService = connectionService
         self.resourceListService = resourceListService
         self.resourceDetailService = resourceDetailService
@@ -164,6 +168,7 @@ final class AppModel: ObservableObject {
         self.secretRevealRequiresConfirmation = userPreferences.secretRevealRequiresConfirmation
         self.defaultNamespaceBehavior = userPreferences.defaultNamespaceBehavior
         self.resourceWatchesEnabled = userPreferences.resourceWatchesEnabled
+        self.kubeconfigPathOverride = userPreferences.kubeconfigPathOverride
         self.selectedNamespaceByContextID = selectedNamespaceByContextID.isEmpty
             ? userPreferences.selectedNamespaceByContextID
             : selectedNamespaceByContextID
@@ -505,6 +510,24 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func setKubeconfigPathOverride(_ pathOverride: String?) {
+        let normalized = Self.normalizedKubeconfigPathOverride(pathOverride)
+        guard kubeconfigPathOverride != normalized else {
+            return
+        }
+
+        kubeconfigPathOverride = normalized
+        userPreferences.kubeconfigPathOverride = normalized
+        kubeconfigLoader = kubeconfigLoader?.withPathOverride(normalized)
+        recordDiagnostic(
+            .info,
+            category: "settings",
+            message: normalized == nil ? "Kubeconfig path reset to default discovery." : "Kubeconfig path override changed.",
+            metadata: ["customPath": normalized == nil ? "false" : "true"]
+        )
+        reloadKubeconfig()
+    }
+
     func clearRecentDiagnostics() {
         Task { [diagnosticsLogger] in
             await diagnosticsLogger.clearRecentEvents()
@@ -612,6 +635,20 @@ final class AppModel: ObservableObject {
                 "sourceCount": "\(result.existingSources.count)"
             ]
         )
+    }
+
+    private static func normalizedKubeconfigPathOverride(_ pathOverride: String?) -> String? {
+        guard let pathOverride else {
+            return nil
+        }
+
+        let normalized = pathOverride
+            .split(separator: ":", omittingEmptySubsequences: true)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ":")
+
+        return normalized.isEmpty ? nil : normalized
     }
 
     func connectSelectedCluster() {

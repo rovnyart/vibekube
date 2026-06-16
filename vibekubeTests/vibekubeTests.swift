@@ -84,6 +84,39 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelReloadsKubeconfigWhenPathOverrideChanges() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let first = directory.appendingPathComponent("first.yaml")
+        let second = directory.appendingPathComponent("second.yaml")
+        try testKubeconfig(named: "first", server: "https://first.example.com")
+            .write(to: first, atomically: true, encoding: .utf8)
+        try testKubeconfig(named: "second", server: "https://second.example.com")
+            .write(to: second, atomically: true, encoding: .utf8)
+
+        let model = AppModel(
+            clusters: [],
+            kubeconfigState: .notLoaded,
+            kubeconfigLoader: KubeconfigLoader(environment: ["KUBECONFIG": first.path]),
+            userPreferences: InMemoryUserPreferences()
+        )
+
+        model.reloadKubeconfig()
+        #expect(model.clusters.map(\.id) == ["first"])
+
+        model.setKubeconfigPathOverride(second.path)
+
+        #expect(model.kubeconfigPathOverride == second.path)
+        #expect(model.clusters.map(\.id) == ["second"])
+        #expect(model.selectedClusterID == "second")
+    }
+
+    @MainActor
     @Test func appModelIgnoresInvalidRestoredRouteResource() {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -1215,6 +1248,25 @@ private func waitForResourceList(
         }
         return false
     }
+}
+
+private func testKubeconfig(named name: String, server: String) -> String {
+    """
+    current-context: \(name)
+    clusters:
+    - name: \(name)
+      cluster:
+        server: \(server)
+    contexts:
+    - name: \(name)
+      context:
+        cluster: \(name)
+        user: \(name)-user
+    users:
+    - name: \(name)-user
+      user:
+        token: \(name)-token
+    """
 }
 
 @MainActor

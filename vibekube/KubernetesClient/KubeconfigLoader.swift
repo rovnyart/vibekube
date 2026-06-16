@@ -19,13 +19,20 @@ struct KubeconfigLoadResult {
 struct KubeconfigLoader {
     private var environment: [String: String]
     private var fileManager: FileManager
+    private var pathOverride: String?
 
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        pathOverride: String? = nil
     ) {
         self.environment = environment
         self.fileManager = fileManager
+        self.pathOverride = pathOverride
+    }
+
+    func withPathOverride(_ pathOverride: String?) -> KubeconfigLoader {
+        KubeconfigLoader(environment: environment, fileManager: fileManager, pathOverride: pathOverride)
     }
 
     func load() -> KubeconfigLoadResult {
@@ -59,16 +66,31 @@ struct KubeconfigLoader {
     }
 
     func kubeconfigSources() -> [KubeconfigSource] {
+        if let pathOverride, !pathOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return sources(from: pathOverride)
+        }
+
         if let kubeconfig = environment["KUBECONFIG"], !kubeconfig.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return kubeconfig
-                .split(separator: ":", omittingEmptySubsequences: true)
-                .map { URL(fileURLWithPath: String($0), relativeTo: nil).standardizedFileURL }
-                .map(KubeconfigSource.init(url:))
+            return sources(from: kubeconfig)
         }
 
         return [
             KubeconfigSource(url: fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".kube/config"))
         ]
+    }
+
+    private func sources(from pathList: String) -> [KubeconfigSource] {
+        pathList
+            .split(separator: ":", omittingEmptySubsequences: true)
+            .map {
+                NSString(
+                    string: String($0)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                ).expandingTildeInPath
+            }
+            .filter { !$0.isEmpty }
+            .map { URL(fileURLWithPath: $0, relativeTo: nil).standardizedFileURL }
+            .map(KubeconfigSource.init(url:))
     }
 
     private func merge(_ configs: [Kubeconfig]) -> Kubeconfig {

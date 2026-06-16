@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var exportStatus: String?
+    @State private var kubeconfigPathDraft = ""
 
     private let logLineLimitOptions = [1_000, 5_000, 10_000, 20_000, 50_000]
 
@@ -15,6 +16,44 @@ struct SettingsView: View {
                 SectionSurface(title: "Kubernetes", systemImage: "shippingbox") {
                     VStack(alignment: .leading, spacing: 14) {
                         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 12) {
+                            GridRow {
+                                Text("Kubeconfig")
+                                    .foregroundStyle(.secondary)
+
+                                VStack(alignment: .leading, spacing: 8) {
+                                    TextField("Default: $KUBECONFIG or ~/.kube/config", text: $kubeconfigPathDraft)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.callout.monospaced())
+
+                                    HStack(spacing: 8) {
+                                        Button {
+                                            chooseKubeconfigFile()
+                                        } label: {
+                                            Label("Browse", systemImage: "folder")
+                                        }
+
+                                        Button {
+                                            applyKubeconfigPathDraft()
+                                        } label: {
+                                            Label("Apply", systemImage: "arrow.clockwise")
+                                        }
+                                        .disabled(!kubeconfigPathHasChanges)
+
+                                        Button {
+                                            resetKubeconfigPath()
+                                        } label: {
+                                            Label("Reset", systemImage: "arrow.uturn.backward")
+                                        }
+                                        .disabled(appModel.kubeconfigPathOverride == nil && kubeconfigPathDraft.isEmpty)
+                                    }
+                                    .controlSize(.small)
+
+                                    Text(kubeconfigPathHelpText)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+
                             GridRow {
                                 Text("Initial namespace")
                                     .foregroundStyle(.secondary)
@@ -149,6 +188,12 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("settings.view")
+        .onAppear {
+            kubeconfigPathDraft = appModel.kubeconfigPathOverride ?? ""
+        }
+        .onChange(of: appModel.kubeconfigPathOverride) { _, newValue in
+            kubeconfigPathDraft = newValue ?? ""
+        }
     }
 
     private var header: some View {
@@ -196,6 +241,26 @@ struct SettingsView: View {
         )
     }
 
+    private var kubeconfigPathHasChanges: Bool {
+        normalizedKubeconfigPathDraft != (appModel.kubeconfigPathOverride ?? "")
+    }
+
+    private var normalizedKubeconfigPathDraft: String {
+        kubeconfigPathDraft
+            .split(separator: ":", omittingEmptySubsequences: true)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ":")
+    }
+
+    private var kubeconfigPathHelpText: String {
+        if appModel.kubeconfigPathOverride == nil {
+            "Using the default kubeconfig discovery. You can paste one path or a colon-separated KUBECONFIG list."
+        } else {
+            "Using a custom kubeconfig path. Apply reloads contexts immediately."
+        }
+    }
+
     private var resourceWatchesEnabledBinding: Binding<Bool> {
         Binding(
             get: { appModel.resourceWatchesEnabled },
@@ -225,5 +290,30 @@ struct SettingsView: View {
         let url = URL(fileURLWithPath: appModel.diagnosticsLogDirectoryPath, isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         NSWorkspace.shared.open(url)
+    }
+
+    private func applyKubeconfigPathDraft() {
+        appModel.setKubeconfigPathOverride(normalizedKubeconfigPathDraft.isEmpty ? nil : normalizedKubeconfigPathDraft)
+    }
+
+    private func resetKubeconfigPath() {
+        kubeconfigPathDraft = ""
+        appModel.setKubeconfigPathOverride(nil)
+    }
+
+    private func chooseKubeconfigFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.resolvesAliases = true
+        panel.title = "Choose kubeconfig"
+        panel.prompt = "Use"
+
+        guard panel.runModal() == .OK else {
+            return
+        }
+
+        kubeconfigPathDraft = panel.urls.map(\.path).joined(separator: ":")
     }
 }

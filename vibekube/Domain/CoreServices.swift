@@ -40,4 +40,5 @@ protocol UserPreferencesProviding {
     var secretRevealRequiresConfirmation: Bool { get set }
     var defaultNamespaceBehavior: DefaultNamespaceBehavior { get set }
     var resourceWatchesEnabled: Bool { get set }
+    var kubeconfigPathOverride: String? { get set }
 }

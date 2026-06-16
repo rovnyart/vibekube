@@ -12,6 +12,7 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         static let secretRevealRequiresConfirmation = "vibekube.secrets.revealRequiresConfirmation"
         static let defaultNamespaceBehavior = "vibekube.namespace.defaultBehavior"
         static let resourceWatchesEnabled = "vibekube.watches.enabled"
+        static let kubeconfigPathOverride = "vibekube.kubeconfig.pathOverride"
     }
 
     var defaults: UserDefaults = .standard
@@ -99,6 +100,20 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         }
         set {
             defaults.set(newValue, forKey: Key.resourceWatchesEnabled)
+        }
+    }
+
+    var kubeconfigPathOverride: String? {
+        get {
+            guard let value = defaults.string(forKey: Key.kubeconfigPathOverride),
+                  !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+            return value
+        }
+        set {
+            let normalized = newValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            defaults.setOrRemove(normalized?.isEmpty == false ? normalized : nil, forKey: Key.kubeconfigPathOverride)
         }
     }
 }

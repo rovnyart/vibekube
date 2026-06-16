@@ -215,7 +215,53 @@ struct KubeconfigParserTests {
         #expect(result.kubeconfig.contexts.map(\.name) == ["first", "second"])
     }
 
+    @Test func loaderUsesPathOverrideBeforeEnvironmentKubeconfig() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let environmentConfig = directory.appendingPathComponent("environment.yaml")
+        let overrideConfig = directory.appendingPathComponent("override.yaml")
+        try kubeconfig(named: "environment", server: "https://environment.example.com")
+            .write(to: environmentConfig, atomically: true, encoding: .utf8)
+        try kubeconfig(named: "override", server: "https://override.example.com")
+            .write(to: overrideConfig, atomically: true, encoding: .utf8)
+
+        let loader = KubeconfigLoader(
+            environment: ["KUBECONFIG": environmentConfig.path],
+            pathOverride: overrideConfig.path
+        )
+        let result = loader.load()
+
+        #expect(result.issues.isEmpty)
+        #expect(result.requestedPaths.map(\.url.path) == [overrideConfig.path])
+        #expect(result.kubeconfig.currentContext == "override")
+        #expect(result.kubeconfig.clusters.first?.cluster.server == "https://override.example.com")
+    }
+
     private func parser() -> KubeconfigParser {
         KubeconfigParser(source: KubeconfigSource(url: URL(fileURLWithPath: "/tmp/kubeconfig")))
+    }
+
+    private func kubeconfig(named name: String, server: String) -> String {
+        """
+        current-context: \(name)
+        clusters:
+        - name: \(name)
+          cluster:
+            server: \(server)
+        contexts:
+        - name: \(name)
+          context:
+            cluster: \(name)
+            user: \(name)-user
+        users:
+        - name: \(name)-user
+          user:
+            token: \(name)-token
+        """
     }
 }

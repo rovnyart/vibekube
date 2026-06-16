@@ -11,4 +11,5 @@ struct InMemoryUserPreferences: UserPreferencesProviding {
     var secretRevealRequiresConfirmation = true
     var defaultNamespaceBehavior: DefaultNamespaceBehavior = .allNamespaces
     var resourceWatchesEnabled = true
+    var kubeconfigPathOverride: String?
 }
