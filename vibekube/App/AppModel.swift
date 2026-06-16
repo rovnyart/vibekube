@@ -27,6 +27,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var diagnosticsIncludeClusterNames: Bool
     @Published private(set) var diagnosticsRetentionDays: Int
     @Published private(set) var diagnosticsLogDirectoryPath: String
+    @Published private(set) var podLogLineLimit: Int
+    @Published private(set) var secretRevealRequiresConfirmation: Bool
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
     private let kubeconfigLoader: KubeconfigLoader?
@@ -50,7 +52,6 @@ final class AppModel: ObservableObject {
     private var dashboardMetricsTask: Task<Void, Never>?
     private var podLogTask: Task<Void, Never>?
     private var envSecretValueTasksByQuery: [ResourceEnvSecretValueQuery: Task<Void, Never>]
-    private let podLogLineLimit: Int
     nonisolated static let defaultPodLogLineLimit = 5_000
     private static let resourceWatchReconnectDelaysNanoseconds: [UInt64] = [
         500_000_000,
@@ -120,7 +121,7 @@ final class AppModel: ObservableObject {
         dashboardMetricsStateByQuery: [DashboardMetricsQuery: DashboardMetricsLoadState]? = nil,
         podLogStateByQuery: [PodLogQuery: PodLogLoadState]? = nil,
         diagnosticsLogger: DiagnosticsLogger = .shared,
-        podLogLineLimit: Int = 5_000,
+        podLogLineLimit: Int? = nil,
         selectedNamespaceByContextID: [ClusterSummary.ID: String] = [:]
     ) {
         var userPreferences = userPreferences ?? InMemoryUserPreferences()
@@ -143,7 +144,6 @@ final class AppModel: ObservableObject {
         self.metricsService = metricsService
         self.logService = logService
         self.diagnosticsLogger = diagnosticsLogger
-        self.podLogLineLimit = max(1, podLogLineLimit)
         self.userPreferences = userPreferences
         self.loadedKubeconfig = loadedKubeconfig ?? .empty
         self.discoveryByContextID = discoveryByContextID
@@ -158,6 +158,8 @@ final class AppModel: ObservableObject {
         self.diagnosticsIncludeClusterNames = userPreferences.diagnosticsIncludeClusterNames
         self.diagnosticsRetentionDays = userPreferences.diagnosticsRetentionDays
         self.diagnosticsLogDirectoryPath = DiagnosticsLogger.defaultLogDirectoryURL().path
+        self.podLogLineLimit = Self.clampedPodLogLineLimit(podLogLineLimit ?? userPreferences.podLogLineLimit)
+        self.secretRevealRequiresConfirmation = userPreferences.secretRevealRequiresConfirmation
         self.selectedNamespaceByContextID = selectedNamespaceByContextID.isEmpty
             ? userPreferences.selectedNamespaceByContextID
             : selectedNamespaceByContextID
@@ -409,6 +411,38 @@ final class AppModel: ObservableObject {
             category: "diagnostics",
             message: "Diagnostics retention changed.",
             metadata: ["days": "\(clampedDays)"]
+        )
+    }
+
+    func setPodLogLineLimit(_ lineLimit: Int) {
+        let clampedLimit = Self.clampedPodLogLineLimit(lineLimit)
+        guard podLogLineLimit != clampedLimit else {
+            return
+        }
+
+        podLogLineLimit = clampedLimit
+        userPreferences.podLogLineLimit = clampedLimit
+        recapLoadedPodLogs(lineLimit: clampedLimit)
+        recordDiagnostic(
+            .info,
+            category: "settings",
+            message: "Pod log buffer limit changed.",
+            metadata: ["lineLimit": "\(clampedLimit)"]
+        )
+    }
+
+    func setSecretRevealRequiresConfirmation(_ requiresConfirmation: Bool) {
+        guard secretRevealRequiresConfirmation != requiresConfirmation else {
+            return
+        }
+
+        secretRevealRequiresConfirmation = requiresConfirmation
+        userPreferences.secretRevealRequiresConfirmation = requiresConfirmation
+        recordDiagnostic(
+            .info,
+            category: "settings",
+            message: "Secret reveal confirmation setting changed.",
+            metadata: ["requiresConfirmation": requiresConfirmation ? "true" : "false"]
         )
     }
 
@@ -2275,6 +2309,22 @@ final class AppModel: ObservableObject {
         )
     }
 
+    private func recapLoadedPodLogs(lineLimit: Int) {
+        podLogStateByQuery = podLogStateByQuery.mapValues { state in
+            guard case .loaded(let snapshot) = state else {
+                return state
+            }
+
+            return .loaded(
+                PodLogSnapshot(
+                    query: snapshot.query,
+                    text: Self.cappedPodLogText(snapshot.text, lineLimit: lineLimit),
+                    loadedAt: snapshot.loadedAt
+                )
+            )
+        }
+    }
+
     nonisolated private static func expandedEnvironmentSummary(
         for detail: KubernetesResourceDetail,
         query: ResourceDetailQuery,
@@ -2751,6 +2801,10 @@ final class AppModel: ObservableObject {
 
         let cappedText = lines.suffix(lineLimit).joined(separator: "\n")
         return hasTrailingNewline ? cappedText + "\n" : cappedText
+    }
+
+    nonisolated private static func clampedPodLogLineLimit(_ lineLimit: Int) -> Int {
+        max(1, min(lineLimit, 50_000))
     }
 
     private func dashboardResourceStates() -> [ResourceNavigationItem: ResourceListLoadState] {

@@ -612,6 +612,48 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelRecapsLoadedPodLogsWhenBufferLimitChanges() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            logService: BufferingLogService(),
+            loadedKubeconfig: kubeconfig(),
+            podLogLineLimit: 6
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitForResourceList(model, .pods)
+
+        guard case .loaded(let listSnapshot) = model.resourceListState(for: .pods),
+              let pod = listSnapshot.items.first else {
+            Issue.record("Expected pod row")
+            return
+        }
+
+        model.loadPodLogs(for: pod, containerName: "web", follow: true)
+        try await waitUntil("streaming pod logs loaded") {
+            if case .loaded(let snapshot) = model.podLogState(for: pod, containerName: "web", follow: true) {
+                return snapshot.text.contains("line 6")
+            }
+            return false
+        }
+
+        model.setPodLogLineLimit(3)
+
+        guard case .loaded(let logSnapshot) = model.podLogState(for: pod, containerName: "web", follow: true) else {
+            Issue.record("Expected streaming pod logs")
+            return
+        }
+
+        #expect(model.podLogLineLimit == 3)
+        #expect(logSnapshot.lines == ["line 4", "line 5", "line 6", ""])
+    }
+
+    @MainActor
     @Test func appModelAppliesPodWatchAddedEvents() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -1027,6 +1069,23 @@ struct vibekubeTests {
         }
 
         #expect(value == "test-password")
+    }
+
+    @MainActor
+    @Test func appModelStoresSecretRevealConfirmationPreference() {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        #expect(model.secretRevealRequiresConfirmation)
+
+        model.setSecretRevealRequiresConfirmation(false)
+        #expect(!model.secretRevealRequiresConfirmation)
+
+        model.setSecretRevealRequiresConfirmation(true)
+        #expect(model.secretRevealRequiresConfirmation)
     }
 
     @Test func resourceNavigationGroupsWorkloads() {

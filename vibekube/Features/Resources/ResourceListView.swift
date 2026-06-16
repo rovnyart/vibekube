@@ -2531,6 +2531,7 @@ private struct ResourceDetailEnvironmentView: View {
 private struct ResourceEnvironmentVariableRow: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var isRevealed = false
+    @State private var isConfirmingReveal = false
 
     let variable: KubernetesEnvVarSummary
     let namespace: String?
@@ -2566,6 +2567,18 @@ private struct ResourceEnvironmentVariableRow: View {
             }
         }
         .padding(.vertical, 9)
+        .confirmationDialog(
+            "Reveal Secret value?",
+            isPresented: $isConfirmingReveal,
+            titleVisibility: .visible
+        ) {
+            Button("Reveal Value", role: .destructive) {
+                revealSecretValue()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The value will be visible on screen until you hide it or close this inspector.")
+        }
     }
 
     @ViewBuilder
@@ -2693,6 +2706,15 @@ private struct ResourceEnvironmentVariableRow: View {
             return
         }
 
+        if appModel.secretRevealRequiresConfirmation {
+            isConfirmingReveal = true
+            return
+        }
+
+        revealSecretValue()
+    }
+
+    private func revealSecretValue() {
         isRevealed = true
         guard let source = variable.source, source.kind == .secretKeyRef else {
             return

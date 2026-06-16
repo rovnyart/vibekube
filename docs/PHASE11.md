@@ -18,6 +18,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] Diagnostics export exists.
 - [x] Optional local JSONL file logging exists and is disabled by default.
 - [x] Diagnostics retention and cluster-name inclusion settings exist.
+- [x] Log buffer and Secret reveal confirmation settings exist.
 - [x] Privacy statement exists.
 
 ## Implementation Slices
@@ -32,7 +33,8 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [ ] Refresh/watch behavior.
 - [ ] Table density.
 - [ ] Appearance behavior.
-- [ ] Log buffer limits.
+- [x] Log buffer limits.
+- [x] Secret reveal confirmation behavior.
 - [ ] AI settings placeholder.
 - [ ] Reset local preferences action.
 

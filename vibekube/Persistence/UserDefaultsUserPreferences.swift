@@ -8,6 +8,8 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         static let diagnosticsFileLoggingEnabled = "vibekube.diagnostics.fileLoggingEnabled"
         static let diagnosticsIncludeClusterNames = "vibekube.diagnostics.includeClusterNames"
         static let diagnosticsRetentionDays = "vibekube.diagnostics.retentionDays"
+        static let podLogLineLimit = "vibekube.logs.lineLimit"
+        static let secretRevealRequiresConfirmation = "vibekube.secrets.revealRequiresConfirmation"
     }
 
     var defaults: UserDefaults = .standard
@@ -48,6 +50,28 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         }
         set {
             defaults.set(max(1, min(newValue, 30)), forKey: Key.diagnosticsRetentionDays)
+        }
+    }
+
+    var podLogLineLimit: Int {
+        get {
+            let value = defaults.integer(forKey: Key.podLogLineLimit)
+            return value > 0 ? value : 5_000
+        }
+        set {
+            defaults.set(max(500, min(newValue, 50_000)), forKey: Key.podLogLineLimit)
+        }
+    }
+
+    var secretRevealRequiresConfirmation: Bool {
+        get {
+            guard defaults.object(forKey: Key.secretRevealRequiresConfirmation) != nil else {
+                return true
+            }
+            return defaults.bool(forKey: Key.secretRevealRequiresConfirmation)
+        }
+        set {
+            defaults.set(newValue, forKey: Key.secretRevealRequiresConfirmation)
         }
     }
 }

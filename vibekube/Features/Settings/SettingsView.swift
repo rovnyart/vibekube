@@ -5,10 +5,34 @@ struct SettingsView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var exportStatus: String?
 
+    private let logLineLimitOptions = [1_000, 5_000, 10_000, 20_000, 50_000]
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
+
+                SectionSurface(title: "Logs", systemImage: "terminal") {
+                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 12) {
+                        GridRow {
+                            Text("Live buffer")
+                                .foregroundStyle(.secondary)
+
+                            Picker("Live buffer", selection: podLogLineLimitBinding) {
+                                ForEach(logLineLimitOptions, id: \.self) { lineLimit in
+                                    Text("\(lineLimit.formatted()) lines").tag(lineLimit)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(width: 180, alignment: .leading)
+                        }
+                    }
+                }
+
+                SectionSurface(title: "Secrets", systemImage: "eye") {
+                    Toggle("Confirm before revealing Secret-backed values", isOn: secretRevealConfirmationBinding)
+                }
 
                 SectionSurface(title: "Diagnostics", systemImage: "waveform.path.ecg.rectangle") {
                     VStack(alignment: .leading, spacing: 14) {
@@ -109,7 +133,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Settings")
                 .font(.largeTitle.weight(.semibold))
-            Text("Local diagnostics")
+            Text("Local app behavior")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -133,6 +157,20 @@ struct SettingsView: View {
         Binding(
             get: { appModel.diagnosticsRetentionDays },
             set: { appModel.setDiagnosticsRetentionDays($0) }
+        )
+    }
+
+    private var podLogLineLimitBinding: Binding<Int> {
+        Binding(
+            get: { appModel.podLogLineLimit },
+            set: { appModel.setPodLogLineLimit($0) }
+        )
+    }
+
+    private var secretRevealConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { appModel.secretRevealRequiresConfirmation },
+            set: { appModel.setSecretRevealRequiresConfirmation($0) }
         )
     }
 

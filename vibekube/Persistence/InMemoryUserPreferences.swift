@@ -7,4 +7,6 @@ struct InMemoryUserPreferences: UserPreferencesProviding {
     var diagnosticsFileLoggingEnabled = false
     var diagnosticsIncludeClusterNames = false
     var diagnosticsRetentionDays = 7
+    var podLogLineLimit = 5_000
+    var secretRevealRequiresConfirmation = true
 }

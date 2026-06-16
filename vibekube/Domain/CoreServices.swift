@@ -20,4 +20,6 @@ protocol UserPreferencesProviding {
     var diagnosticsFileLoggingEnabled: Bool { get set }
     var diagnosticsIncludeClusterNames: Bool { get set }
     var diagnosticsRetentionDays: Int { get set }
+    var podLogLineLimit: Int { get set }
+    var secretRevealRequiresConfirmation: Bool { get set }
 }

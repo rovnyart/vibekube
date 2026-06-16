@@ -1,6 +1,6 @@
 # Phase 8: Watches And Real-Time Updates
 
-Status: Started.
+Status: Review checkpoint.
 
 Goal: keep resource lists and details current through Kubernetes watches without flicker or stale data confusion.
 
@@ -69,7 +69,7 @@ Checkpoint: stop when pod and deployment lists can receive watch updates without
 - [x] Selected-resource detail watch refresh test.
 - [x] Burst watch coalescing test.
 - [x] Mock watch reconnect tests.
-- [ ] Manual QA with demo CronJob pods.
+- [x] Manual QA with demo/real cluster watch updates.
 
 ## Acceptance Criteria
 

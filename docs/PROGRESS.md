@@ -14,10 +14,10 @@ This file tracks implementation status across all phases. Keep this updated when
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
 | 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, expanded Environment, YAML, Metadata, Conditions, masked Secret env reveal, and version-aware refresh |
 | 7 | [Logs](PHASE7.md) | Review checkpoint | Pod detail inspector has rich logs: tail/since controls, live streaming with smart follow, timestamps, safe JSONL formatting, search, grep, copy, save, download-all, fullscreen, and previous-container logs |
-| 8 | [Watches And Real-Time Updates](PHASE8.md) | Started | Active watchable resource lists have watch merging, durable reconnect/backoff, live/stale/failure status, burst coalescing, version-aware detail refresh, narrow selected-resource detail watches, interaction-stable table ordering, and subtle updated-row feedback |
+| 8 | [Watches And Real-Time Updates](PHASE8.md) | Review checkpoint | Active watchable resource lists have watch merging, durable reconnect/backoff, live/stale/failure status, burst coalescing, version-aware detail refresh, narrow selected-resource detail watches, interaction-stable table ordering, subtle updated-row feedback, and manual validation |
 | 9 | [Workload Debugging Basics](PHASE9.md) | Not started | Waiting for logs/detail foundations |
 | 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
-| 11 | [Preferences, Security, Packaging](PHASE11.md) | Started | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, privacy docs, and real Teleport/TLS validation exist |
+| 11 | [Preferences, Security, Packaging](PHASE11.md) | Started | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, log buffer and Secret reveal settings, privacy docs, and real Teleport/TLS validation exist |
 | 12 | [AI Foundations](PHASE12.md) | Not started | Waiting for stable resource context model |
 | 13 | [Advanced AI Operations](PHASE13.md) | Not started | Waiting for AI foundation |
 
@@ -29,10 +29,9 @@ The current product milestone is Vibekube 0.1.x: a fast, read-only, distributabl
 
 Recommended next focus:
 
-1. Manually QA Phase 8 watches on the demo cluster and a real cluster, then move Phase 8 to review checkpoint if it feels stable.
-2. Finish release readiness by running the clean-machine checklist, then add settings for kubeconfig path, log buffer, and secret reveal policy.
-3. Use diagnostics on the work Mac during the next real-cluster validation pass and expand the logged categories only where gaps appear.
-4. Return to dashboard only after the read-only/debug workflows are stable enough to avoid another laggy rewrite loop.
+1. Finish release readiness by running the clean-machine checklist, then add settings for kubeconfig path and default namespace behavior.
+2. Use diagnostics on the work Mac during the next real-cluster validation pass and expand the logged categories only where gaps appear.
+3. Return to dashboard only after the read-only/debug workflows are stable enough to avoid another laggy rewrite loop.
 
 Current stop rule: after any visible UI slice, stop for manual review before moving to the next feature family.
 
