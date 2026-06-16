@@ -68,19 +68,6 @@ struct SettingsView: View {
                                 .frame(width: 220, alignment: .leading)
                             }
 
-                            GridRow {
-                                Text("Table density")
-                                    .foregroundStyle(.secondary)
-
-                                Picker("Table density", selection: tableDensityBinding) {
-                                    ForEach(TableDensity.allCases) { density in
-                                        Text(density.title).tag(density)
-                                    }
-                                }
-                                .labelsHidden()
-                                .pickerStyle(.segmented)
-                                .frame(width: 300, alignment: .leading)
-                            }
                         }
 
                         Toggle("Use live resource watches", isOn: resourceWatchesEnabledBinding)
@@ -96,6 +83,20 @@ struct SettingsView: View {
                             Picker("Theme", selection: appAppearanceBinding) {
                                 ForEach(AppAppearance.allCases) { appearance in
                                     Text(appearance.title).tag(appearance)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.segmented)
+                            .frame(width: 300, alignment: .leading)
+                        }
+
+                        GridRow {
+                            Text("Table density")
+                                .foregroundStyle(.secondary)
+
+                            Picker("Table density", selection: tableDensityBinding) {
+                                ForEach(TableDensity.allCases) { density in
+                                    Text(density.title).tag(density)
                                 }
                             }
                             .labelsHidden()
