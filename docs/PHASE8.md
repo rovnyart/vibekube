@@ -43,7 +43,7 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Remove DELETED resources.
 - [x] Preserve table selection where possible by mutating the existing loaded snapshot.
 - [x] Refresh selected detail manifests when watched rows report a newer resourceVersion.
-- [ ] Throttle high-volume updates.
+- [x] Throttle high-volume updates.
 - [ ] Avoid row jumping while user is interacting.
 
 ### 8.4 UI
@@ -64,6 +64,7 @@ Checkpoint: stop when pod and deployment lists can receive watch updates without
 - [x] Store merge tests for active Pods and Deployments ADDED events.
 - [x] Detail refresh tests for active Pod and Deployment MODIFIED events.
 - [x] Selected-resource detail watch refresh test.
+- [x] Burst watch coalescing test.
 - [ ] Mock watch reconnect tests.
 - [ ] Manual QA with demo CronJob pods.
 

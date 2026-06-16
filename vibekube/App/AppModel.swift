@@ -1,6 +1,11 @@
 import Combine
 import Foundation
 
+private struct ResourceWatchEventBatch {
+    var events: [KubernetesWatchEvent<KubernetesUnstructuredResource>] = []
+    var lastEventAt: Date = Date()
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var clusters: [ClusterSummary]
@@ -37,6 +42,8 @@ final class AppModel: ObservableObject {
     private var connectionTask: Task<Void, Never>?
     private var resourceListTasksByQuery: [ResourceListQuery: Task<Void, Never>]
     private var resourceWatchTasksByQuery: [ResourceListQuery: Task<Void, Never>]
+    private var pendingResourceWatchBatchesByQuery: [ResourceListQuery: ResourceWatchEventBatch]
+    private var resourceWatchFlushTasksByQuery: [ResourceListQuery: Task<Void, Never>]
     private var resourceDetailTask: Task<Void, Never>?
     private var resourceDetailWatchTasksByQuery: [ResourceDetailQuery: Task<Void, Never>]
     private var resourceEventsTask: Task<Void, Never>?
@@ -50,6 +57,7 @@ final class AppModel: ObservableObject {
         1_000_000_000,
         2_000_000_000
     ]
+    private static let resourceWatchFlushDelayNanoseconds: UInt64 = 150_000_000
 
     static let allNamespacesSelection = DashboardMetricsQuery.allNamespacesSelection
     static let dashboardResourceItems: [ResourceNavigationItem] = [
@@ -155,6 +163,8 @@ final class AppModel: ObservableObject {
             : selectedNamespaceByContextID
         self.resourceListTasksByQuery = [:]
         self.resourceWatchTasksByQuery = [:]
+        self.pendingResourceWatchBatchesByQuery = [:]
+        self.resourceWatchFlushTasksByQuery = [:]
         self.resourceDetailWatchTasksByQuery = [:]
         self.resourceEventsTask = nil
         self.dashboardMetricsTask = nil
@@ -766,6 +776,7 @@ final class AppModel: ObservableObject {
         resourceListTasksByQuery[query]?.cancel()
         resourceWatchTasksByQuery[query]?.cancel()
         resourceWatchTasksByQuery[query] = nil
+        cancelResourceWatchFlush(query: query)
         resourceWatchStatusByQuery[query] = .idle
         resourceListStateByQuery[query] = .loading(ResourceListLoadingProgress(query: query))
         recordDiagnostic(
@@ -1503,6 +1514,7 @@ final class AppModel: ObservableObject {
                     } catch {
                         if Self.isExpiredResourceVersionError(error) {
                             await self?.recordResourceWatchRelist(query: query, error: error)
+                            await self?.cancelResourceWatchFlush(query: query)
                             do {
                                 let response = try await resourceListService.listResources(
                                     contextName: query.contextID,
@@ -1607,49 +1619,114 @@ final class AppModel: ObservableObject {
         _ event: KubernetesWatchEvent<KubernetesUnstructuredResource>,
         query: ResourceListQuery
     ) -> String? {
+        guard case .loaded(let snapshot) = resourceListStateByQuery[query] else {
+            return resourceVersion(from: event)
+        }
+
+        let eventAt = Date()
+        markResourceWatchLive(query: query, eventAt: eventAt)
+        enqueueResourceWatchEvent(event, query: query, eventAt: eventAt)
+        return resourceVersion(from: event) ?? snapshot.resourceVersion
+    }
+
+    private func enqueueResourceWatchEvent(
+        _ event: KubernetesWatchEvent<KubernetesUnstructuredResource>,
+        query: ResourceListQuery,
+        eventAt: Date
+    ) {
+        var batch = pendingResourceWatchBatchesByQuery[query] ?? ResourceWatchEventBatch()
+        batch.events.append(event)
+        batch.lastEventAt = eventAt
+        pendingResourceWatchBatchesByQuery[query] = batch
+        scheduleResourceWatchFlush(query: query)
+    }
+
+    private func scheduleResourceWatchFlush(query: ResourceListQuery) {
+        guard resourceWatchFlushTasksByQuery[query] == nil else {
+            return
+        }
+
+        let delay = Self.resourceWatchFlushDelayNanoseconds
+        resourceWatchFlushTasksByQuery[query] = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delay)
+                await self?.flushPendingResourceWatchEvents(query: query)
+            } catch is CancellationError {
+                await self?.cancelResourceWatchFlush(query: query)
+            } catch {
+                await self?.cancelResourceWatchFlush(query: query)
+            }
+        }
+    }
+
+    private func flushPendingResourceWatchEvents(query: ResourceListQuery) {
+        resourceWatchFlushTasksByQuery[query] = nil
+        guard let batch = pendingResourceWatchBatchesByQuery.removeValue(forKey: query),
+              !batch.events.isEmpty else {
+            return
+        }
+
+        applyResourceWatchEvents(batch.events, query: query, eventAt: batch.lastEventAt)
+    }
+
+    private func cancelResourceWatchFlush(query: ResourceListQuery) {
+        resourceWatchFlushTasksByQuery[query]?.cancel()
+        resourceWatchFlushTasksByQuery[query] = nil
+        pendingResourceWatchBatchesByQuery[query] = nil
+    }
+
+    private func applyResourceWatchEvents(
+        _ events: [KubernetesWatchEvent<KubernetesUnstructuredResource>],
+        query: ResourceListQuery,
+        eventAt: Date
+    ) {
         guard case .loaded(var snapshot) = resourceListStateByQuery[query] else {
-            return nil
+            return
         }
 
-        markResourceWatchLive(query: query, eventAt: Date())
-        var detailRefreshCandidate: KubernetesUnstructuredResource?
+        markResourceWatchLive(query: query, eventAt: eventAt)
+        var detailRefreshCandidatesByID: [KubernetesUnstructuredResource.ID: KubernetesUnstructuredResource] = [:]
 
-        switch event.type {
-        case .added, .modified:
-            guard let object = event.object else {
-                return snapshot.resourceVersion
+        for event in events {
+            switch event.type {
+            case .added, .modified:
+                guard let object = event.object else {
+                    continue
+                }
+                let item = normalizedResource(object, for: query)
+                detailRefreshCandidatesByID[item.id] = item
+                if let index = snapshot.items.firstIndex(where: { $0.id == item.id }) {
+                    snapshot.items[index] = item
+                } else {
+                    snapshot.items.append(item)
+                }
+                snapshot.resourceVersion = item.metadata.resourceVersion ?? snapshot.resourceVersion
+            case .deleted:
+                guard let object = event.object else {
+                    continue
+                }
+                let item = normalizedResource(object, for: query)
+                detailRefreshCandidatesByID[item.id] = nil
+                snapshot.items.removeAll { $0.id == item.id }
+                snapshot.resourceVersion = item.metadata.resourceVersion ?? snapshot.resourceVersion
+            case .bookmark:
+                if let resourceVersion = event.object?.metadata.resourceVersion {
+                    snapshot.resourceVersion = resourceVersion
+                }
+            case .error:
+                continue
             }
-            let item = normalizedResource(object, for: query)
-            detailRefreshCandidate = item
-            if let index = snapshot.items.firstIndex(where: { $0.id == item.id }) {
-                snapshot.items[index] = item
-            } else {
-                snapshot.items.append(item)
-            }
-            snapshot.resourceVersion = item.metadata.resourceVersion ?? snapshot.resourceVersion
-            snapshot.loadedAt = Date()
-        case .deleted:
-            guard let object = event.object else {
-                return snapshot.resourceVersion
-            }
-            let item = normalizedResource(object, for: query)
-            snapshot.items.removeAll { $0.id == item.id }
-            snapshot.resourceVersion = item.metadata.resourceVersion ?? snapshot.resourceVersion
-            snapshot.loadedAt = Date()
-        case .bookmark:
-            if let resourceVersion = event.object?.metadata.resourceVersion {
-                snapshot.resourceVersion = resourceVersion
-            }
-            snapshot.loadedAt = Date()
-        case .error:
-            return snapshot.resourceVersion
         }
 
+        snapshot.loadedAt = eventAt
         resourceListStateByQuery[query] = .loaded(snapshot)
-        if let detailRefreshCandidate {
+        for detailRefreshCandidate in detailRefreshCandidatesByID.values {
             refreshLoadedDetailIfStale(row: detailRefreshCandidate, listQuery: query)
         }
-        return snapshot.resourceVersion
+    }
+
+    private func resourceVersion(from event: KubernetesWatchEvent<KubernetesUnstructuredResource>) -> String? {
+        event.object?.metadata.resourceVersion
     }
 
     private func refreshLoadedDetailIfStale(
@@ -2481,6 +2558,9 @@ final class AppModel: ObservableObject {
         let cancelledQueries = Array(resourceWatchTasksByQuery.keys)
         resourceWatchTasksByQuery.values.forEach { $0.cancel() }
         resourceWatchTasksByQuery.removeAll()
+        resourceWatchFlushTasksByQuery.values.forEach { $0.cancel() }
+        resourceWatchFlushTasksByQuery.removeAll()
+        pendingResourceWatchBatchesByQuery.removeAll()
         for query in cancelledQueries {
             resourceWatchStatusByQuery[query] = .idle
         }
