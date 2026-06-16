@@ -101,6 +101,7 @@ struct DashboardView: View {
 
                 Button {
                     appModel.loadDashboardResources(force: true)
+                    appModel.loadDashboardMetrics(force: true)
                 } label: {
                     Label("Refresh Dashboard", systemImage: "arrow.clockwise")
                 }

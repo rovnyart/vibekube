@@ -25,7 +25,8 @@ Goal: show a useful operational overview for the selected cluster.
 
 - Dashboard currently uses a deliberately small initial data set: nodes, pods, discovery metadata, and metrics when available.
 - Workload, storage, and event summaries were pulled out of the eager dashboard path because the 10-request aggregation made route switching visibly laggy.
-- Resource detail Events remain object-specific; Dashboard Recent Events should return later as a cached or explicitly refreshed operational feed.
+- A staged supplemental-loading attempt also caused multi-second route hangs in manual testing, so richer dashboard sections should not return through the shared `AppModel` resource-list state.
+- Resource detail Events remain object-specific; Dashboard Recent Events should return only after a dedicated dashboard store/view model isolates its loading and publication from shell navigation.
 - Dashboard render now computes the health snapshot once per SwiftUI pass instead of repeatedly walking the same resource arrays.
 - Leaving Dashboard keeps the small dashboard load alive, so the app does not churn requests during route changes.
 - Dashboard Resource Usage now means actual CPU and memory usage from `metrics.k8s.io`, with allocatable node CPU/RAM used as capacity when node data is loaded.
@@ -34,7 +35,8 @@ Goal: show a useful operational overview for the selected cluster.
 - Kubernetes API calls, JSON decoding, detail/event loading, secret reveal, and metrics loading now run in detached background tasks; only final state publication returns to the main actor.
 - Leaving Dashboard no longer cancels dashboard loads, and the eager dashboard request set is now small enough that switching away should not wait on aggregation.
 - Broad material panels were replaced with adaptive system-color surfaces and subtle borders for cleaner dark/light appearance and less compositor work.
-- The dashboard still needs richer historical charts, drill-down links, partial load failure callouts, and a non-blocking way to reintroduce workload/event/storage summaries.
+- The dashboard still needs richer historical charts, drill-down links, partial load failure callouts, and a non-blocking dashboard-specific data store before workload/event/storage summaries can safely return.
+- Architectural decision: rich dashboard data must be isolated from global `AppModel` invalidation and route selection. Do not reintroduce richer dashboard panels by subscribing directly to shared resource list publication.
 
 ## Product Reference Notes
 
