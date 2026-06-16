@@ -68,7 +68,7 @@ Checkpoint: stop when pod and deployment lists can receive watch updates without
 - [x] Detail refresh tests for active Pod and Deployment MODIFIED events.
 - [x] Selected-resource detail watch refresh test.
 - [x] Burst watch coalescing test.
-- [ ] Mock watch reconnect tests.
+- [x] Mock watch reconnect tests.
 - [ ] Manual QA with demo CronJob pods.
 
 ## Acceptance Criteria

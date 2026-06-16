@@ -729,6 +729,37 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelShowsReconnectingStatusAfterTransientResourceWatchFailure() async throws {
+        let resourceListService = TransientFailingWatchResourceListService()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: resourceListService,
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitUntil("watch enters reconnecting status") {
+            if case .reconnecting = model.resourceWatchStatus(for: .pods) {
+                return true
+            }
+            return false
+        }
+
+        guard case .reconnecting(let state) = model.resourceWatchStatus(for: .pods) else {
+            Issue.record("Expected reconnecting watch status")
+            return
+        }
+
+        #expect(state.attempt == 2)
+        #expect(state.message == "The request timed out.")
+        #expect(resourceListService.watchCallCount() == 1)
+    }
+
+    @MainActor
     @Test func appModelRefreshesOpenPodDetailWhenWatchUpdatesResourceVersion() async throws {
         let detailService = VersionedPodDetailService()
         let model = AppModel(
