@@ -24,7 +24,7 @@ Goal: browse Kubernetes resources by group with sortable, filterable, namespace-
 - New cluster connections default to `All Namespaces` so workload lists are cluster-wide unless narrowed.
 - Toolbar namespace selection reloads namespaced resources for the selected namespace or all namespaces.
 - Secret payload fields are not decoded into list rows and are not searchable/displayed; Secret manifests redact top-level `data`, `stringData`, and `binaryData`.
-- Pagination tokens are decoded but follow-up page loading is not implemented yet.
+- Kubernetes list pagination is followed with bounded page sizes for namespace discovery and generic resource tables.
 - Custom/discovered resources are visible in the API catalog, but dynamic custom-resource table navigation is still pending.
 
 ## Implementation Slices
@@ -69,7 +69,7 @@ Goal: browse Kubernetes resources by group with sortable, filterable, namespace-
 - [x] Build generic list endpoint from discovery metadata.
 - [x] Support namespaced resources.
 - [x] Support cluster-scoped resources.
-- [ ] Support pagination and continue tokens.
+- [x] Support pagination and continue tokens.
 - [x] Add generic columns: name, namespace, status, age, labels.
 - [ ] Add CRD/custom resource navigation.
 

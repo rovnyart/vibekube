@@ -5,6 +5,15 @@ struct KubernetesUnstructuredResourceList: Decodable, Equatable {
     var kind: String?
     var metadata: KubernetesListMetadata?
     var items: [KubernetesUnstructuredResource]
+
+    static func merged(_ lists: [KubernetesUnstructuredResourceList]) -> KubernetesUnstructuredResourceList {
+        KubernetesUnstructuredResourceList(
+            apiVersion: lists.last?.apiVersion ?? lists.first?.apiVersion,
+            kind: lists.last?.kind ?? lists.first?.kind,
+            metadata: lists.last?.metadata,
+            items: lists.flatMap(\.items)
+        )
+    }
 }
 
 struct KubernetesListMetadata: Decodable, Equatable {

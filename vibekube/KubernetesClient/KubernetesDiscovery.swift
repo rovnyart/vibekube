@@ -252,6 +252,7 @@ extension String {
 }
 
 struct KubernetesNamespaceList: Decodable, Equatable {
+    var metadata: KubernetesListMetadata?
     var items: [KubernetesNamespace]
 
     var summaries: [KubernetesNamespaceSummary] {
@@ -265,6 +266,13 @@ struct KubernetesNamespaceList: Decodable, Equatable {
                 phase: namespace.status?.phase ?? "Unknown"
             )
         }
+    }
+
+    static func merged(_ lists: [KubernetesNamespaceList]) -> KubernetesNamespaceList {
+        KubernetesNamespaceList(
+            metadata: lists.last?.metadata,
+            items: lists.flatMap(\.items)
+        )
     }
 }
 

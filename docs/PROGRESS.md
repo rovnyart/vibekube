@@ -29,7 +29,7 @@ The current product milestone is Vibekube 0.1.x: a fast, read-only, distributabl
 
 Recommended next focus:
 
-1. Harden large-cluster browsing: pagination, list limits, cancellation, and watch reconnect/status UI.
+1. Harden large-cluster browsing: cancellation, load progress, and watch reconnect/status UI.
 2. Finish release readiness: clean-machine install checklist, privacy note, and settings for kubeconfig path, log buffer, and secret reveal policy.
 3. Use diagnostics on the work Mac during the next real-cluster validation pass and expand the logged categories only where gaps appear.
 4. Return to dashboard only after the read-only/debug workflows are stable enough to avoid another laggy rewrite loop.
@@ -58,7 +58,7 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Expand Pod `envFrom` ConfigMap and Secret keys in the Env inspector.
 - [x] Add first real-time Pods list watch updates.
 - [x] Add local diagnostics/log export with secret redaction.
-- [ ] Follow Kubernetes list pagination for large clusters.
+- [x] Follow Kubernetes list pagination for large clusters.
 - [ ] Add watch reconnect/status UI and broader resource/detail watches.
 - [ ] Add 0.1.x clean-machine release checklist and privacy note.
 - [ ] Add safe mutations.

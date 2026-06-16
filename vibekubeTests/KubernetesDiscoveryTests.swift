@@ -81,6 +81,10 @@ struct KubernetesDiscoveryTests {
                 """
                 {
                   "kind": "NamespaceList",
+                  "metadata": {
+                    "resourceVersion": "42",
+                    "continue": "next-page"
+                  },
                   "items": [
                     {
                       "metadata": { "name": "default" },
@@ -96,9 +100,60 @@ struct KubernetesDiscoveryTests {
             )
         )
 
+        #expect(namespaceList.metadata?.resourceVersion == "42")
+        #expect(namespaceList.metadata?.continueToken == "next-page")
         #expect(namespaceList.summaries == [
             KubernetesNamespaceSummary(name: "default", phase: "Active"),
             KubernetesNamespaceSummary(name: "kube-system", phase: "Active")
+        ])
+    }
+
+    @Test func mergesNamespaceListPagesInOrder() throws {
+        let first = try JSONDecoder().decode(
+            KubernetesNamespaceList.self,
+            from: Data(
+                """
+                {
+                  "metadata": {
+                    "resourceVersion": "10",
+                    "continue": "next"
+                  },
+                  "items": [
+                    {
+                      "metadata": { "name": "default" },
+                      "status": { "phase": "Active" }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+        let second = try JSONDecoder().decode(
+            KubernetesNamespaceList.self,
+            from: Data(
+                """
+                {
+                  "metadata": {
+                    "resourceVersion": "20"
+                  },
+                  "items": [
+                    {
+                      "metadata": { "name": "payments" },
+                      "status": { "phase": "Terminating" }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        let merged = KubernetesNamespaceList.merged([first, second])
+
+        #expect(merged.metadata?.resourceVersion == "20")
+        #expect(merged.metadata?.continueToken == nil)
+        #expect(merged.summaries == [
+            KubernetesNamespaceSummary(name: "default", phase: "Active"),
+            KubernetesNamespaceSummary(name: "payments", phase: "Terminating")
         ])
     }
 

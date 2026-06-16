@@ -1,6 +1,8 @@
 import Foundation
 
 final class DefaultKubernetesAPIClient: KubernetesAPIClient {
+    private static let defaultListLimit = 500
+
     private let configuration: KubernetesClientConfiguration
     private let delegate: KubernetesURLSessionDelegate
     private let session: URLSession
@@ -45,14 +47,48 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
     }
 
     func namespaces() async throws -> KubernetesNamespaceList {
-        try await get(path: "/api/v1/namespaces")
+        var pages: [KubernetesNamespaceList] = []
+        var continueToken: String?
+        var seenContinueTokens = Set<String>()
+
+        repeat {
+            try Task.checkCancellation()
+            let page: KubernetesNamespaceList = try await get(
+                path: "/api/v1/namespaces",
+                queryItems: Self.listQueryItems(limit: Self.defaultListLimit, continueToken: continueToken)
+            )
+            pages.append(page)
+            continueToken = try nextContinueToken(
+                from: page.metadata?.continueToken,
+                seenContinueTokens: &seenContinueTokens
+            )
+        } while continueToken != nil
+
+        return KubernetesNamespaceList.merged(pages)
     }
 
     func resourceList(
         resource: KubernetesDiscoveredResource,
         namespace: String?
     ) async throws -> KubernetesUnstructuredResourceList {
-        try await get(path: resource.listPath(namespace: namespace))
+        var pages: [KubernetesUnstructuredResourceList] = []
+        var continueToken: String?
+        var seenContinueTokens = Set<String>()
+
+        repeat {
+            try Task.checkCancellation()
+            let page: KubernetesUnstructuredResourceList = try await get(
+                path: resource.listPath(namespace: namespace),
+                queryItems: Self.listQueryItems(limit: Self.defaultListLimit, continueToken: continueToken)
+            )
+            pages.append(page)
+            continueToken = try nextContinueToken(
+                from: page.metadata?.continueToken,
+                seenContinueTokens: &seenContinueTokens
+            )
+        } while continueToken != nil
+
+        return KubernetesUnstructuredResourceList.merged(pages)
     }
 
     func resourceWatch(
@@ -321,6 +357,33 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         }
 
         return items
+    }
+
+    private static func listQueryItems(limit: Int, continueToken: String?) -> [URLQueryItem] {
+        var items = [
+            URLQueryItem(name: "limit", value: "\(limit)")
+        ]
+
+        if let continueToken, !continueToken.isEmpty {
+            items.append(URLQueryItem(name: "continue", value: continueToken))
+        }
+
+        return items
+    }
+
+    private func nextContinueToken(
+        from token: String?,
+        seenContinueTokens: inout Set<String>
+    ) throws -> String? {
+        guard let token, !token.isEmpty else {
+            return nil
+        }
+
+        guard seenContinueTokens.insert(token).inserted else {
+            throw KubernetesClientError.badResponse
+        }
+
+        return token
     }
 
     private func applyAuthentication(to request: inout URLRequest) {

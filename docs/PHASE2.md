@@ -28,6 +28,7 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - Custom Resources opens a grouped API resource catalog backed by discovery metadata.
 - Static resource navigation items now show whether their API resource is namespaced or cluster-scoped after discovery.
 - Namespace selection is available in the toolbar once connected, including `All Namespaces`.
+- Namespace discovery follows Kubernetes list pagination so large clusters do not silently truncate namespace options.
 - Real resource object tables, YAML views, logs, and rich dashboard health stats are still pending.
 
 ## Implementation Slices

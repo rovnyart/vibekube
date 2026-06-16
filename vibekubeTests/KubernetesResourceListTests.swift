@@ -136,6 +136,64 @@ struct KubernetesResourceListTests {
         #expect(pod.labelsSummary == "app=web")
     }
 
+    @Test func mergesResourceListPagesInOrder() throws {
+        let first = try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "PodList",
+                  "metadata": {
+                    "resourceVersion": "10",
+                    "continue": "next"
+                  },
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "web-0",
+                        "namespace": "default"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+        let second = try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "PodList",
+                  "metadata": {
+                    "resourceVersion": "20"
+                  },
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "api-0",
+                        "namespace": "payments"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        let merged = KubernetesUnstructuredResourceList.merged([first, second])
+
+        #expect(merged.metadata?.resourceVersion == "20")
+        #expect(merged.metadata?.continueToken == nil)
+        #expect(merged.items.map(\.displayName) == ["web-0", "api-0"])
+    }
+
     @Test func decodesSecretRowsWithoutReadingSecretData() throws {
         let list = try JSONDecoder().decode(
             KubernetesUnstructuredResourceList.self,
