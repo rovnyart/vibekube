@@ -54,8 +54,8 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Reconnecting/stale/failure status indicator.
 - [x] Manual refresh fallback.
 - [x] Detail header shows refreshing/updated/stale state.
-- [ ] Subtle updated row indication.
-- [ ] No noisy notifications for normal watch updates.
+- [x] Subtle updated row indication.
+- [x] No noisy notifications for normal watch updates.
 
 Checkpoint: stop when pod and deployment lists can receive watch updates without manual refresh.
 

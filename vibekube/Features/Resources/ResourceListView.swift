@@ -10,8 +10,13 @@ struct ResourceListView: View {
     @State private var openDetailRows: [KubernetesUnstructuredResource] = []
     @State private var selectedDetailRowID: KubernetesUnstructuredResource.ID?
     @State private var visibleRowOrder: [KubernetesUnstructuredResource.ID] = []
+    @State private var rowResourceVersions: [KubernetesUnstructuredResource.ID: String] = [:]
+    @State private var recentlyUpdatedRowIDs: Set<KubernetesUnstructuredResource.ID> = []
+    @State private var rowUpdateClearTasks: [KubernetesUnstructuredResource.ID: Task<Void, Never>] = [:]
 
     let item: ResourceNavigationItem
+
+    private static let rowUpdateHighlightDurationNanoseconds: UInt64 = 1_600_000_000
 
     var body: some View {
         VStack(spacing: 0) {
@@ -73,6 +78,7 @@ struct ResourceListView: View {
         let visibleRows = filteredRows(snapshot)
         let visibleRowIDs = visibleRows.map(\.id)
         let allRows = snapshot.items
+        let rowVersionSignatures = resourceVersionSignatures(for: allRows)
         Group {
             if openDetailRows.isEmpty {
                 resourceListSurface(visibleRows: visibleRows, snapshot: snapshot)
@@ -94,13 +100,20 @@ struct ResourceListView: View {
         }
         .onAppear {
             visibleRowOrder = visibleRowIDs
+            seedRowResourceVersions(allRows)
             reconcileDetailTabs(with: allRows)
         }
         .onChange(of: visibleRowIDs) {
             visibleRowOrder = visibleRowIDs
         }
+        .onChange(of: rowVersionSignatures) {
+            markRecentlyUpdatedRows(allRows)
+        }
         .onChange(of: allRows.map(\.id)) {
             reconcileDetailTabs(with: allRows)
+        }
+        .onDisappear {
+            cancelRowUpdateClearTasks()
         }
     }
 
@@ -118,7 +131,12 @@ struct ResourceListView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Table(visibleRows, selection: $selectedResourceID, sortOrder: $sortOrder) {
-                TableColumn("Name", value: \.displayName)
+                TableColumn("Name", value: \.displayName) { resource in
+                    ResourceNameCell(
+                        resource: resource,
+                        isRecentlyUpdated: recentlyUpdatedRowIDs.contains(resource.id)
+                    )
+                }
                 TableColumn("Namespace", value: \.displayNamespace)
                 TableColumn("Kind", value: \.displayKind)
                 TableColumn("Status", value: \.displayStatus)
@@ -248,6 +266,84 @@ struct ResourceListView: View {
         selectedResourceID != nil || !openDetailRows.isEmpty
     }
 
+    private func resourceVersionSignatures(
+        for rows: [KubernetesUnstructuredResource]
+    ) -> [ResourceRowVersionSignature] {
+        rows.map {
+            ResourceRowVersionSignature(
+                id: $0.id,
+                resourceVersion: $0.metadata.resourceVersion
+            )
+        }
+    }
+
+    private func seedRowResourceVersions(_ rows: [KubernetesUnstructuredResource]) {
+        rowResourceVersions = rows.reduce(into: [:]) { resourceVersions, row in
+            resourceVersions[row.id] = row.metadata.resourceVersion ?? ""
+        }
+        recentlyUpdatedRowIDs = []
+        cancelRowUpdateClearTasks()
+    }
+
+    private func markRecentlyUpdatedRows(_ rows: [KubernetesUnstructuredResource]) {
+        let rowIDs = Set(rows.map(\.id))
+        var nextResourceVersions = rowResourceVersions.filter { rowIDs.contains($0.key) }
+        var updatedIDs = Set<KubernetesUnstructuredResource.ID>()
+
+        for row in rows {
+            let resourceVersion = row.metadata.resourceVersion ?? ""
+            if let previousResourceVersion = rowResourceVersions[row.id],
+               previousResourceVersion != resourceVersion {
+                updatedIDs.insert(row.id)
+            }
+            nextResourceVersions[row.id] = resourceVersion
+        }
+
+        rowResourceVersions = nextResourceVersions
+
+        guard !updatedIDs.isEmpty else {
+            return
+        }
+
+        withAnimation(.easeOut(duration: 0.16)) {
+            recentlyUpdatedRowIDs.formUnion(updatedIDs)
+        }
+
+        for id in updatedIDs {
+            scheduleRowUpdateHighlightClear(id)
+        }
+    }
+
+    private func scheduleRowUpdateHighlightClear(_ id: KubernetesUnstructuredResource.ID) {
+        rowUpdateClearTasks[id]?.cancel()
+        rowUpdateClearTasks[id] = Task {
+            do {
+                try await Task.sleep(nanoseconds: Self.rowUpdateHighlightDurationNanoseconds)
+                await MainActor.run {
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        _ = recentlyUpdatedRowIDs.remove(id)
+                    }
+                    rowUpdateClearTasks[id] = nil
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    rowUpdateClearTasks[id] = nil
+                }
+            } catch {
+                await MainActor.run {
+                    rowUpdateClearTasks[id] = nil
+                }
+            }
+        }
+    }
+
+    private func cancelRowUpdateClearTasks() {
+        for task in rowUpdateClearTasks.values {
+            task.cancel()
+        }
+        rowUpdateClearTasks = [:]
+    }
+
     private func openDetailTab(
         for id: KubernetesUnstructuredResource.ID?,
         in rows: [KubernetesUnstructuredResource]
@@ -300,6 +396,40 @@ struct ResourceListView: View {
         } else if self.selectedDetailRowID == nil {
             self.selectedDetailRowID = openDetailRows.first?.id
             selectedResourceID = self.selectedDetailRowID
+        }
+    }
+}
+
+private struct ResourceRowVersionSignature: Equatable {
+    var id: KubernetesUnstructuredResource.ID
+    var resourceVersion: String?
+}
+
+private struct ResourceNameCell: View {
+    let resource: KubernetesUnstructuredResource
+    let isRecentlyUpdated: Bool
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Text(resource.displayName)
+                .lineLimit(1)
+
+            ZStack {
+                Circle()
+                    .fill(.green.opacity(0.16))
+                    .frame(width: 10, height: 10)
+                    .scaleEffect(isRecentlyUpdated ? 1 : 0.72)
+
+                Circle()
+                    .fill(.green)
+                    .frame(width: 5, height: 5)
+            }
+            .opacity(isRecentlyUpdated ? 1 : 0)
+            .animation(.easeOut(duration: 0.18), value: isRecentlyUpdated)
+            .frame(width: 10, height: 10)
+            .help("Updated by live watch")
+            .accessibilityLabel("Recently updated")
+            .accessibilityHidden(!isRecentlyUpdated)
         }
     }
 }
