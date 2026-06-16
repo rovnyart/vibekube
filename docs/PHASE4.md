@@ -16,7 +16,10 @@ Goal: show a useful operational overview for the selected cluster.
 - [x] Dashboard UI renders live healthy/warning/failed summary states.
 - [x] Dashboard resource lists load together without cancelling sibling requests.
 - [x] Dashboard avoids repeated snapshot recomputation during a single render.
-- [x] Dashboard cancels irrelevant in-flight list loads when navigating away.
+- [x] Dashboard preserves in-flight list loads when navigating away so return navigation stays warm.
+- [x] Dashboard data loads run off the main actor.
+- [x] Dashboard keeps cached/in-flight loads when navigating away and back.
+- [x] Dashboard and inspector surfaces adapt cleanly for light and dark mode.
 
 ## Checkpoint Notes
 
@@ -28,6 +31,9 @@ Goal: show a useful operational overview for the selected cluster.
 - Dashboard Resource Usage now means actual CPU and memory usage from `metrics.k8s.io`, with allocatable node CPU/RAM used as capacity when node data is loaded.
 - All Namespaces uses node-level metrics for cluster CPU/RAM; a selected namespace uses summed pod metrics for that namespace and shows capacity as unavailable until request/limit summaries exist.
 - The old object-count panel is renamed Cluster Inventory so it is not confused with CPU/RAM resource usage.
+- Kubernetes API calls, JSON decoding, detail/event loading, secret reveal, and metrics loading now run in detached background tasks; only final state publication returns to the main actor.
+- Leaving Dashboard no longer cancels dashboard loads, so switching away is immediate and returning can reuse the warm snapshot.
+- Broad material panels were replaced with adaptive system-color surfaces and subtle borders for cleaner dark/light appearance and less compositor work.
 - The dashboard still needs richer historical charts, drill-down links, and clearer handling for partial load failures.
 
 ## Product Reference Notes
@@ -105,6 +111,7 @@ Checkpoint: stop for visual review once demo cluster dashboard renders real data
 - [x] Event list decoding coverage through resource list tests.
 - [x] CPU/memory metrics quantity parsing tests.
 - [x] Dashboard resource usage aggregation tests.
+- [x] Dashboard navigation does not cancel in-flight dashboard loads.
 - [ ] Visual/manual demo cluster dashboard check.
 
 ## Acceptance Criteria

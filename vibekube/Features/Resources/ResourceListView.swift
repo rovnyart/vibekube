@@ -1481,7 +1481,7 @@ private struct ResourceConditionCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .appSurface()
     }
 }
 

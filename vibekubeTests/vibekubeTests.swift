@@ -71,7 +71,7 @@ struct vibekubeTests {
     }
 
     @MainActor
-    @Test func appModelBuildsCopyableRouteIdentity() async {
+    @Test func appModelBuildsCopyableRouteIdentity() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
             connectionService: SucceedingConnectionService(),
@@ -79,7 +79,7 @@ struct vibekubeTests {
         )
 
         model.connectSelectedCluster()
-        await Task.yield()
+        try await waitForConnectionState(model, .connected)
         model.selectResource(.pods)
 
         let identity = model.selectedRouteIdentityText ?? ""
@@ -118,7 +118,7 @@ struct vibekubeTests {
     }
 
     @MainActor
-    @Test func appModelConnectsWithConnectionService() async {
+    @Test func appModelConnectsWithConnectionService() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
             connectionService: SucceedingConnectionService(),
@@ -128,7 +128,7 @@ struct vibekubeTests {
         model.connectSelectedCluster()
         #expect(model.selectedConnectionState == .connecting)
 
-        await Task.yield()
+        try await waitForConnectionState(model, .connected)
 
         #expect(model.selectedConnectionState == .connected)
         #expect(model.selectedCluster?.kubernetesVersion == "v1.30.0")
@@ -141,7 +141,7 @@ struct vibekubeTests {
     }
 
     @MainActor
-    @Test func appModelMapsConnectionFailures() async {
+    @Test func appModelMapsConnectionFailures() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
             connectionService: FailingConnectionService(),
@@ -149,14 +149,14 @@ struct vibekubeTests {
         )
 
         model.connectSelectedCluster()
-        await Task.yield()
+        try await waitForConnectionState(model, .unauthorized)
 
         #expect(model.selectedConnectionState == .unauthorized)
         #expect(model.connectionErrorMessage == "Nope")
     }
 
     @MainActor
-    @Test func appModelLoadsResourceListForSelectedResource() async {
+    @Test func appModelLoadsResourceListForSelectedResource() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
             connectionService: SucceedingConnectionService(),
@@ -165,10 +165,10 @@ struct vibekubeTests {
         )
 
         model.connectSelectedCluster()
-        await Task.yield()
+        try await waitForConnectionState(model, .connected)
 
         model.selectResource(.pods)
-        await Task.yield()
+        try await waitForResourceList(model, .pods)
 
         guard case .loaded(let snapshot) = model.resourceListState(for: .pods) else {
             Issue.record("Expected loaded resource list")
@@ -212,7 +212,43 @@ struct vibekubeTests {
     }
 
     @MainActor
-    @Test func appModelLoadsResourceDetailForSelectedRow() async {
+    @Test func appModelKeepsDashboardLoadsWhenNavigatingAway() async throws {
+        let recorder = DashboardResourceListRecorder()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: DashboardConnectionService(),
+            resourceListService: DashboardResourceListService(
+                recorder: recorder,
+                delayNanoseconds: 50_000_000
+            ),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        for _ in 0..<20 {
+            if model.selectedConnectionState == .connected {
+                break
+            }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+
+        model.selectResource(.pods)
+
+        for _ in 0..<40 {
+            if await recorder.count == AppModel.dashboardResourceItems.count {
+                break
+            }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+
+        let requestedNames = await recorder.resourceNames()
+        let expectedNames = Set(AppModel.dashboardResourceItems.map { dashboardAPIResource(for: $0).name })
+        #expect(Set(requestedNames) == expectedNames)
+        #expect(model.selectedResource == .pods)
+    }
+
+    @MainActor
+    @Test func appModelLoadsResourceDetailForSelectedRow() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
             connectionService: SucceedingConnectionService(),
@@ -222,10 +258,10 @@ struct vibekubeTests {
         )
 
         model.connectSelectedCluster()
-        await Task.yield()
+        try await waitForConnectionState(model, .connected)
 
         model.selectResource(.pods)
-        await Task.yield()
+        try await waitForResourceList(model, .pods)
 
         guard case .loaded(let snapshot) = model.resourceListState(for: .pods),
               let row = snapshot.items.first else {
@@ -234,9 +270,7 @@ struct vibekubeTests {
         }
 
         model.loadResourceDetail(for: .pods, row: row)
-        for _ in 0..<3 {
-            await Task.yield()
-        }
+        try await waitForResourceDetail(model, resource: .pods, row: row)
 
         guard case .loaded(let detail) = model.resourceDetailState(for: .pods, row: row) else {
             Issue.record("Expected loaded resource detail")
@@ -251,7 +285,7 @@ struct vibekubeTests {
     }
 
     @MainActor
-    @Test func appModelLoadsResourceEventsForSelectedDetail() async {
+    @Test func appModelLoadsResourceEventsForSelectedDetail() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
             connectionService: SucceedingConnectionService(),
@@ -262,10 +296,10 @@ struct vibekubeTests {
         )
 
         model.connectSelectedCluster()
-        await Task.yield()
+        try await waitForConnectionState(model, .connected)
 
         model.selectResource(.pods)
-        await Task.yield()
+        try await waitForResourceList(model, .pods)
 
         guard case .loaded(let listSnapshot) = model.resourceListState(for: .pods),
               let row = listSnapshot.items.first else {
@@ -274,9 +308,7 @@ struct vibekubeTests {
         }
 
         model.loadResourceDetail(for: .pods, row: row)
-        for _ in 0..<3 {
-            await Task.yield()
-        }
+        try await waitForResourceDetail(model, resource: .pods, row: row)
 
         guard case .loaded(let detail) = model.resourceDetailState(for: .pods, row: row) else {
             Issue.record("Expected loaded resource detail")
@@ -284,9 +316,7 @@ struct vibekubeTests {
         }
 
         model.loadResourceEvents(for: detail)
-        for _ in 0..<3 {
-            await Task.yield()
-        }
+        try await waitForResourceEvents(model, detail: detail)
 
         guard case .loaded(let events) = model.resourceEventsState(for: detail) else {
             Issue.record("Expected loaded resource events")
@@ -299,7 +329,7 @@ struct vibekubeTests {
     }
 
     @MainActor
-    @Test func appModelRevealsEnvSecretValue() async {
+    @Test func appModelRevealsEnvSecretValue() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
             connectionService: SucceedingConnectionService(),
@@ -308,16 +338,14 @@ struct vibekubeTests {
         )
 
         model.connectSelectedCluster()
-        await Task.yield()
+        try await waitForConnectionState(model, .connected)
 
         model.revealEnvSecretValue(
             namespace: "vibekube-demo",
             secretName: "web-secrets",
             key: "db-password"
         )
-        for _ in 0..<3 {
-            await Task.yield()
-        }
+        try await waitForEnvSecretValue(model, namespace: "vibekube-demo", secretName: "web-secrets", key: "db-password")
 
         guard case .loaded(let value) = model.envSecretValueState(
             namespace: "vibekube-demo",
@@ -337,6 +365,86 @@ struct vibekubeTests {
         #expect(ResourceNavigationItem.services.section == .network)
     }
 
+}
+
+@MainActor
+private func waitForConnectionState(
+    _ model: AppModel,
+    _ state: ConnectionState
+) async throws {
+    try await waitUntil("connection state \(state.rawValue)") {
+        model.selectedConnectionState == state
+    }
+}
+
+@MainActor
+private func waitForResourceList(
+    _ model: AppModel,
+    _ resource: ResourceNavigationItem
+) async throws {
+    try await waitUntil("\(resource.title) list loaded") {
+        if case .loaded = model.resourceListState(for: resource) {
+            return true
+        }
+        return false
+    }
+}
+
+@MainActor
+private func waitForResourceDetail(
+    _ model: AppModel,
+    resource: ResourceNavigationItem,
+    row: KubernetesUnstructuredResource
+) async throws {
+    try await waitUntil("\(resource.title) detail loaded") {
+        if case .loaded = model.resourceDetailState(for: resource, row: row) {
+            return true
+        }
+        return false
+    }
+}
+
+@MainActor
+private func waitForResourceEvents(
+    _ model: AppModel,
+    detail: ResourceDetailSnapshot
+) async throws {
+    try await waitUntil("resource events loaded") {
+        if case .loaded = model.resourceEventsState(for: detail) {
+            return true
+        }
+        return false
+    }
+}
+
+@MainActor
+private func waitForEnvSecretValue(
+    _ model: AppModel,
+    namespace: String?,
+    secretName: String?,
+    key: String?
+) async throws {
+    try await waitUntil("env secret value loaded") {
+        if case .loaded = model.envSecretValueState(namespace: namespace, secretName: secretName, key: key) {
+            return true
+        }
+        return false
+    }
+}
+
+@MainActor
+private func waitUntil(
+    _ description: String,
+    condition: @escaping @MainActor () -> Bool
+) async throws {
+    for _ in 0..<60 {
+        if condition() {
+            return
+        }
+        try await Task.sleep(nanoseconds: 5_000_000)
+    }
+
+    Issue.record("Timed out waiting for \(description)")
 }
 
 private struct SucceedingConnectionService: KubernetesConnectionServicing {
@@ -436,6 +544,7 @@ private actor DashboardResourceListRecorder {
 
 private struct DashboardResourceListService: KubernetesResourceListServicing {
     let recorder: DashboardResourceListRecorder
+    var delayNanoseconds: UInt64 = 2_000_000
 
     func listResources(
         contextName: String,
@@ -443,7 +552,7 @@ private struct DashboardResourceListService: KubernetesResourceListServicing {
         resource: KubernetesDiscoveredResource,
         namespace: String?
     ) async throws -> KubernetesUnstructuredResourceList {
-        try await Task.sleep(nanoseconds: 2_000_000)
+        try await Task.sleep(nanoseconds: delayNanoseconds)
         try Task.checkCancellation()
         await recorder.record(resource.name)
 

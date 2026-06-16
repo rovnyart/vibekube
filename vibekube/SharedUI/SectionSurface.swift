@@ -13,6 +13,6 @@ struct SectionSurface<Content: View>: View {
             content
         }
         .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .appSurface()
     }
 }

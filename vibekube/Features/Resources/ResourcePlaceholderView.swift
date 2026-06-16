@@ -78,6 +78,6 @@ private struct ResourceMetadataPanel: View {
         }
         .font(.callout)
         .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .appSurface()
     }
 }

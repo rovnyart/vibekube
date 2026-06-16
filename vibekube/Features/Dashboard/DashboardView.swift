@@ -340,11 +340,7 @@ private struct DashboardHealthTile: View {
         }
         .padding(14)
         .frame(minHeight: 112, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(status.tint.opacity(0.22))
-        }
+        .appSurface(strokeColor: status.tint.opacity(0.24))
     }
 }
 

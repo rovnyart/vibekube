@@ -25,6 +25,6 @@ struct MetricTile: View {
         }
         .padding(14)
         .frame(minHeight: 104, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .appSurface()
     }
 }

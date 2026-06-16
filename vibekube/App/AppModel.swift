@@ -267,11 +267,6 @@ final class AppModel: ObservableObject {
             return
         }
 
-        if route.resource == .dashboard, resource != .dashboard {
-            cancelDashboardResourceListTasks(excluding: resource)
-            cancelDashboardMetricsTask()
-        }
-
         navigate(clusterID: selectedClusterID, resource: resource)
         if resource == .dashboard {
             loadDashboardResources()
@@ -417,7 +412,7 @@ final class AppModel: ObservableObject {
         envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != selectedClusterID }
         dashboardMetricsStateByQuery = dashboardMetricsStateByQuery.filter { $0.key.contextID != selectedClusterID }
 
-        connectionTask = Task { [weak self] in
+        connectionTask = Task.detached(priority: .userInitiated) { [weak self, connectionService, kubeconfig] in
             do {
                 let snapshot = try await connectionService.connect(
                     contextName: selectedClusterID,
@@ -425,11 +420,11 @@ final class AppModel: ObservableObject {
                 )
 
                 try Task.checkCancellation()
-                self?.finishConnection(contextID: selectedClusterID, snapshot: snapshot)
+                await self?.finishConnection(contextID: selectedClusterID, snapshot: snapshot)
             } catch is CancellationError {
-                self?.cancelConnection(contextID: selectedClusterID)
+                await self?.cancelConnection(contextID: selectedClusterID)
             } catch {
-                self?.failConnection(contextID: selectedClusterID, error: error)
+                await self?.failConnection(contextID: selectedClusterID, error: error)
             }
         }
     }
@@ -534,7 +529,7 @@ final class AppModel: ObservableObject {
 
         let kubeconfig = loadedKubeconfig
         let namespace = namespaceForMetricsRequest(query)
-        dashboardMetricsTask = Task { [weak self] in
+        dashboardMetricsTask = Task.detached(priority: .utility) { [weak self, metricsService, kubeconfig, namespace, query] in
             do {
                 let metrics = try await metricsService.dashboardMetrics(
                     contextName: query.contextID,
@@ -543,13 +538,13 @@ final class AppModel: ObservableObject {
                 )
 
                 try Task.checkCancellation()
-                self?.finishDashboardMetrics(query: query, metrics: metrics)
+                await self?.finishDashboardMetrics(query: query, metrics: metrics)
             } catch is CancellationError {
-                self?.cancelDashboardMetrics(query: query)
+                await self?.cancelDashboardMetrics(query: query)
             } catch let error as KubernetesClientError {
-                self?.failDashboardMetrics(query: query, error: error)
+                await self?.failDashboardMetrics(query: query, error: error)
             } catch {
-                self?.failDashboardMetrics(query: query, error: error)
+                await self?.failDashboardMetrics(query: query, error: error)
             }
         }
     }
@@ -588,7 +583,7 @@ final class AppModel: ObservableObject {
 
         let kubeconfig = loadedKubeconfig
         let namespace = namespaceForRequest(query)
-        resourceListTasksByQuery[query] = Task { [weak self] in
+        resourceListTasksByQuery[query] = Task.detached(priority: .utility) { [weak self, resourceListService, kubeconfig, namespace, query] in
             do {
                 let response = try await resourceListService.listResources(
                     contextName: query.contextID,
@@ -598,11 +593,11 @@ final class AppModel: ObservableObject {
                 )
 
                 try Task.checkCancellation()
-                self?.finishResourceList(query: query, response: response)
+                await self?.finishResourceList(query: query, response: response)
             } catch is CancellationError {
-                self?.cancelResourceList(query: query)
+                await self?.cancelResourceList(query: query)
             } catch {
-                self?.failResourceList(query: query, error: error)
+                await self?.failResourceList(query: query, error: error)
             }
         }
     }
@@ -654,7 +649,7 @@ final class AppModel: ObservableObject {
         }
 
         let kubeconfig = loadedKubeconfig
-        resourceDetailTask = Task { [weak self] in
+        resourceDetailTask = Task.detached(priority: .utility) { [weak self, resourceDetailService, kubeconfig, query] in
             do {
                 let detail = try await resourceDetailService.resourceDetail(
                     contextName: query.contextID,
@@ -665,11 +660,11 @@ final class AppModel: ObservableObject {
                 )
 
                 try Task.checkCancellation()
-                self?.finishResourceDetail(query: query, detail: detail)
+                await self?.finishResourceDetail(query: query, detail: detail)
             } catch is CancellationError {
-                self?.cancelResourceDetail(query: query)
+                await self?.cancelResourceDetail(query: query)
             } catch {
-                self?.failResourceDetail(query: query, error: error)
+                await self?.failResourceDetail(query: query, error: error)
             }
         }
     }
@@ -715,7 +710,7 @@ final class AppModel: ObservableObject {
         }
 
         let kubeconfig = loadedKubeconfig
-        resourceEventsTask = Task { [weak self] in
+        resourceEventsTask = Task.detached(priority: .utility) { [weak self, resourceEventService, kubeconfig, query] in
             do {
                 let response = try await resourceEventService.resourceEvents(
                     contextName: query.contextID,
@@ -728,11 +723,11 @@ final class AppModel: ObservableObject {
                 )
 
                 try Task.checkCancellation()
-                self?.finishResourceEvents(query: query, response: response)
+                await self?.finishResourceEvents(query: query, response: response)
             } catch is CancellationError {
-                self?.cancelResourceEvents(query: query)
+                await self?.cancelResourceEvents(query: query)
             } catch {
-                self?.failResourceEvents(query: query, error: error)
+                await self?.failResourceEvents(query: query, error: error)
             }
         }
     }
@@ -784,7 +779,7 @@ final class AppModel: ObservableObject {
         }
 
         let kubeconfig = loadedKubeconfig
-        envSecretValueTasksByQuery[query] = Task { [weak self] in
+        envSecretValueTasksByQuery[query] = Task.detached(priority: .utility) { [weak self, resourceDetailService, kubeconfig, secretResource, query] in
             do {
                 let detail = try await resourceDetailService.resourceDetail(
                     contextName: query.contextID,
@@ -797,14 +792,14 @@ final class AppModel: ObservableObject {
                 try Task.checkCancellation()
 
                 if let value = detail.decodedSecretValue(forKey: query.key) {
-                    self?.finishEnvSecretValue(query: query, value: value)
+                    await self?.finishEnvSecretValue(query: query, value: value)
                 } else {
-                    self?.failEnvSecretValue(query: query, message: "Secret key was not found.")
+                    await self?.failEnvSecretValue(query: query, message: "Secret key was not found.")
                 }
             } catch is CancellationError {
-                self?.cancelEnvSecretValue(query: query)
+                await self?.cancelEnvSecretValue(query: query)
             } catch {
-                self?.failEnvSecretValue(query: query, message: error.localizedDescription)
+                await self?.failEnvSecretValue(query: query, message: error.localizedDescription)
             }
         }
     }
@@ -1000,21 +995,6 @@ final class AppModel: ObservableObject {
         dashboardMetricsTask = nil
         if let query, dashboardMetricsStateByQuery[query] == .loading {
             dashboardMetricsStateByQuery[query] = .idle
-        }
-    }
-
-    private func cancelDashboardResourceListTasks(excluding retainedResource: ResourceNavigationItem?) {
-        for item in Self.dashboardResourceItems where item != retainedResource {
-            guard let query = resourceListQuery(for: item),
-                  resourceListTasksByQuery[query] != nil else {
-                continue
-            }
-
-            resourceListTasksByQuery[query]?.cancel()
-            resourceListTasksByQuery[query] = nil
-            if resourceListStateByQuery[query] == .loading {
-                resourceListStateByQuery[query] = .idle
-            }
         }
     }
 

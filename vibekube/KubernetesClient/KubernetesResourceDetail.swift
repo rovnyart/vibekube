@@ -7,18 +7,18 @@ struct KubernetesResourceDetail: Decodable, Equatable {
         self.value = try KubernetesJSONValue(from: decoder)
     }
 
-    var kind: String? {
+    nonisolated var kind: String? {
         value["kind"]?.stringValue
     }
 
-    var yaml: String {
+    nonisolated var yaml: String {
         KubernetesYAMLRenderer.render(
             value,
             redactedTopLevelKeys: isSecret ? ["binaryData", "data", "stringData"] : []
         )
     }
 
-    func decodedSecretValue(forKey key: String) -> String? {
+    nonisolated func decodedSecretValue(forKey key: String) -> String? {
         guard isSecret else {
             return nil
         }
@@ -35,11 +35,11 @@ struct KubernetesResourceDetail: Decodable, Equatable {
         return String(decoding: data, as: UTF8.self)
     }
 
-    var summary: KubernetesResourceDetailSummary {
+    nonisolated var summary: KubernetesResourceDetailSummary {
         KubernetesResourceDetailSummary(value: value)
     }
 
-    private var isSecret: Bool {
+    private nonisolated var isSecret: Bool {
         kind == "Secret"
     }
 }
