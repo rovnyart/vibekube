@@ -1918,7 +1918,7 @@ private struct ResourceEnvironmentVariableRow: View {
         if let source = variable.source, source.kind == .secretKeyRef {
             secretValueView(source)
         } else if let literalValue = variable.literalValue {
-            Text(isRevealed ? literalValue : maskedValue)
+            Text(literalValue)
                 .font(.callout.monospaced())
                 .lineLimit(3)
                 .truncationMode(.middle)
@@ -2011,12 +2011,12 @@ private struct ResourceEnvironmentVariableRow: View {
     }
 
     private var hasRevealControl: Bool {
-        variable.literalValue != nil || variable.source?.kind == .secretKeyRef
+        variable.source?.kind == .secretKeyRef
     }
 
     private var canReveal: Bool {
         guard let source = variable.source, source.kind == .secretKeyRef else {
-            return variable.literalValue != nil
+            return false
         }
 
         return namespace?.isEmpty == false &&
