@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ClusterSidebarView: View {
@@ -45,15 +46,13 @@ struct ClusterSidebarView: View {
 
     private var sidebarHeader: some View {
         HStack(spacing: 10) {
-            Image(systemName: "hexagon.fill")
-                .font(.title2)
-                .foregroundStyle(.teal)
+            AppIconMark()
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Vibekube")
                     .font(.headline)
                     .accessibilityIdentifier("app.title")
-                Text("Kubernetes")
+                Text("Cluster cockpit")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -62,6 +61,17 @@ struct ClusterSidebarView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
+    }
+}
+
+private struct AppIconMark: View {
+    var body: some View {
+        Image(nsImage: NSApp.applicationIconImage)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: 34, height: 34)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .accessibilityHidden(true)
     }
 }
 
