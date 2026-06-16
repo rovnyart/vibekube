@@ -38,6 +38,7 @@ final class AppModel: ObservableObject {
     private var resourceListTasksByQuery: [ResourceListQuery: Task<Void, Never>]
     private var resourceWatchTasksByQuery: [ResourceListQuery: Task<Void, Never>]
     private var resourceDetailTask: Task<Void, Never>?
+    private var resourceDetailWatchTasksByQuery: [ResourceDetailQuery: Task<Void, Never>]
     private var resourceEventsTask: Task<Void, Never>?
     private var dashboardMetricsTask: Task<Void, Never>?
     private var podLogTask: Task<Void, Never>?
@@ -154,6 +155,7 @@ final class AppModel: ObservableObject {
             : selectedNamespaceByContextID
         self.resourceListTasksByQuery = [:]
         self.resourceWatchTasksByQuery = [:]
+        self.resourceDetailWatchTasksByQuery = [:]
         self.resourceEventsTask = nil
         self.dashboardMetricsTask = nil
         self.podLogTask = nil
@@ -292,6 +294,7 @@ final class AppModel: ObservableObject {
         cancelResourceListTasks()
         cancelResourceWatchTasks()
         resourceDetailTask?.cancel()
+        cancelResourceDetailWatchTasks()
         resourceEventsTask?.cancel()
         cancelDashboardMetricsTask()
         cancelPodLogTask()
@@ -307,6 +310,7 @@ final class AppModel: ObservableObject {
 
         navigate(clusterID: selectedClusterID, resource: resource)
         cancelResourceWatchTasks()
+        cancelResourceDetailWatchTasks()
         if resource == .dashboard {
             loadDashboardResources()
             loadDashboardMetrics()
@@ -326,6 +330,7 @@ final class AppModel: ObservableObject {
         userPreferences.selectedNamespaceByContextID = selectedNamespaceByContextID
         cancelResourceWatchTasks()
         resourceDetailTask?.cancel()
+        cancelResourceDetailWatchTasks()
         resourceEventsTask?.cancel()
         cancelPodLogTask()
         if selectedResource == .dashboard {
@@ -513,6 +518,7 @@ final class AppModel: ObservableObject {
         cancelResourceListTasks()
         cancelResourceWatchTasks()
         resourceDetailTask?.cancel()
+        cancelResourceDetailWatchTasks()
         resourceEventsTask?.cancel()
         cancelDashboardMetricsTask()
         cancelPodLogTask()
@@ -586,12 +592,14 @@ final class AppModel: ObservableObject {
         cancelResourceListTasks()
         cancelResourceWatchTasks()
         resourceDetailTask?.cancel()
+        cancelResourceDetailWatchTasks()
         resourceEventsTask?.cancel()
         cancelDashboardMetricsTask()
         cancelPodLogTask()
         cancelEnvSecretValueTasks()
         connectionTask = nil
         resourceDetailTask = nil
+        resourceDetailWatchTasksByQuery.removeAll()
         resourceEventsTask = nil
         dashboardMetricsTask = nil
         podLogTask = nil
@@ -1055,7 +1063,8 @@ final class AppModel: ObservableObject {
     private func loadResourceDetail(
         query: ResourceDetailQuery,
         row: KubernetesUnstructuredResource,
-        force: Bool = false
+        force: Bool = false,
+        restartDetailWatch: Bool = true
     ) {
         guard selectedConnectionState == .connected,
               query.resource.verbs.contains("get") else {
@@ -1074,6 +1083,9 @@ final class AppModel: ObservableObject {
         }
 
         resourceDetailTask?.cancel()
+        if restartDetailWatch {
+            cancelResourceDetailWatch(query: query)
+        }
         resourceDetailStateByQuery[query] = .loading
         recordDiagnostic(
             .info,
@@ -1675,6 +1687,198 @@ final class AppModel: ObservableObject {
         loadResourceDetail(query: detailQuery, row: row)
     }
 
+    private func startResourceDetailWatchIfNeeded(
+        query: ResourceDetailQuery,
+        resourceVersion: String?
+    ) {
+        guard shouldWatchResourceDetail(query),
+              resourceDetailWatchTasksByQuery[query] == nil,
+              let detailWatchService = resourceListService as? KubernetesResourceDetailWatchServicing else {
+            return
+        }
+
+        let kubeconfig = loadedKubeconfig
+        let reconnectDelays = Self.resourceWatchReconnectDelaysNanoseconds
+        recordDiagnostic(
+            .debug,
+            category: "watch",
+            message: "Starting resource detail watch.",
+            contextID: query.contextID,
+            metadata: resourceDetailDiagnosticsMetadata(query)
+        )
+
+        resourceDetailWatchTasksByQuery[query] = Task.detached(priority: .utility) { [weak self, detailWatchService, kubeconfig, query, resourceVersion, reconnectDelays] in
+            var latestResourceVersion = resourceVersion
+            var failureCount = 0
+
+            do {
+                while true {
+                    try Task.checkCancellation()
+                    guard self != nil else {
+                        return
+                    }
+
+                    do {
+                        for try await event in detailWatchService.watchResource(
+                            contextName: query.contextID,
+                            kubeconfig: kubeconfig,
+                            resource: query.resource,
+                            namespace: query.namespace,
+                            name: query.name,
+                            resourceVersion: latestResourceVersion
+                        ) {
+                            try Task.checkCancellation()
+                            if event.type == .error {
+                                throw KubernetesClientError.statusCode(event.status?.code ?? 0, event.status?.message)
+                            }
+                            latestResourceVersion = await self?.applyResourceDetailWatchEvent(event, query: query) ?? latestResourceVersion
+                        }
+
+                        try Task.checkCancellation()
+                        failureCount = 0
+                        let delay = reconnectDelays.first ?? 500_000_000
+                        try await Task.sleep(nanoseconds: delay)
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        if Self.isExpiredResourceVersionError(error) {
+                            await self?.recordResourceDetailWatchRelist(query: query, error: error)
+                            latestResourceVersion = nil
+                            failureCount = 0
+                            continue
+                        }
+
+                        failureCount += 1
+                        await self?.recordResourceDetailWatchFailure(query: query, error: error)
+                        guard failureCount <= reconnectDelays.count else {
+                            await self?.finishResourceDetailWatch(query: query)
+                            return
+                        }
+
+                        let delay = reconnectDelays[failureCount - 1]
+                        try await Task.sleep(nanoseconds: delay)
+                    }
+                }
+            } catch is CancellationError {
+                await self?.cancelResourceDetailWatch(query: query)
+            } catch {
+                await self?.recordResourceDetailWatchFailure(query: query, error: error)
+                await self?.finishResourceDetailWatch(query: query)
+            }
+        }
+    }
+
+    private func applyResourceDetailWatchEvent(
+        _ event: KubernetesWatchEvent<KubernetesUnstructuredResource>,
+        query: ResourceDetailQuery
+    ) -> String? {
+        switch event.type {
+        case .added, .modified:
+            guard let object = event.object else {
+                return nil
+            }
+
+            let item = normalizedResource(object, for: query)
+            guard isResourceDetailWatchObject(item, query: query) else {
+                return item.metadata.resourceVersion
+            }
+
+            guard case .loaded(let snapshot) = resourceDetailStateByQuery[query],
+                  !isResourceDetailSnapshot(snapshot, currentFor: item) else {
+                return item.metadata.resourceVersion
+            }
+
+            loadResourceDetail(
+                query: query,
+                row: item,
+                force: true,
+                restartDetailWatch: false
+            )
+            return item.metadata.resourceVersion
+        case .deleted:
+            guard let object = event.object else {
+                return nil
+            }
+
+            let item = normalizedResource(object, for: query)
+            guard isResourceDetailWatchObject(item, query: query) else {
+                return item.metadata.resourceVersion
+            }
+
+            resourceDetailStateByQuery[query] = .failed("Resource was deleted.")
+            cancelResourceDetailWatch(query: query)
+            return item.metadata.resourceVersion
+        case .bookmark:
+            return event.object?.metadata.resourceVersion
+        case .error:
+            return nil
+        }
+    }
+
+    private func normalizedResource(
+        _ resource: KubernetesUnstructuredResource,
+        for query: ResourceDetailQuery
+    ) -> KubernetesUnstructuredResource {
+        var item = resource
+        if item.kind == nil {
+            item.kind = query.resource.kind
+        }
+        if item.apiVersion == nil {
+            item.apiVersion = query.resource.groupVersion
+        }
+        return item
+    }
+
+    private func isResourceDetailWatchObject(
+        _ row: KubernetesUnstructuredResource,
+        query: ResourceDetailQuery
+    ) -> Bool {
+        guard row.metadata.name == query.name else {
+            return false
+        }
+
+        guard query.resource.namespaced else {
+            return true
+        }
+
+        return row.metadata.namespace == query.namespace
+    }
+
+    private func shouldWatchResourceDetail(_ query: ResourceDetailQuery) -> Bool {
+        selectedClusterID == query.contextID &&
+            selectedConnectionState == .connected &&
+            query.resource.verbs.contains("watch")
+    }
+
+    private func recordResourceDetailWatchFailure(query: ResourceDetailQuery, error: Error) {
+        recordDiagnostic(
+            .warning,
+            category: "watch",
+            message: "Resource detail watch failed.",
+            contextID: query.contextID,
+            metadata: resourceDetailDiagnosticsMetadata(query).merging(errorDiagnosticsMetadata(error)) { _, new in new }
+        )
+    }
+
+    private func recordResourceDetailWatchRelist(query: ResourceDetailQuery, error: Error) {
+        recordDiagnostic(
+            .info,
+            category: "watch",
+            message: "Resource detail watch resource version expired; reconnecting without resourceVersion.",
+            contextID: query.contextID,
+            metadata: resourceDetailDiagnosticsMetadata(query).merging(errorDiagnosticsMetadata(error)) { _, new in new }
+        )
+    }
+
+    private func finishResourceDetailWatch(query: ResourceDetailQuery) {
+        resourceDetailWatchTasksByQuery[query] = nil
+    }
+
+    private func cancelResourceDetailWatch(query: ResourceDetailQuery) {
+        resourceDetailWatchTasksByQuery[query]?.cancel()
+        resourceDetailWatchTasksByQuery[query] = nil
+    }
+
     private func startResourceWatchAttempt(query: ResourceListQuery, attempt: Int) {
         let now = Date()
         resourceWatchStatusByQuery[query] = .live(since: now, lastEventAt: nil)
@@ -2160,6 +2364,7 @@ final class AppModel: ObservableObject {
                 "hasEnvironment": summary.environment.isEmpty ? "false" : "true"
             ]) { _, new in new }
         )
+        startResourceDetailWatchIfNeeded(query: query, resourceVersion: summary.resourceVersion)
     }
 
     private func cancelResourceDetail(query: ResourceDetailQuery) {
@@ -2279,6 +2484,11 @@ final class AppModel: ObservableObject {
         for query in cancelledQueries {
             resourceWatchStatusByQuery[query] = .idle
         }
+    }
+
+    private func cancelResourceDetailWatchTasks() {
+        resourceDetailWatchTasksByQuery.values.forEach { $0.cancel() }
+        resourceDetailWatchTasksByQuery.removeAll()
     }
 
     private func cancelDashboardMetricsTask() {

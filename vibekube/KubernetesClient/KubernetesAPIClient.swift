@@ -13,7 +13,8 @@ protocol KubernetesAPIClient {
     func resourceWatch(
         resource: KubernetesDiscoveredResource,
         namespace: String?,
-        resourceVersion: String?
+        resourceVersion: String?,
+        fieldSelector: String?
     ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error>
     func resourceDetail(
         resource: KubernetesDiscoveredResource,

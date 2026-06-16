@@ -15,7 +15,7 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Expired watch resourceVersions relist and resume from a fresh resourceVersion.
 - [x] Open resource details refresh when watched list rows move to a newer resourceVersion.
 - [x] Broader active-resource list watches exist.
-- [ ] True selected-resource detail watches exist.
+- [x] True selected-resource detail watches exist.
 
 ## Implementation Slices
 
@@ -31,7 +31,7 @@ Goal: keep resource lists and details current through Kubernetes watches without
 
 - [x] Define resource watch stream on the resource list service.
 - [x] Start watches for active resource lists whose discovered API resource supports `watch`.
-- [ ] Start detail watch for selected resource.
+- [x] Start detail watch for selected resource.
 - [x] Stop watches on route/context/namespace changes.
 - [x] Apply backoff on transient failures for active resource watches.
 - [x] Surface persistent watch errors in the resource-list header.
@@ -63,6 +63,7 @@ Checkpoint: stop when pod and deployment lists can receive watch updates without
 - [x] ResourceVersion relist tests.
 - [x] Store merge tests for active Pods and Deployments ADDED events.
 - [x] Detail refresh tests for active Pod and Deployment MODIFIED events.
+- [x] Selected-resource detail watch refresh test.
 - [ ] Mock watch reconnect tests.
 - [ ] Manual QA with demo CronJob pods.
 
@@ -70,7 +71,7 @@ Checkpoint: stop when pod and deployment lists can receive watch updates without
 
 - [x] Watchable active resource lists update without manual refresh.
 - [x] Watch failures are visible but not disruptive for active resources.
-- [ ] Switching cluster or namespace cancels old watches.
+- [x] Switching cluster or namespace cancels old watches.
 - [ ] Selection and scroll position are not unnecessarily disrupted.
 
 ## Validation Commands

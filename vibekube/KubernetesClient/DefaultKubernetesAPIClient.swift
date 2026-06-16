@@ -113,9 +113,10 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
     func resourceWatch(
         resource: KubernetesDiscoveredResource,
         namespace: String?,
-        resourceVersion: String?
+        resourceVersion: String?,
+        fieldSelector: String? = nil
     ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error> {
-        let queryItems = Self.watchQueryItems(resourceVersion: resourceVersion)
+        let queryItems = Self.watchQueryItems(resourceVersion: resourceVersion, fieldSelector: fieldSelector)
         let textStream = streamText(
             path: resource.listPath(namespace: namespace),
             queryItems: queryItems
@@ -364,7 +365,10 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         "/api/v1/namespaces/\(namespace.kubernetesPathSegment)/pods/\(podName.kubernetesPathSegment)/log"
     }
 
-    private static func watchQueryItems(resourceVersion: String?) -> [URLQueryItem] {
+    private static func watchQueryItems(
+        resourceVersion: String?,
+        fieldSelector: String? = nil
+    ) -> [URLQueryItem] {
         var items = [
             URLQueryItem(name: "watch", value: "true"),
             URLQueryItem(name: "allowWatchBookmarks", value: "true"),
@@ -373,6 +377,10 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
 
         if let resourceVersion, !resourceVersion.isEmpty {
             items.append(URLQueryItem(name: "resourceVersion", value: resourceVersion))
+        }
+
+        if let fieldSelector, !fieldSelector.isEmpty {
+            items.append(URLQueryItem(name: "fieldSelector", value: fieldSelector))
         }
 
         return items

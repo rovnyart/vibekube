@@ -809,6 +809,56 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelRefreshesOpenDetailFromSelectedResourceWatch() async throws {
+        let resourceListService = DetailWatchingPodResourceListService()
+        let detailService = DetailWatchPodDetailService()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: WatchableWorkloadsConnectionService(),
+            resourceListService: resourceListService,
+            resourceDetailService: detailService,
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitForResourceList(model, .pods)
+
+        guard case .loaded(let firstSnapshot) = model.resourceListState(for: .pods),
+              let initialRow = firstSnapshot.items.first(where: { $0.displayName == "web-0" }) else {
+            Issue.record("Expected initial pod row")
+            return
+        }
+
+        model.loadResourceDetail(for: .pods, row: initialRow)
+        try await waitForResourceDetail(model, resource: .pods, row: initialRow)
+
+        guard case .loaded(let initialDetail) = model.resourceDetailState(for: .pods, row: initialRow) else {
+            Issue.record("Expected initial pod detail")
+            return
+        }
+        #expect(initialDetail.summary.resourceVersion == "30")
+
+        try await waitUntil("pod detail refreshed from selected resource watch") {
+            guard case .loaded(let detail) = model.resourceDetailState(for: .pods, row: initialRow) else {
+                return false
+            }
+            return detail.summary.resourceVersion == "31"
+        }
+
+        guard case .loaded(let unchangedListSnapshot) = model.resourceListState(for: .pods),
+              let unchangedRow = unchangedListSnapshot.items.first(where: { $0.displayName == "web-0" }) else {
+            Issue.record("Expected unchanged pod row")
+            return
+        }
+        #expect(unchangedRow.metadata.resourceVersion == "30")
+        #expect(await detailService.callCount() >= 2)
+        #expect(resourceListService.detailWatchNames().contains("web-0"))
+    }
+
+    @MainActor
     @Test func appModelDownloadsAllPreviousPodLogs() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -1655,6 +1705,107 @@ private struct ModifyingDeploymentResourceListService: KubernetesResourceListSer
     }
 }
 
+private final class DetailWatchingPodResourceListService: KubernetesResourceListServicing, KubernetesResourceDetailWatchServicing {
+    private let lock = NSLock()
+    private var watchedNames: [String] = []
+
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        #expect(resource.name == "pods")
+        return try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "metadata": {
+                    "resourceVersion": "30"
+                  },
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "web-0",
+                        "namespace": "\(namespace ?? "vibekube-demo")",
+                        "uid": "web-uid",
+                        "resourceVersion": "30"
+                      },
+                      "status": {
+                        "phase": "Running"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+    }
+
+    func watchResource(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String,
+        resourceVersion: String?
+    ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error> {
+        appendWatchedName(name)
+
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    try await Task.sleep(nanoseconds: 100_000_000)
+                    let pod = try JSONDecoder().decode(
+                        KubernetesUnstructuredResource.self,
+                        from: Data(
+                            """
+                            {
+                              "apiVersion": "v1",
+                              "kind": "Pod",
+                              "metadata": {
+                                "name": "web-0",
+                                "namespace": "\(namespace ?? "vibekube-demo")",
+                                "uid": "web-uid",
+                                "resourceVersion": "31"
+                              },
+                              "status": {
+                                "phase": "Running"
+                              }
+                            }
+                            """.utf8
+                        )
+                    )
+                    continuation.yield(
+                        KubernetesWatchEvent(
+                            type: .modified,
+                            object: pod
+                        )
+                    )
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    func detailWatchNames() -> [String] {
+        lock.withLock {
+            watchedNames
+        }
+    }
+
+    private func appendWatchedName(_ name: String) {
+        lock.withLock {
+            watchedNames.append(name)
+        }
+    }
+}
+
 private actor VersionedPodDetailService: KubernetesResourceDetailServicing {
     private var calls = 0
 
@@ -1667,6 +1818,45 @@ private actor VersionedPodDetailService: KubernetesResourceDetailServicing {
     ) async throws -> KubernetesResourceDetail {
         calls += 1
         let resourceVersion = calls == 1 ? "10" : "11"
+        return try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "\(resource.groupVersion)",
+                  "kind": "\(resource.kind)",
+                  "metadata": {
+                    "name": "\(name)",
+                    "namespace": "\(namespace ?? "vibekube-demo")",
+                    "uid": "web-uid",
+                    "resourceVersion": "\(resourceVersion)"
+                  },
+                  "status": {
+                    "phase": "Running"
+                  }
+                }
+                """.utf8
+            )
+        )
+    }
+
+    func callCount() -> Int {
+        calls
+    }
+}
+
+private actor DetailWatchPodDetailService: KubernetesResourceDetailServicing {
+    private var calls = 0
+
+    func resourceDetail(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String
+    ) async throws -> KubernetesResourceDetail {
+        calls += 1
+        let resourceVersion = calls == 1 ? "30" : "31"
         return try JSONDecoder().decode(
             KubernetesResourceDetail.self,
             from: Data(

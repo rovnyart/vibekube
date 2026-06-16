@@ -27,6 +27,17 @@ protocol KubernetesResourceListProgressServicing: KubernetesResourceListServicin
     ) async throws -> KubernetesUnstructuredResourceList
 }
 
+protocol KubernetesResourceDetailWatchServicing {
+    func watchResource(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String,
+        resourceVersion: String?
+    ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error>
+}
+
 extension KubernetesResourceListServicing {
     func watchResources(
         contextName: String,
@@ -41,7 +52,7 @@ extension KubernetesResourceListServicing {
     }
 }
 
-final class KubernetesResourceListService: KubernetesResourceListProgressServicing {
+final class KubernetesResourceListService: KubernetesResourceListProgressServicing, KubernetesResourceDetailWatchServicing {
     private let execCredentialProvider: KubernetesExecCredentialProviding
 
     init(execCredentialProvider: KubernetesExecCredentialProviding = DefaultKubernetesExecCredentialProvider()) {
@@ -96,6 +107,42 @@ final class KubernetesResourceListService: KubernetesResourceListProgressServici
         namespace: String?,
         resourceVersion: String?
     ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error> {
+        watchResources(
+            contextName: contextName,
+            kubeconfig: kubeconfig,
+            resource: resource,
+            namespace: namespace,
+            resourceVersion: resourceVersion,
+            fieldSelector: nil
+        )
+    }
+
+    func watchResource(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String,
+        resourceVersion: String?
+    ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error> {
+        watchResources(
+            contextName: contextName,
+            kubeconfig: kubeconfig,
+            resource: resource,
+            namespace: namespace,
+            resourceVersion: resourceVersion,
+            fieldSelector: "metadata.name=\(name)"
+        )
+    }
+
+    private func watchResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        resourceVersion: String?,
+        fieldSelector: String?
+    ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error> {
         AsyncThrowingStream { continuation in
             let task = Task { [execCredentialProvider] in
                 do {
@@ -107,7 +154,8 @@ final class KubernetesResourceListService: KubernetesResourceListProgressServici
                         for try await event in client.resourceWatch(
                             resource: resource,
                             namespace: namespace,
-                            resourceVersion: resourceVersion
+                            resourceVersion: resourceVersion,
+                            fieldSelector: fieldSelector
                         ) {
                             continuation.yield(event)
                         }
@@ -123,7 +171,8 @@ final class KubernetesResourceListService: KubernetesResourceListProgressServici
                         for try await event in retryClient.resourceWatch(
                             resource: resource,
                             namespace: namespace,
-                            resourceVersion: resourceVersion
+                            resourceVersion: resourceVersion,
+                            fieldSelector: fieldSelector
                         ) {
                             continuation.yield(event)
                         }
