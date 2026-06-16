@@ -534,47 +534,49 @@ private struct ResourceDetailView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(row.displayName)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .textSelection(.enabled)
+        VStack(spacing: 9) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(row.displayName)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+                        .textSelection(.enabled)
 
-                Text(detailSubtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .textSelection(.enabled)
-            }
+                    Text(detailSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                }
+                .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
 
-            Spacer()
+                if let detailStatusText {
+                    ResourceDetailFreshnessBadge(
+                        text: detailStatusText,
+                        tint: detailStatusTint,
+                        help: detailStatusHelp
+                    )
+                }
 
-            if let detailStatusText {
-                Text(detailStatusText)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(detailStatusTint)
-                    .lineLimit(1)
-                    .help(detailStatusHelp)
+                Button {
+                    appModel.loadResourceDetail(for: item, row: row, force: true)
+                } label: {
+                    Label("Refresh Manifest", systemImage: "arrow.clockwise")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .disabled(appModel.selectedConnectionState != .connected)
+                .help("Refresh Manifest")
             }
 
             ResourceDetailPanelTabBar(
                 selection: $selectedPanel,
                 isEnabled: isLoaded
             )
-
-            Button {
-                appModel.loadResourceDetail(for: item, row: row, force: true)
-            } label: {
-                Label("Refresh Manifest", systemImage: "arrow.clockwise")
-                    .labelStyle(.iconOnly)
-            }
-            .buttonStyle(.bordered)
-            .disabled(appModel.selectedConnectionState != .connected)
-            .help("Refresh Manifest")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.vertical, 10)
         .background(.bar)
     }
 
@@ -739,6 +741,35 @@ private struct ResourceDetailView: View {
     }
 }
 
+private struct ResourceDetailFreshnessBadge: View {
+    let text: String
+    let tint: Color
+    let help: String
+
+    var body: some View {
+        Label(text, systemImage: systemImage)
+            .font(.caption.monospacedDigit().weight(.medium))
+            .lineLimit(1)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .foregroundStyle(tint)
+            .background(tint.opacity(0.12), in: Capsule())
+            .help(help)
+            .accessibilityLabel(help)
+    }
+
+    private var systemImage: String {
+        switch text {
+        case "Refreshing...":
+            "arrow.triangle.2.circlepath"
+        case "Stale":
+            "clock.badge.exclamationmark"
+        default:
+            "checkmark.circle"
+        }
+    }
+}
+
 private struct ResourceDetailPanelTabBar: View {
     @Binding var selection: ResourceDetailPanel
     var isEnabled: Bool
@@ -753,9 +784,11 @@ private struct ResourceDetailPanelTabBar: View {
                 ) {
                     selection = tab
                 }
+                .frame(maxWidth: .infinity)
             }
         }
         .padding(3)
+        .frame(maxWidth: .infinity)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.72), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -781,7 +814,7 @@ private struct ResourceDetailPanelTabButton: View {
                     .foregroundStyle(titleColor)
             }
             .font(.caption.weight(isSelected ? .semibold : .medium))
-            .frame(minWidth: 82)
+            .frame(minWidth: 82, maxWidth: .infinity)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(tabBackground)
