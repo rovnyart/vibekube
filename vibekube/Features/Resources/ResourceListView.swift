@@ -1883,10 +1883,13 @@ private struct SelectableLogTextView: NSViewRepresentable {
 
         context.coordinator.isPinnedToBottom = $isPinnedToBottom
         let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let shouldFollow = followsLogs && context.coordinator.isScrolledNearBottom(in: scrollView)
+        let wasPinnedToBottom = context.coordinator.isPinnedToBottom?.wrappedValue ?? true
+        let shouldFollow = followsLogs && wasPinnedToBottom
         if context.coordinator.text != text ||
             context.coordinator.searchText != needle ||
             context.coordinator.formatsJSONLines != formatsJSONLines {
+            let preservedOrigin = scrollView.contentView.bounds.origin
+            context.coordinator.beginIgnoringBoundsChanges()
             textView.textStorage?.setAttributedString(
                 Self.attributedText(
                     text,
@@ -1900,6 +1903,12 @@ private struct SelectableLogTextView: NSViewRepresentable {
 
             if shouldFollow {
                 context.coordinator.scrollToBottom(in: scrollView)
+            } else {
+                context.coordinator.restoreScrollPosition(
+                    in: scrollView,
+                    to: preservedOrigin,
+                    pinnedValue: false
+                )
             }
         }
 
@@ -2013,6 +2022,7 @@ private struct SelectableLogTextView: NSViewRepresentable {
         weak var textView: NSTextView?
         private weak var scrollView: NSScrollView?
         private var boundsObserver: NSObjectProtocol?
+        private var ignoresBoundsChanges = false
         var isPinnedToBottom: Binding<Bool>?
         var text = ""
         var searchText = ""
@@ -2030,6 +2040,9 @@ private struct SelectableLogTextView: NSViewRepresentable {
                 guard let self, let scrollView else {
                     return
                 }
+                guard !self.ignoresBoundsChanges else {
+                    return
+                }
 
                 self.publishPinnedState(for: scrollView)
             }
@@ -2043,14 +2056,38 @@ private struct SelectableLogTextView: NSViewRepresentable {
             scrollView = nil
         }
 
+        func beginIgnoringBoundsChanges() {
+            ignoresBoundsChanges = true
+        }
+
         func scrollToBottom(in scrollView: NSScrollView) {
             DispatchQueue.main.async { [weak self, weak scrollView] in
                 guard let self, let scrollView else {
                     return
                 }
 
+                self.ignoresBoundsChanges = true
                 self.textView?.scrollToEndOfDocument(nil)
                 self.publishPinnedState(for: scrollView, forcedValue: true)
+                DispatchQueue.main.async { [weak self] in
+                    self?.ignoresBoundsChanges = false
+                }
+            }
+        }
+
+        func restoreScrollPosition(in scrollView: NSScrollView, to origin: NSPoint, pinnedValue: Bool) {
+            DispatchQueue.main.async { [weak self, weak scrollView] in
+                guard let self, let scrollView else {
+                    return
+                }
+
+                self.ignoresBoundsChanges = true
+                scrollView.contentView.scroll(to: origin)
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+                self.publishPinnedState(for: scrollView, forcedValue: pinnedValue)
+                DispatchQueue.main.async { [weak self] in
+                    self?.ignoresBoundsChanges = false
+                }
             }
         }
 
