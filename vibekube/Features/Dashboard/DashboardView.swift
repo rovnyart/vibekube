@@ -39,29 +39,8 @@ struct DashboardView: View {
                     )
                 }
 
-                HStack(alignment: .top, spacing: 18) {
-                    SectionSurface(title: "Pod Health", systemImage: "shippingbox") {
-                        DashboardPodHealthView(summary: snapshot.podHealth)
-                    }
-
-                    SectionSurface(title: "Workloads", systemImage: "square.stack.3d.up") {
-                        DashboardWorkloadHealthView(summary: snapshot.workloadHealth)
-                    }
-                }
-
-                SectionSurface(title: "Warning Events", systemImage: "exclamationmark.triangle") {
-                    DashboardWarningsView(summary: snapshot.eventHealth)
-                }
-
-                SectionSurface(title: "Recent Events", systemImage: "waveform.path.ecg") {
-                    DashboardRecentEventsView(
-                        state: appModel.resourceListState(for: .events),
-                        canLoadEvents: canLoadEvents,
-                        unavailableMessage: eventsUnavailableMessage
-                    ) {
-                        appModel.loadResourceList(for: .events, force: true)
-                    }
-                    .accessibilityIdentifier("dashboard.recentEvents")
+                SectionSurface(title: "Pod Health", systemImage: "shippingbox") {
+                    DashboardPodHealthView(summary: snapshot.podHealth)
                 }
             }
             .padding(24)
@@ -100,44 +79,7 @@ struct DashboardView: View {
                 status: snapshot.podHealth.status,
                 systemImage: "shippingbox"
             )
-
-            DashboardHealthTile(
-                title: "Workloads",
-                value: workloadValue(snapshot),
-                detail: workloadDetail(snapshot),
-                status: snapshot.workloadHealth.status,
-                systemImage: "square.stack.3d.up"
-            )
-
-            DashboardHealthTile(
-                title: "Storage",
-                value: storageValue(snapshot),
-                detail: storageDetail(snapshot),
-                status: snapshot.storageHealth.status,
-                systemImage: "internaldrive"
-            )
-
-            DashboardHealthTile(
-                title: "Warnings",
-                value: warningValue(snapshot),
-                detail: warningDetail(snapshot),
-                status: snapshot.eventHealth.status,
-                systemImage: "exclamationmark.triangle"
-            )
         }
-    }
-
-    private var canLoadEvents: Bool {
-        appModel.selectedConnectionState == .connected &&
-            ResourceNavigationItem.events.discoveredResource(in: appModel.selectedDiscovery) != nil
-    }
-
-    private var eventsUnavailableMessage: String {
-        if appModel.selectedConnectionState != .connected {
-            return "Connect to a cluster to load recent events."
-        }
-
-        return "The Events API was not discovered for this cluster."
     }
 
     private var header: some View {
@@ -223,64 +165,6 @@ struct DashboardView: View {
         }
 
         return "Running pods"
-    }
-
-    private func workloadValue(_ snapshot: ClusterDashboardSnapshot) -> String {
-        let summary = snapshot.workloadHealth
-        return summary.isLoaded ? "\(summary.ready)/\(summary.total)" : "-"
-    }
-
-    private func workloadDetail(_ snapshot: ClusterDashboardSnapshot) -> String {
-        let summary = snapshot.workloadHealth
-        guard summary.isLoaded else {
-            return "Not loaded"
-        }
-
-        if summary.unavailable > 0 {
-            return "\(summary.unavailable) unavailable"
-        }
-
-        if summary.progressing > 0 {
-            return "\(summary.progressing) progressing"
-        }
-
-        return "Ready workloads"
-    }
-
-    private func storageValue(_ snapshot: ClusterDashboardSnapshot) -> String {
-        let summary = snapshot.storageHealth
-        return summary.isLoaded ? "\(summary.bound)/\(summary.total)" : "-"
-    }
-
-    private func storageDetail(_ snapshot: ClusterDashboardSnapshot) -> String {
-        let summary = snapshot.storageHealth
-        guard summary.isLoaded else {
-            return "Not loaded"
-        }
-
-        if summary.lost > 0 {
-            return "\(summary.lost) lost or failed"
-        }
-
-        if summary.pending > 0 {
-            return "\(summary.pending) pending"
-        }
-
-        return "Bound volumes"
-    }
-
-    private func warningValue(_ snapshot: ClusterDashboardSnapshot) -> String {
-        let summary = snapshot.eventHealth
-        return summary.isLoaded ? "\(summary.warnings)" : "-"
-    }
-
-    private func warningDetail(_ snapshot: ClusterDashboardSnapshot) -> String {
-        let summary = snapshot.eventHealth
-        guard summary.isLoaded else {
-            return "Not loaded"
-        }
-
-        return summary.warnings == 0 ? "No warnings" : "\(summary.total) recent events"
     }
 
     @ViewBuilder
@@ -554,21 +438,6 @@ private struct DashboardResourceInventoryView: View {
                 title: "Pods",
                 value: resourceCount(.pods),
                 systemImage: "shippingbox"
-            )
-            DashboardInventoryMetric(
-                title: "Workloads",
-                value: snapshot.workloadHealth.isLoaded ? "\(snapshot.workloadHealth.total)" : "-",
-                systemImage: "square.stack.3d.up"
-            )
-            DashboardInventoryMetric(
-                title: "Storage",
-                value: snapshot.storageHealth.isLoaded ? "\(snapshot.storageHealth.total)" : "-",
-                systemImage: "internaldrive"
-            )
-            DashboardInventoryMetric(
-                title: "Events",
-                value: resourceCount(.events),
-                systemImage: "waveform.path.ecg"
             )
         }
         .frame(maxWidth: .infinity, alignment: .leading)

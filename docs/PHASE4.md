@@ -8,13 +8,13 @@ Goal: show a useful operational overview for the selected cluster.
 
 - [x] Phase plan exists.
 - [x] Dashboard data model exists.
-- [x] Node/pod/workload summaries load.
-- [x] Recent events load.
+- [x] Node/pod summaries load.
+- [ ] Workload, storage, and event summaries load without blocking navigation.
 - [x] Metrics API availability is detected.
 - [x] Dashboard shows CPU/RAM usage through the Kubernetes Metrics API when available.
 - [x] Dashboard UI handles event loading, empty, and error states.
 - [x] Dashboard UI renders live healthy/warning/failed summary states.
-- [x] Dashboard resource lists load together without cancelling sibling requests.
+- [x] Dashboard initial load is limited to nodes and pods to keep navigation responsive.
 - [x] Dashboard avoids repeated snapshot recomputation during a single render.
 - [x] Dashboard preserves in-flight list loads when navigating away so return navigation stays warm.
 - [x] Dashboard data loads run off the main actor.
@@ -23,18 +23,18 @@ Goal: show a useful operational overview for the selected cluster.
 
 ## Checkpoint Notes
 
-- Dashboard Recent Events now loads the same Kubernetes Event resources used by the resource inspector, but without per-object filtering.
-- Resource detail Events are object-specific; Dashboard Recent Events are cluster/namespace-scope operational feed.
-- Dashboard health now derives from real resource lists: nodes, pods, workloads, PV/PVCs, and warning events.
+- Dashboard currently uses a deliberately small initial data set: nodes, pods, discovery metadata, and metrics when available.
+- Workload, storage, and event summaries were pulled out of the eager dashboard path because the 10-request aggregation made route switching visibly laggy.
+- Resource detail Events remain object-specific; Dashboard Recent Events should return later as a cached or explicitly refreshed operational feed.
 - Dashboard render now computes the health snapshot once per SwiftUI pass instead of repeatedly walking the same resource arrays.
-- Leaving Dashboard cancels in-flight dashboard-only list calls, while preserving a clicked resource if it was already loading.
+- Leaving Dashboard keeps the small dashboard load alive, so the app does not churn requests during route changes.
 - Dashboard Resource Usage now means actual CPU and memory usage from `metrics.k8s.io`, with allocatable node CPU/RAM used as capacity when node data is loaded.
 - All Namespaces uses node-level metrics for cluster CPU/RAM; a selected namespace uses summed pod metrics for that namespace and shows capacity as unavailable until request/limit summaries exist.
 - The old object-count panel is renamed Cluster Inventory so it is not confused with CPU/RAM resource usage.
 - Kubernetes API calls, JSON decoding, detail/event loading, secret reveal, and metrics loading now run in detached background tasks; only final state publication returns to the main actor.
-- Leaving Dashboard no longer cancels dashboard loads, so switching away is immediate and returning can reuse the warm snapshot.
+- Leaving Dashboard no longer cancels dashboard loads, and the eager dashboard request set is now small enough that switching away should not wait on aggregation.
 - Broad material panels were replaced with adaptive system-color surfaces and subtle borders for cleaner dark/light appearance and less compositor work.
-- The dashboard still needs richer historical charts, drill-down links, and clearer handling for partial load failures.
+- The dashboard still needs richer historical charts, drill-down links, partial load failure callouts, and a non-blocking way to reintroduce workload/event/storage summaries.
 
 ## Product Reference Notes
 
@@ -72,9 +72,9 @@ Goal: show a useful operational overview for the selected cluster.
 - [x] Load nodes and readiness.
 - [x] Load namespaces.
 - [x] Load pods across selected namespace scope.
-- [x] Load deployments, statefulsets, daemonsets, jobs, and cronjobs.
-- [x] Load recent events.
-- [x] Load PV/PVC summary.
+- [ ] Load deployments, statefulsets, daemonsets, jobs, and cronjobs through a non-blocking summary path.
+- [ ] Load recent events through a non-blocking summary path.
+- [ ] Load PV/PVC summary through a non-blocking summary path.
 - [x] Try metrics API and gracefully degrade.
 
 ### 4.3 Health Computation
@@ -92,11 +92,11 @@ Goal: show a useful operational overview for the selected cluster.
 - [x] Health summary strip.
 - [x] Resource inventory summary.
 - [x] Node readiness summary.
-- [x] Workload summary.
+- [ ] Workload summary.
 - [x] Pod health summary.
-- [x] Recent events list.
-- [x] Recent warnings list with aggregation.
-- [x] Storage summary.
+- [ ] Recent events list.
+- [ ] Recent warnings list with aggregation.
+- [ ] Storage summary.
 - [x] CPU/RAM resource usage panel.
 - [x] Metrics unavailable state.
 - [x] Last updated indicator.
@@ -112,12 +112,13 @@ Checkpoint: stop for visual review once demo cluster dashboard renders real data
 - [x] CPU/memory metrics quantity parsing tests.
 - [x] Dashboard resource usage aggregation tests.
 - [x] Dashboard navigation does not cancel in-flight dashboard loads.
+- [x] Dashboard initial fanout is limited to nodes and pods.
 - [ ] Visual/manual demo cluster dashboard check.
 
 ## Acceptance Criteria
 
-- [ ] Demo cluster dashboard visually shows version, nodes, pods, workloads, and warning events.
-- [x] Demo cluster dashboard shows recent events.
+- [ ] Demo cluster dashboard visually shows version, nodes, pods, and metrics status without lag.
+- [ ] Demo cluster dashboard shows recent events without blocking navigation.
 - [ ] Dashboard links into related resources where routes exist.
 - [x] Missing metrics does not look like a failure.
 - [x] Refresh updates dashboard data.

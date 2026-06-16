@@ -36,15 +36,7 @@ final class AppModel: ObservableObject {
     static let allNamespacesSelection = DashboardMetricsQuery.allNamespacesSelection
     static let dashboardResourceItems: [ResourceNavigationItem] = [
         .nodes,
-        .pods,
-        .deployments,
-        .statefulSets,
-        .daemonSets,
-        .jobs,
-        .cronJobs,
-        .persistentVolumes,
-        .persistentVolumeClaims,
-        .events
+        .pods
     ]
 
     convenience init() {
