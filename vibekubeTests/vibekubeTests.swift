@@ -97,6 +97,19 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelUpdatesAppAppearanceSetting() {
+        let model = AppModel(clusters: ClusterSummary.preview)
+
+        #expect(model.appAppearance == .system)
+
+        model.setAppAppearance(.dark)
+        #expect(model.appAppearance == .dark)
+
+        model.setAppAppearance(.light)
+        #expect(model.appAppearance == .light)
+    }
+
+    @MainActor
     @Test func appModelReloadsKubeconfigWhenPathOverrideChanges() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

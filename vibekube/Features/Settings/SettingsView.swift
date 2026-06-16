@@ -87,6 +87,24 @@ struct SettingsView: View {
                     }
                 }
 
+                SectionSurface(title: "Appearance", systemImage: "paintbrush") {
+                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 12) {
+                        GridRow {
+                            Text("Theme")
+                                .foregroundStyle(.secondary)
+
+                            Picker("Theme", selection: appAppearanceBinding) {
+                                ForEach(AppAppearance.allCases) { appearance in
+                                    Text(appearance.title).tag(appearance)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.segmented)
+                            .frame(width: 300, alignment: .leading)
+                        }
+                    }
+                }
+
                 SectionSurface(title: "Logs", systemImage: "terminal") {
                     Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 12) {
                         GridRow {
@@ -312,6 +330,17 @@ struct SettingsView: View {
             set: { density in
                 DispatchQueue.main.async {
                     appModel.setTableDensity(density)
+                }
+            }
+        )
+    }
+
+    private var appAppearanceBinding: Binding<AppAppearance> {
+        Binding(
+            get: { appModel.appAppearance },
+            set: { appearance in
+                DispatchQueue.main.async {
+                    appModel.setAppAppearance(appearance)
                 }
             }
         )

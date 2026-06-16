@@ -23,6 +23,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] Refresh/watch behavior setting exists.
 - [x] Kubeconfig path override setting exists.
 - [x] Table density setting exists.
+- [x] Appearance behavior setting exists.
 - [x] Privacy statement exists.
 
 ## Implementation Slices
@@ -36,7 +37,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] Default namespace behavior.
 - [x] Refresh/watch behavior.
 - [x] Table density.
-- [ ] Appearance behavior.
+- [x] Appearance behavior.
 - [x] Log buffer limits.
 - [x] Secret reveal confirmation behavior.
 - [ ] AI settings placeholder.

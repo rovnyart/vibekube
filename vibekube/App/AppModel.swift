@@ -33,6 +33,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var resourceWatchesEnabled: Bool
     @Published private(set) var kubeconfigPathOverride: String?
     @Published private(set) var tableDensity: TableDensity
+    @Published private(set) var appAppearance: AppAppearance
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
     private var kubeconfigLoader: KubeconfigLoader?
@@ -171,6 +172,7 @@ final class AppModel: ObservableObject {
         self.resourceWatchesEnabled = userPreferences.resourceWatchesEnabled
         self.kubeconfigPathOverride = userPreferences.kubeconfigPathOverride
         self.tableDensity = userPreferences.tableDensity
+        self.appAppearance = userPreferences.appAppearance
         self.selectedNamespaceByContextID = selectedNamespaceByContextID.isEmpty
             ? userPreferences.selectedNamespaceByContextID
             : selectedNamespaceByContextID
@@ -542,6 +544,21 @@ final class AppModel: ObservableObject {
             category: "settings",
             message: "Table density changed.",
             metadata: ["density": density.rawValue]
+        )
+    }
+
+    func setAppAppearance(_ appearance: AppAppearance) {
+        guard appAppearance != appearance else {
+            return
+        }
+
+        appAppearance = appearance
+        userPreferences.appAppearance = appearance
+        recordDiagnostic(
+            .info,
+            category: "settings",
+            message: "App appearance changed.",
+            metadata: ["appearance": appearance.rawValue]
         )
     }
 

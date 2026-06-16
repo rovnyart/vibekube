@@ -13,4 +13,5 @@ struct InMemoryUserPreferences: UserPreferencesProviding {
     var resourceWatchesEnabled = true
     var kubeconfigPathOverride: String?
     var tableDensity: TableDensity = .comfortable
+    var appAppearance: AppAppearance = .system
 }

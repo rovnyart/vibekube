@@ -14,6 +14,7 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         static let resourceWatchesEnabled = "vibekube.watches.enabled"
         static let kubeconfigPathOverride = "vibekube.kubeconfig.pathOverride"
         static let tableDensity = "vibekube.table.density"
+        static let appAppearance = "vibekube.appearance"
     }
 
     var defaults: UserDefaults = .standard
@@ -128,6 +129,19 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Key.tableDensity)
+        }
+    }
+
+    var appAppearance: AppAppearance {
+        get {
+            guard let rawValue = defaults.string(forKey: Key.appAppearance),
+                  let appearance = AppAppearance(rawValue: rawValue) else {
+                return .system
+            }
+            return appearance
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Key.appAppearance)
         }
     }
 }

@@ -35,6 +35,25 @@ enum TableDensity: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system:
+            "System"
+        case .light:
+            "Light"
+        case .dark:
+            "Dark"
+        }
+    }
+}
+
 protocol ClusterRegistry {
     var clusters: [ClusterSummary] { get }
 }
@@ -61,4 +80,5 @@ protocol UserPreferencesProviding {
     var resourceWatchesEnabled: Bool { get set }
     var kubeconfigPathOverride: String? { get set }
     var tableDensity: TableDensity { get set }
+    var appAppearance: AppAppearance { get set }
 }
