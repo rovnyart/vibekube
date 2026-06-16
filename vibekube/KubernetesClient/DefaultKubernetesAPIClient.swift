@@ -264,7 +264,32 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
             return .certificateError(trustMessage)
         }
 
+        if nsError.domain == NSURLErrorDomain,
+           nsError.code == NSURLErrorSecureConnectionFailed {
+            return .certificateError(Self.transportDiagnosticMessage(from: nsError))
+        }
+
         return .unavailable(error.localizedDescription)
+    }
+
+    private static func transportDiagnosticMessage(from error: NSError) -> String {
+        var details = [
+            error.localizedDescription,
+            "NSURLError \(error.code)"
+        ]
+
+        var underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError
+        var seenUnderlying = Set<String>()
+        while let current = underlying {
+            let key = "\(current.domain)|\(current.code)"
+            guard seenUnderlying.insert(key).inserted else {
+                break
+            }
+            details.append("\(current.domain) \(current.code): \(current.localizedDescription)")
+            underlying = current.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+
+        return details.joined(separator: " · ")
     }
 
     private static func textRequest(
