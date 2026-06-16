@@ -14,7 +14,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
 | 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, expanded Environment, YAML, Metadata, Conditions, masked Secret env reveal, and version-aware refresh |
 | 7 | [Logs](PHASE7.md) | Review checkpoint | Pod detail inspector has rich logs: tail/since controls, live streaming with smart follow, timestamps, safe JSONL formatting, search, grep, copy, save, download-all, fullscreen, and previous-container logs |
-| 8 | [Watches And Real-Time Updates](PHASE8.md) | Started | Active Pods list has watch merging, reconnect/backoff, live/stale/failure status, and version-aware detail refresh; broader watches remain |
+| 8 | [Watches And Real-Time Updates](PHASE8.md) | Started | Active watchable resource lists have watch merging, reconnect/backoff, live/stale/failure status, and version-aware Pod detail refresh; selected detail watches remain |
 | 9 | [Workload Debugging Basics](PHASE9.md) | Not started | Waiting for logs/detail foundations |
 | 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
 | 11 | [Preferences, Security, Packaging](PHASE11.md) | Started | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, privacy docs, and real Teleport/TLS validation exist |
@@ -62,7 +62,8 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Show cancellable resource-list loading progress for slow large-cluster lists.
 - [x] Add watch reconnect/status UI for the active Pods list.
 - [x] Refresh open Pod details when the watched list row resourceVersion changes.
-- [ ] Add broader resource/detail watches.
+- [x] Add broader active-resource list watches.
+- [ ] Add true selected-resource detail watches.
 - [x] Add 0.1.x clean-machine release checklist and privacy note.
 - [ ] Add safe mutations.
 - [ ] Add AI explain/summarize flows.

@@ -641,6 +641,36 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelAppliesDeploymentWatchAddedEvents() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: WatchableWorkloadsConnectionService(),
+            resourceListService: WatchingDeploymentResourceListService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.deployments)
+        try await waitUntil("watched deployment appears") {
+            guard case .loaded(let snapshot) = model.resourceListState(for: .deployments) else {
+                return false
+            }
+            return snapshot.items.contains { $0.displayName == "api" }
+        }
+
+        guard case .loaded(let snapshot) = model.resourceListState(for: .deployments) else {
+            Issue.record("Expected watched deployment list")
+            return
+        }
+
+        #expect(snapshot.items.map(\.displayName).contains("web"))
+        #expect(snapshot.items.map(\.displayName).contains("api"))
+        #expect(model.resourceWatchStatus(for: .deployments) != nil)
+    }
+
+    @MainActor
     @Test func appModelRefreshesOpenPodDetailWhenWatchUpdatesResourceVersion() async throws {
         let detailService = VersionedPodDetailService()
         let model = AppModel(
@@ -905,6 +935,50 @@ private struct SucceedingConnectionService: KubernetesConnectionServicing {
     }
 }
 
+private struct WatchableWorkloadsConnectionService: KubernetesConnectionServicing {
+    func connect(contextName: String, kubeconfig: Kubeconfig) async throws -> KubernetesConnectionSnapshot {
+        KubernetesConnectionSnapshot(
+            version: KubernetesVersion(
+                major: "1",
+                minor: "30",
+                gitVersion: "v1.30.0",
+                gitCommit: nil,
+                platform: nil
+            ),
+            discovery: KubernetesDiscoverySnapshot(
+                coreVersions: ["v1"],
+                groups: [
+                    KubernetesAPIGroup(
+                        name: "apps",
+                        versions: [
+                            KubernetesGroupVersion(groupVersion: "apps/v1", version: "v1")
+                        ],
+                        preferredVersion: KubernetesGroupVersion(groupVersion: "apps/v1", version: "v1")
+                    )
+                ],
+                resourceLists: [
+                    KubernetesAPIResourceList(
+                        groupVersion: "v1",
+                        resources: [
+                            KubernetesAPIResource(name: "pods", singularName: "", namespaced: true, kind: "Pod", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil)
+                        ]
+                    ),
+                    KubernetesAPIResourceList(
+                        groupVersion: "apps/v1",
+                        resources: [
+                            KubernetesAPIResource(name: "deployments", singularName: "", namespaced: true, kind: "Deployment", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil)
+                        ]
+                    )
+                ],
+                namespaceDiscovery: .loaded([
+                    KubernetesNamespaceSummary(name: "default", phase: "Active"),
+                    KubernetesNamespaceSummary(name: "vibekube-demo", phase: "Active")
+                ])
+            )
+        )
+    }
+}
+
 private struct DashboardConnectionService: KubernetesConnectionServicing {
     func connect(contextName: String, kubeconfig: Kubeconfig) async throws -> KubernetesConnectionSnapshot {
         KubernetesConnectionSnapshot(
@@ -1095,6 +1169,97 @@ private struct WatchingPodResourceListService: KubernetesResourceListServicing {
                     KubernetesWatchEvent(
                         type: .added,
                         object: pod
+                    )
+                )
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+    }
+}
+
+private struct WatchingDeploymentResourceListService: KubernetesResourceListServicing {
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        #expect(resource.name == "deployments")
+        return try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "metadata": {
+                    "resourceVersion": "20"
+                  },
+                  "items": [
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "Deployment",
+                      "metadata": {
+                        "name": "web",
+                        "namespace": "\(namespace ?? "vibekube-demo")",
+                        "uid": "web-deploy-uid",
+                        "resourceVersion": "20"
+                      },
+                      "spec": {
+                        "replicas": 2
+                      },
+                      "status": {
+                        "readyReplicas": 2,
+                        "replicas": 2
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+    }
+
+    func watchResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        resourceVersion: String?
+    ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error> {
+        AsyncThrowingStream { continuation in
+            #expect(resource.name == "deployments")
+            #expect(resourceVersion == "20")
+
+            do {
+                let deployment = try JSONDecoder().decode(
+                    KubernetesUnstructuredResource.self,
+                    from: Data(
+                        """
+                        {
+                          "apiVersion": "apps/v1",
+                          "kind": "Deployment",
+                          "metadata": {
+                            "name": "api",
+                            "namespace": "\(namespace ?? "vibekube-demo")",
+                            "uid": "api-deploy-uid",
+                            "resourceVersion": "21"
+                          },
+                          "spec": {
+                            "replicas": 1
+                          },
+                          "status": {
+                            "readyReplicas": 1,
+                            "replicas": 1
+                          }
+                        }
+                        """.utf8
+                    )
+                )
+                continuation.yield(
+                    KubernetesWatchEvent(
+                        type: .added,
+                        object: deployment
                     )
                 )
                 continuation.finish()

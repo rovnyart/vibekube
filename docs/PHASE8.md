@@ -9,11 +9,12 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Phase plan exists.
 - [x] Watch request support exists.
 - [x] Watch event parser exists.
-- [x] Active Pods list applies watch updates.
-- [x] Reconnect/backoff exists for active Pods list watches.
-- [x] UI indicates live/reconnecting/stale/failure state for active Pods list watches.
+- [x] Active resource lists apply watch updates when the discovered resource supports `watch`.
+- [x] Reconnect/backoff exists for active resource list watches.
+- [x] UI indicates live/reconnecting/stale/failure state for active resource list watches.
 - [x] Open Pod details refresh when watched list rows move to a newer resourceVersion.
-- [ ] True selected-resource detail watches and broader resource watches exist.
+- [x] Broader active-resource list watches exist.
+- [ ] True selected-resource detail watches exist.
 
 ## Implementation Slices
 
@@ -28,10 +29,10 @@ Goal: keep resource lists and details current through Kubernetes watches without
 ### 8.2 Watch Service
 
 - [x] Define resource watch stream on the resource list service.
-- [x] Start watches for the active Pods resource list.
+- [x] Start watches for active resource lists whose discovered API resource supports `watch`.
 - [ ] Start detail watch for selected resource.
 - [x] Stop watches on route/context/namespace changes.
-- [x] Apply backoff on transient failures for active Pods.
+- [x] Apply backoff on transient failures for active resource watches.
 - [x] Surface persistent watch errors in the resource-list header.
 
 ### 8.3 Store Integration
@@ -53,21 +54,21 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [ ] Subtle updated row indication.
 - [ ] No noisy notifications for normal watch updates.
 
-Checkpoint: stop when pod list updates as demo CronJobs create pods.
+Checkpoint: stop when pod and deployment lists can receive watch updates without manual refresh.
 
 ### 8.5 Tests
 
 - [x] Watch parser tests.
 - [ ] ResourceVersion relist tests.
-- [x] Store merge tests for active Pods ADDED events.
+- [x] Store merge tests for active Pods and Deployments ADDED events.
 - [x] Detail refresh test for active Pods MODIFIED events.
 - [ ] Mock watch reconnect tests.
 - [ ] Manual QA with demo CronJob pods.
 
 ## Acceptance Criteria
 
-- [ ] Resource lists update without manual refresh.
-- [x] Watch failures are visible but not disruptive for active Pods.
+- [x] Watchable active resource lists update without manual refresh.
+- [x] Watch failures are visible but not disruptive for active resources.
 - [ ] Switching cluster or namespace cancels old watches.
 - [ ] Selection and scroll position are not unnecessarily disrupted.
 

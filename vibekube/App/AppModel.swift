@@ -1622,10 +1622,16 @@ final class AppModel: ObservableObject {
     }
 
     private func shouldWatchResourceList(_ query: ResourceListQuery) -> Bool {
-        selectedClusterID == query.contextID &&
-            selectedResource == .pods &&
-            query.resource.name == "pods" &&
-            query.resource.verbs.contains("watch")
+        guard selectedClusterID == query.contextID,
+              query.resource.verbs.contains("list"),
+              query.resource.verbs.contains("watch"),
+              let selectedResource,
+              selectedResource.requiresDiscoveredResource,
+              let activeResource = selectedResource.discoveredResource(in: selectedDiscovery) else {
+            return false
+        }
+
+        return activeResource.id == query.resource.id
     }
 
     private func normalizedResource(
