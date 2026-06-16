@@ -182,7 +182,7 @@ final class KubernetesURLSessionDelegate: NSObject, URLSessionDataDelegate {
             .useCredential,
             URLCredential(
                 identity: clientIdentity.identity,
-                certificates: clientIdentity.certificates,
+                certificates: clientIdentity.credentialCertificates,
                 persistence: .forSession
             )
         )
@@ -292,6 +292,9 @@ private final class KubernetesStreamingResponseHandler {
 final class TemporaryClientIdentity {
     let identity: SecIdentity
     let certificates: [SecCertificate]
+    var credentialCertificates: [SecCertificate]? {
+        certificates.isEmpty ? nil : certificates
+    }
 
     private let keychain: SecKeychain
     private let keychainURL: URL
