@@ -671,6 +671,32 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelRelistsWhenWatchResourceVersionExpires() async throws {
+        let resourceListService = ExpiringWatchResourceListService()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: resourceListService,
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitUntil("watch relisted after expired resource version") {
+            guard case .loaded(let snapshot) = model.resourceListState(for: .pods) else {
+                return false
+            }
+            return snapshot.resourceVersion == "21" &&
+                snapshot.items.contains { $0.displayName == "relisted-0" } &&
+                snapshot.items.contains { $0.displayName == "after-relist" }
+        }
+
+        #expect(resourceListService.watchedResourceVersions() == ["10", "20"])
+    }
+
+    @MainActor
     @Test func appModelRefreshesOpenPodDetailWhenWatchUpdatesResourceVersion() async throws {
         let detailService = VersionedPodDetailService()
         let model = AppModel(
@@ -1266,6 +1292,134 @@ private struct WatchingDeploymentResourceListService: KubernetesResourceListServ
             } catch {
                 continuation.finish(throwing: error)
             }
+        }
+    }
+}
+
+private final class ExpiringWatchResourceListService: KubernetesResourceListServicing {
+    private let lock = NSLock()
+    private var listCallCount = 0
+    private var watchedVersions: [String] = []
+
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        let callCount = incrementListCallCount()
+        let resourceVersion = callCount == 1 ? "10" : "20"
+        let podName = callCount == 1 ? "web-0" : "relisted-0"
+
+        return try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "metadata": {
+                    "resourceVersion": "\(resourceVersion)"
+                  },
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "\(podName)",
+                        "namespace": "\(namespace ?? "vibekube-demo")",
+                        "uid": "\(podName)-uid",
+                        "resourceVersion": "\(resourceVersion)"
+                      },
+                      "status": {
+                        "phase": "Running"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+    }
+
+    func watchResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        resourceVersion: String?
+    ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error> {
+        let watchedVersion = resourceVersion ?? "-"
+        appendWatchedResourceVersion(watchedVersion)
+
+        return AsyncThrowingStream { continuation in
+            if watchedVersion == "10" {
+                continuation.yield(
+                    KubernetesWatchEvent(
+                        type: .error,
+                        object: nil,
+                        status: KubernetesStatus(
+                            kind: "Status",
+                            apiVersion: "v1",
+                            status: "Failure",
+                            message: "too old resource version",
+                            reason: "Gone",
+                            code: 410
+                        )
+                    )
+                )
+                continuation.finish()
+                return
+            }
+
+            do {
+                let pod = try JSONDecoder().decode(
+                    KubernetesUnstructuredResource.self,
+                    from: Data(
+                        """
+                        {
+                          "apiVersion": "v1",
+                          "kind": "Pod",
+                          "metadata": {
+                            "name": "after-relist",
+                            "namespace": "\(namespace ?? "vibekube-demo")",
+                            "uid": "after-relist-uid",
+                            "resourceVersion": "21"
+                          },
+                          "status": {
+                            "phase": "Running"
+                          }
+                        }
+                        """.utf8
+                    )
+                )
+                continuation.yield(
+                    KubernetesWatchEvent(
+                        type: .added,
+                        object: pod
+                    )
+                )
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+    }
+
+    func watchedResourceVersions() -> [String] {
+        lock.withLock {
+            watchedVersions
+        }
+    }
+
+    private func incrementListCallCount() -> Int {
+        lock.withLock {
+            listCallCount += 1
+            return listCallCount
+        }
+    }
+
+    private func appendWatchedResourceVersion(_ resourceVersion: String) {
+        lock.withLock {
+            watchedVersions.append(resourceVersion)
         }
     }
 }

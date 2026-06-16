@@ -1477,6 +1477,46 @@ final class AppModel: ObservableObject {
                     } catch is CancellationError {
                         throw CancellationError()
                     } catch {
+                        if Self.isExpiredResourceVersionError(error) {
+                            await self?.recordResourceWatchRelist(query: query, error: error)
+                            do {
+                                let response = try await resourceListService.listResources(
+                                    contextName: query.contextID,
+                                    kubeconfig: kubeconfig,
+                                    resource: query.resource,
+                                    namespace: namespace
+                                )
+                                try Task.checkCancellation()
+                                latestResourceVersion = await self?.relistResourceAfterExpiredWatch(
+                                    query: query,
+                                    response: response
+                                ) ?? response.metadata?.resourceVersion
+                                failureCount = 0
+                                attempt += 1
+                                continue
+                            } catch is CancellationError {
+                                throw CancellationError()
+                            } catch {
+                                failureCount += 1
+                                await self?.recordResourceWatchFailure(query: query, error: error)
+                                guard failureCount <= reconnectDelays.count else {
+                                    await self?.failResourceWatch(query: query, message: error.localizedDescription)
+                                    return
+                                }
+
+                                attempt += 1
+                                let delay = reconnectDelays[failureCount - 1]
+                                await self?.scheduleResourceWatchReconnect(
+                                    query: query,
+                                    attempt: attempt,
+                                    delayNanoseconds: delay,
+                                    message: error.localizedDescription
+                                )
+                                try await Task.sleep(nanoseconds: delay)
+                                continue
+                            }
+                        }
+
                         failureCount += 1
                         await self?.recordResourceWatchFailure(query: query, error: error)
                         guard failureCount <= reconnectDelays.count else {
@@ -1501,6 +1541,42 @@ final class AppModel: ObservableObject {
                 await self?.failResourceWatch(query: query, message: error.localizedDescription)
             }
         }
+    }
+
+    nonisolated private static func isExpiredResourceVersionError(_ error: Error) -> Bool {
+        if case KubernetesClientError.statusCode(410, _) = error {
+            return true
+        }
+
+        return false
+    }
+
+    private func relistResourceAfterExpiredWatch(
+        query: ResourceListQuery,
+        response: KubernetesUnstructuredResourceList
+    ) -> String? {
+        let items = response.items.map { normalizedResource($0, for: query) }
+        resourceListStateByQuery[query] = .loaded(
+            ResourceListSnapshot(
+                query: query,
+                items: items,
+                resourceVersion: response.metadata?.resourceVersion,
+                continueToken: response.metadata?.continueToken,
+                loadedAt: Date()
+            )
+        )
+        markResourceWatchLive(query: query, eventAt: Date())
+        recordDiagnostic(
+            .info,
+            category: "watch",
+            message: "Resource watch relisted after expired resource version.",
+            contextID: query.contextID,
+            metadata: resourceListDiagnosticsMetadata(query).merging([
+                "itemCount": "\(items.count)",
+                "resourceVersion": response.metadata?.resourceVersion ?? "-"
+            ]) { _, new in new }
+        )
+        return response.metadata?.resourceVersion
     }
 
     private func applyResourceWatchEvent(
@@ -1599,6 +1675,16 @@ final class AppModel: ObservableObject {
             .warning,
             category: "watch",
             message: "Resource watch failed.",
+            contextID: query.contextID,
+            metadata: resourceListDiagnosticsMetadata(query).merging(errorDiagnosticsMetadata(error)) { _, new in new }
+        )
+    }
+
+    private func recordResourceWatchRelist(query: ResourceListQuery, error: Error) {
+        recordDiagnostic(
+            .info,
+            category: "watch",
+            message: "Resource watch resource version expired; relisting.",
             contextID: query.contextID,
             metadata: resourceListDiagnosticsMetadata(query).merging(errorDiagnosticsMetadata(error)) { _, new in new }
         )

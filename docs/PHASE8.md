@@ -12,6 +12,7 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Active resource lists apply watch updates when the discovered resource supports `watch`.
 - [x] Reconnect/backoff exists for active resource list watches.
 - [x] UI indicates live/reconnecting/stale/failure state for active resource list watches.
+- [x] Expired watch resourceVersions relist and resume from a fresh resourceVersion.
 - [x] Open Pod details refresh when watched list rows move to a newer resourceVersion.
 - [x] Broader active-resource list watches exist.
 - [ ] True selected-resource detail watches exist.
@@ -23,7 +24,7 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Add `watch=true` request builder.
 - [x] Track `resourceVersion`.
 - [x] Decode ADDED/MODIFIED/DELETED/BOOKMARK/ERROR events.
-- [ ] Handle `410 Gone` by relisting.
+- [x] Handle `410 Gone` by relisting.
 - [x] Add timeout and cancellation behavior.
 
 ### 8.2 Watch Service
@@ -59,7 +60,7 @@ Checkpoint: stop when pod and deployment lists can receive watch updates without
 ### 8.5 Tests
 
 - [x] Watch parser tests.
-- [ ] ResourceVersion relist tests.
+- [x] ResourceVersion relist tests.
 - [x] Store merge tests for active Pods and Deployments ADDED events.
 - [x] Detail refresh test for active Pods MODIFIED events.
 - [ ] Mock watch reconnect tests.
