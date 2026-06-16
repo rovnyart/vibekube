@@ -350,10 +350,14 @@ final class TemporaryClientIdentity {
             }
 
         if let importedIdentity = importedIdentities.first {
+            let leafCertificate = try Self.certificate(for: importedIdentity, keychain: createdKeychain, keychainURL: keychainURL)
             self.keychain = createdKeychain
             self.keychainURL = keychainURL
             self.identity = importedIdentity
-            self.certificates = importedCertificates
+            self.certificates = Self.intermediateCertificates(
+                from: importedCertificates,
+                leafCertificate: leafCertificate
+            )
             return
         }
 
@@ -372,7 +376,10 @@ final class TemporaryClientIdentity {
         self.keychain = createdKeychain
         self.keychainURL = keychainURL
         self.identity = createdIdentity
-        self.certificates = importedCertificates
+        self.certificates = Self.intermediateCertificates(
+            from: importedCertificates,
+            leafCertificate: certificate
+        )
     }
 
     deinit {
@@ -395,6 +402,30 @@ final class TemporaryClientIdentity {
             ? String(decoding: keyData, as: UTF8.self)
             : PEM.encode(data: keyData, label: "PRIVATE KEY")
         return Data("\(certificatePEM)\n\(keyPEM)".utf8)
+    }
+
+    private static func certificate(
+        for identity: SecIdentity,
+        keychain: SecKeychain,
+        keychainURL: URL
+    ) throws -> SecCertificate {
+        var certificate: SecCertificate?
+        let status = SecIdentityCopyCertificate(identity, &certificate)
+        guard status == errSecSuccess, let certificate else {
+            Self.deleteKeychain(keychain, url: keychainURL)
+            throw KubernetesClientError.certificateError("Could not read client certificate identity.")
+        }
+        return certificate
+    }
+
+    private static func intermediateCertificates(
+        from certificates: [SecCertificate],
+        leafCertificate: SecCertificate
+    ) -> [SecCertificate] {
+        let leafData = SecCertificateCopyData(leafCertificate) as Data
+        return certificates.filter { certificate in
+            (SecCertificateCopyData(certificate) as Data) != leafData
+        }
     }
 
     private static func deleteKeychain(_ keychain: SecKeychain, url: URL) {
