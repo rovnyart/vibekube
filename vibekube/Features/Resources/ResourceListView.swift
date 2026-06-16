@@ -312,7 +312,7 @@ private struct ResourceWatchStatusBadge: View {
         case .idle:
             "Manual"
         case .starting:
-            "Starting"
+            "Connecting"
         case .live:
             "Live"
         case .reconnecting:
@@ -361,12 +361,12 @@ private struct ResourceWatchStatusBadge: View {
         case .idle:
             return "Live updates are not running."
         case .starting(let startedAt):
-            return "Starting live updates since \(startedAt.formatted(date: .omitted, time: .standard))."
+            return "Connecting live updates since \(startedAt.formatted(date: .omitted, time: .standard))."
         case .live(let since, let lastEventAt):
             if let lastEventAt {
                 return "Live updates running since \(since.formatted(date: .omitted, time: .standard)); last event \(lastEventAt.formatted(date: .omitted, time: .standard))."
             }
-            return "Live updates running since \(since.formatted(date: .omitted, time: .standard))."
+            return "Live updates running since \(since.formatted(date: .omitted, time: .standard)); waiting for the first watch event."
         case .reconnecting(let state):
             let retry = state.nextRetryAt.formatted(date: .omitted, time: .standard)
             if let message = state.message, !message.isEmpty {

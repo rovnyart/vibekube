@@ -1520,11 +1520,7 @@ final class AppModel: ObservableObject {
 
     private func startResourceWatchAttempt(query: ResourceListQuery, attempt: Int) {
         let now = Date()
-        if attempt == 1 {
-            resourceWatchStatusByQuery[query] = .starting(now)
-        } else {
-            resourceWatchStatusByQuery[query] = .live(since: now, lastEventAt: nil)
-        }
+        resourceWatchStatusByQuery[query] = .live(since: now, lastEventAt: nil)
     }
 
     private func markResourceWatchLive(query: ResourceListQuery, eventAt: Date) {
