@@ -194,6 +194,69 @@ struct KubernetesResourceListTests {
         #expect(merged.items.map(\.displayName) == ["web-0", "api-0"])
     }
 
+    @Test func preservesExistingRowOrderWhileUserIsInspectingAResource() throws {
+        let list = try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "api",
+                        "namespace": "default"
+                      },
+                      "status": {
+                        "phase": "Running"
+                      }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "worker",
+                        "namespace": "default"
+                      },
+                      "status": {
+                        "phase": "Pending"
+                      }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "cron",
+                        "namespace": "default"
+                      },
+                      "status": {
+                        "phase": "Succeeded"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        let sortedRows = ResourceListRowOrdering.orderedRows(
+            list.items,
+            sortOrder: [KeyPathComparator(\.displayStatus)],
+            preservedOrderIDs: [],
+            preserveExistingOrder: false
+        )
+        let preservedRows = ResourceListRowOrdering.orderedRows(
+            list.items,
+            sortOrder: [KeyPathComparator(\.displayStatus)],
+            preservedOrderIDs: Array(list.items.prefix(2)).map(\.id),
+            preserveExistingOrder: true
+        )
+
+        #expect(sortedRows.map(\.displayName) == ["worker", "api", "cron"])
+        #expect(preservedRows.map(\.displayName) == ["api", "worker", "cron"])
+    }
+
     @Test func decodesSecretRowsWithoutReadingSecretData() throws {
         let list = try JSONDecoder().decode(
             KubernetesUnstructuredResourceList.self,

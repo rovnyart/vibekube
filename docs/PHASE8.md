@@ -44,7 +44,7 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Preserve table selection where possible by mutating the existing loaded snapshot.
 - [x] Refresh selected detail manifests when watched rows report a newer resourceVersion.
 - [x] Throttle high-volume updates.
-- [ ] Avoid row jumping while user is interacting.
+- [x] Avoid row jumping while user is interacting.
 
 ### 8.4 UI
 
@@ -73,7 +73,7 @@ Checkpoint: stop when pod and deployment lists can receive watch updates without
 - [x] Watchable active resource lists update without manual refresh.
 - [x] Watch failures are visible but not disruptive for active resources.
 - [x] Switching cluster or namespace cancels old watches.
-- [ ] Selection and scroll position are not unnecessarily disrupted.
+- [x] Selection and scroll position are not unnecessarily disrupted.
 
 ## Validation Commands
 

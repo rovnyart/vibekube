@@ -9,6 +9,7 @@ struct ResourceListView: View {
     @State private var selectedResourceID: KubernetesUnstructuredResource.ID?
     @State private var openDetailRows: [KubernetesUnstructuredResource] = []
     @State private var selectedDetailRowID: KubernetesUnstructuredResource.ID?
+    @State private var visibleRowOrder: [KubernetesUnstructuredResource.ID] = []
 
     let item: ResourceNavigationItem
 
@@ -70,35 +71,36 @@ struct ResourceListView: View {
     @ViewBuilder
     private func loadedContent(_ snapshot: ResourceListSnapshot) -> some View {
         let visibleRows = filteredRows(snapshot)
+        let visibleRowIDs = visibleRows.map(\.id)
         let allRows = snapshot.items
-        if openDetailRows.isEmpty {
-            resourceListSurface(visibleRows: visibleRows, snapshot: snapshot)
-                .onAppear {
-                    reconcileDetailTabs(with: allRows)
-                }
-                .onChange(of: allRows.map(\.id)) {
-                    reconcileDetailTabs(with: allRows)
-                }
-        } else {
-            VSplitView {
+        Group {
+            if openDetailRows.isEmpty {
                 resourceListSurface(visibleRows: visibleRows, snapshot: snapshot)
-                    .frame(minHeight: 220, idealHeight: 360, maxHeight: .infinity)
+            } else {
+                VSplitView {
+                    resourceListSurface(visibleRows: visibleRows, snapshot: snapshot)
+                        .frame(minHeight: 220, idealHeight: 360, maxHeight: .infinity)
 
-                ResourceDetailTabsView(
-                    item: item,
-                    rows: openDetailRows,
-                    selectedRowID: selectedDetailRowID,
-                    selectRow: selectDetailTab,
-                    closeRow: closeDetailTab
-                )
-                .frame(minHeight: 260, idealHeight: 360, maxHeight: .infinity)
+                    ResourceDetailTabsView(
+                        item: item,
+                        rows: openDetailRows,
+                        selectedRowID: selectedDetailRowID,
+                        selectRow: selectDetailTab,
+                        closeRow: closeDetailTab
+                    )
+                    .frame(minHeight: 260, idealHeight: 360, maxHeight: .infinity)
+                }
             }
-            .onAppear {
-                reconcileDetailTabs(with: allRows)
-            }
-            .onChange(of: allRows.map(\.id)) {
-                reconcileDetailTabs(with: allRows)
-            }
+        }
+        .onAppear {
+            visibleRowOrder = visibleRowIDs
+            reconcileDetailTabs(with: allRows)
+        }
+        .onChange(of: visibleRowIDs) {
+            visibleRowOrder = visibleRowIDs
+        }
+        .onChange(of: allRows.map(\.id)) {
+            reconcileDetailTabs(with: allRows)
         }
     }
 
@@ -234,7 +236,16 @@ struct ResourceListView: View {
             ? snapshot.items
             : snapshot.items.filter { $0.searchBlob.contains(searchText) }
 
-        return rows.sorted(using: sortOrder)
+        return ResourceListRowOrdering.orderedRows(
+            rows,
+            sortOrder: sortOrder,
+            preservedOrderIDs: visibleRowOrder,
+            preserveExistingOrder: shouldPreserveVisibleRowOrder
+        )
+    }
+
+    private var shouldPreserveVisibleRowOrder: Bool {
+        selectedResourceID != nil || !openDetailRows.isEmpty
     }
 
     private func openDetailTab(
