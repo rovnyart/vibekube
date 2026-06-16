@@ -92,6 +92,10 @@ The `stapler` and `spctl` checks only run when notarization is enabled.
 
 ## 0.1.x Release Checklist
 
+Use [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) before publishing a DMG outside the development machine.
+
+At minimum:
+
 - Run `scripts/release current` with notarization enabled.
 - Install the DMG on a non-development Mac.
 - Confirm About Vibekube shows the expected version/build.
@@ -99,4 +103,5 @@ The `stapler` and `spctl` checks only run when notarization is enabled.
 - Connect to at least one real exec-auth cluster.
 - Open Pods, Logs, YAML, Events, and Env for a real workload.
 - Verify regular env values are visible and Secret-backed env values stay masked until reveal.
+- Confirm diagnostics logging is disabled by default and, when enabled, writes to `~/Library/Logs/Vibekube`.
 - Confirm app errors are actionable enough to debug without Xcode.

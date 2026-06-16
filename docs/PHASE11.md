@@ -18,7 +18,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] Diagnostics export exists.
 - [x] Optional local JSONL file logging exists and is disabled by default.
 - [x] Diagnostics retention and cluster-name inclusion settings exist.
-- [ ] Privacy statement exists.
+- [x] Privacy statement exists.
 
 ## Implementation Slices
 
@@ -53,7 +53,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [ ] Decide what must be stored, if anything.
 - [ ] Use Keychain for persisted secrets.
 - [ ] Avoid duplicating kubeconfig credentials unnecessarily.
-- [ ] Document where data lives.
+- [x] Document where data lives.
 
 ### 11.4 Packaging
 
@@ -69,7 +69,7 @@ Checkpoint: stop before changing sandbox/signing settings if they affect local d
 
 ### 11.5 Privacy And Diagnostics
 
-- [ ] Add privacy statement.
+- [x] Add privacy statement.
 - [x] Add in-memory diagnostics ring buffer.
 - [x] Add optional local JSONL diagnostics logging.
 - [x] Add diagnostics export with redaction.
@@ -81,7 +81,7 @@ Checkpoint: stop before changing sandbox/signing settings if they affect local d
 - [ ] Settings cover the important app behaviors.
 - [ ] No secrets appear in logs, diagnostics, or normal UI errors.
 - [x] App can be signed and packaged.
-- [ ] Fresh-machine setup is documented.
+- [x] Fresh-machine setup is documented.
 
 ## Validation Commands
 

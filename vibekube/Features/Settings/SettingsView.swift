@@ -66,6 +66,36 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                SectionSurface(title: "Privacy", systemImage: "lock.shield") {
+                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 10) {
+                        GridRow {
+                            Text("Telemetry")
+                                .foregroundStyle(.secondary)
+                            Text("None")
+                        }
+
+                        GridRow {
+                            Text("File diagnostics")
+                                .foregroundStyle(.secondary)
+                            Text("Off by default")
+                        }
+
+                        GridRow {
+                            Text("Log folder")
+                                .foregroundStyle(.secondary)
+                            Text("~/Library/Logs/Vibekube")
+                                .font(.callout.monospaced())
+                                .textSelection(.enabled)
+                        }
+
+                        GridRow {
+                            Text("Sensitive data")
+                                .foregroundStyle(.secondary)
+                            Text("Secrets and credentials are redacted")
+                        }
+                    }
+                }
             }
             .padding(20)
             .frame(maxWidth: 820, alignment: .leading)
