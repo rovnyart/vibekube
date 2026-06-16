@@ -12,6 +12,24 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
 
+                SectionSurface(title: "Kubernetes", systemImage: "shippingbox") {
+                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 12) {
+                        GridRow {
+                            Text("Initial namespace")
+                                .foregroundStyle(.secondary)
+
+                            Picker("Initial namespace", selection: defaultNamespaceBehaviorBinding) {
+                                ForEach(DefaultNamespaceBehavior.allCases) { behavior in
+                                    Text(behavior.title).tag(behavior)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(width: 220, alignment: .leading)
+                        }
+                    }
+                }
+
                 SectionSurface(title: "Logs", systemImage: "terminal") {
                     Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 12) {
                         GridRow {
@@ -164,6 +182,13 @@ struct SettingsView: View {
         Binding(
             get: { appModel.podLogLineLimit },
             set: { appModel.setPodLogLineLimit($0) }
+        )
+    }
+
+    private var defaultNamespaceBehaviorBinding: Binding<DefaultNamespaceBehavior> {
+        Binding(
+            get: { appModel.defaultNamespaceBehavior },
+            set: { appModel.setDefaultNamespaceBehavior($0) }
         )
     }
 

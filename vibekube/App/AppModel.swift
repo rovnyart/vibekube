@@ -29,6 +29,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var diagnosticsLogDirectoryPath: String
     @Published private(set) var podLogLineLimit: Int
     @Published private(set) var secretRevealRequiresConfirmation: Bool
+    @Published private(set) var defaultNamespaceBehavior: DefaultNamespaceBehavior
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
     private let kubeconfigLoader: KubeconfigLoader?
@@ -160,6 +161,7 @@ final class AppModel: ObservableObject {
         self.diagnosticsLogDirectoryPath = DiagnosticsLogger.defaultLogDirectoryURL().path
         self.podLogLineLimit = Self.clampedPodLogLineLimit(podLogLineLimit ?? userPreferences.podLogLineLimit)
         self.secretRevealRequiresConfirmation = userPreferences.secretRevealRequiresConfirmation
+        self.defaultNamespaceBehavior = userPreferences.defaultNamespaceBehavior
         self.selectedNamespaceByContextID = selectedNamespaceByContextID.isEmpty
             ? userPreferences.selectedNamespaceByContextID
             : selectedNamespaceByContextID
@@ -209,7 +211,7 @@ final class AppModel: ObservableObject {
             return selectedNamespace
         }
 
-        return Self.allNamespacesSelection
+        return defaultNamespaceSelection(for: selectedCluster)
     }
 
     var selectedNamespaceTitle: String {
@@ -340,6 +342,10 @@ final class AppModel: ObservableObject {
 
         selectedNamespaceByContextID[selectedClusterID] = namespace
         userPreferences.selectedNamespaceByContextID = selectedNamespaceByContextID
+        refreshSelectedNamespaceScope()
+    }
+
+    private func refreshSelectedNamespaceScope() {
         cancelResourceWatchTasks()
         resourceDetailTask?.cancel()
         cancelResourceDetailWatchTasks()
@@ -357,6 +363,19 @@ final class AppModel: ObservableObject {
 
     func namespaceTitle(for namespace: String) -> String {
         namespace == Self.allNamespacesSelection ? "All Namespaces" : namespace
+    }
+
+    private func defaultNamespaceSelection(for cluster: ClusterSummary?) -> String {
+        switch defaultNamespaceBehavior {
+        case .allNamespaces:
+            return Self.allNamespacesSelection
+        case .contextNamespace:
+            guard let namespace = cluster?.namespace,
+                  !namespace.isEmpty else {
+                return Self.allNamespacesSelection
+            }
+            return namespace
+        }
     }
 
     func focusSearchField() {
@@ -444,6 +463,22 @@ final class AppModel: ObservableObject {
             message: "Secret reveal confirmation setting changed.",
             metadata: ["requiresConfirmation": requiresConfirmation ? "true" : "false"]
         )
+    }
+
+    func setDefaultNamespaceBehavior(_ behavior: DefaultNamespaceBehavior) {
+        guard defaultNamespaceBehavior != behavior else {
+            return
+        }
+
+        defaultNamespaceBehavior = behavior
+        userPreferences.defaultNamespaceBehavior = behavior
+        recordDiagnostic(
+            .info,
+            category: "settings",
+            message: "Default namespace behavior changed.",
+            metadata: ["behavior": behavior.rawValue]
+        )
+        refreshSelectedNamespaceScope()
     }
 
     func clearRecentDiagnostics() {
@@ -1374,10 +1409,6 @@ final class AppModel: ObservableObject {
                 "namespaceCount": "\(snapshot.discovery.namespaceDiscovery.items.count)"
             ]) { _, new in new }
         )
-
-        if selectedNamespaceByContextID[contextID] == nil {
-            selectedNamespaceByContextID[contextID] = Self.allNamespacesSelection
-        }
 
         if selectedClusterID == contextID {
             connectionErrorMessage = nil

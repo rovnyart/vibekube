@@ -37,6 +37,53 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelUsesContextNamespaceDefaultWhenConfigured() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            userPreferences: InMemoryUserPreferences(defaultNamespaceBehavior: .contextNamespace),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        #expect(model.selectedNamespaceSelection == "vibekube-demo")
+        #expect(model.selectedNamespaceTitle == "vibekube-demo")
+    }
+
+    @MainActor
+    @Test func appModelKeepsSavedNamespaceOverDefaultBehavior() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            userPreferences: InMemoryUserPreferences(
+                selectedNamespaceByContextID: ["kind-vibekube-dev": "custom"],
+                defaultNamespaceBehavior: .contextNamespace
+            ),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        #expect(model.selectedNamespaceSelection == "custom")
+    }
+
+    @MainActor
+    @Test func appModelUpdatesDefaultNamespaceBehaviorSetting() {
+        let model = AppModel(clusters: ClusterSummary.preview)
+
+        #expect(model.defaultNamespaceBehavior == .allNamespaces)
+        #expect(model.selectedNamespaceSelection == AppModel.allNamespacesSelection)
+
+        model.setDefaultNamespaceBehavior(.contextNamespace)
+
+        #expect(model.defaultNamespaceBehavior == .contextNamespace)
+        #expect(model.selectedNamespaceSelection == "vibekube-demo")
+    }
+
+    @MainActor
     @Test func appModelIgnoresInvalidRestoredRouteResource() {
         let model = AppModel(
             clusters: ClusterSummary.preview,

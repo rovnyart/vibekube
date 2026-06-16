@@ -22,4 +22,5 @@ struct PreviewUserPreferences: UserPreferencesProviding {
     var diagnosticsRetentionDays = 7
     var podLogLineLimit = 5_000
     var secretRevealRequiresConfirmation = true
+    var defaultNamespaceBehavior: DefaultNamespaceBehavior = .allNamespaces
 }

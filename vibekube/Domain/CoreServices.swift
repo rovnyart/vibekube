@@ -1,5 +1,21 @@
 import Foundation
 
+enum DefaultNamespaceBehavior: String, CaseIterable, Identifiable {
+    case allNamespaces
+    case contextNamespace
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .allNamespaces:
+            "All Namespaces"
+        case .contextNamespace:
+            "Kubeconfig namespace"
+        }
+    }
+}
+
 protocol ClusterRegistry {
     var clusters: [ClusterSummary] { get }
 }
@@ -22,4 +38,5 @@ protocol UserPreferencesProviding {
     var diagnosticsRetentionDays: Int { get set }
     var podLogLineLimit: Int { get set }
     var secretRevealRequiresConfirmation: Bool { get set }
+    var defaultNamespaceBehavior: DefaultNamespaceBehavior { get set }
 }

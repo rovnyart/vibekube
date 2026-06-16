@@ -19,6 +19,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] Optional local JSONL file logging exists and is disabled by default.
 - [x] Diagnostics retention and cluster-name inclusion settings exist.
 - [x] Log buffer and Secret reveal confirmation settings exist.
+- [x] Default namespace behavior setting exists.
 - [x] Privacy statement exists.
 
 ## Implementation Slices
@@ -29,7 +30,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] Diagnostics cluster-name inclusion toggle.
 - [x] Diagnostics retention setting.
 - [ ] Kubeconfig path settings.
-- [ ] Default namespace behavior.
+- [x] Default namespace behavior.
 - [ ] Refresh/watch behavior.
 - [ ] Table density.
 - [ ] Appearance behavior.

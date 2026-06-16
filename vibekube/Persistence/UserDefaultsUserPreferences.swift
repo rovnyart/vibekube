@@ -10,6 +10,7 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         static let diagnosticsRetentionDays = "vibekube.diagnostics.retentionDays"
         static let podLogLineLimit = "vibekube.logs.lineLimit"
         static let secretRevealRequiresConfirmation = "vibekube.secrets.revealRequiresConfirmation"
+        static let defaultNamespaceBehavior = "vibekube.namespace.defaultBehavior"
     }
 
     var defaults: UserDefaults = .standard
@@ -72,6 +73,19 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         }
         set {
             defaults.set(newValue, forKey: Key.secretRevealRequiresConfirmation)
+        }
+    }
+
+    var defaultNamespaceBehavior: DefaultNamespaceBehavior {
+        get {
+            guard let rawValue = defaults.string(forKey: Key.defaultNamespaceBehavior),
+                  let behavior = DefaultNamespaceBehavior(rawValue: rawValue) else {
+                return .allNamespaces
+            }
+            return behavior
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Key.defaultNamespaceBehavior)
         }
     }
 }
