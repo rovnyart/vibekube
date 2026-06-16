@@ -11,6 +11,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var connectionErrorMessage: String?
     @Published private(set) var discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot]
     @Published private(set) var resourceListStateByQuery: [ResourceListQuery: ResourceListLoadState]
+    @Published private(set) var resourceWatchStatusByQuery: [ResourceListQuery: ResourceWatchStatus]
     @Published private(set) var resourceDetailStateByQuery: [ResourceDetailQuery: ResourceDetailLoadState]
     @Published private(set) var resourceEventsStateByQuery: [ResourceEventsQuery: ResourceEventsLoadState]
     @Published private(set) var envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]
@@ -42,6 +43,11 @@ final class AppModel: ObservableObject {
     private var podLogTask: Task<Void, Never>?
     private var envSecretValueTasksByQuery: [ResourceEnvSecretValueQuery: Task<Void, Never>]
     private static let podLogLineLimit = 5_000
+    private static let resourceWatchReconnectDelaysNanoseconds: [UInt64] = [
+        500_000_000,
+        1_000_000_000,
+        2_000_000_000
+    ]
 
     static let allNamespacesSelection = DashboardMetricsQuery.allNamespacesSelection
     static let dashboardResourceItems: [ResourceNavigationItem] = [
@@ -97,6 +103,7 @@ final class AppModel: ObservableObject {
         loadedKubeconfig: Kubeconfig? = nil,
         discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot] = [:],
         resourceListStateByQuery: [ResourceListQuery: ResourceListLoadState]? = nil,
+        resourceWatchStatusByQuery: [ResourceListQuery: ResourceWatchStatus]? = nil,
         resourceDetailStateByQuery: [ResourceDetailQuery: ResourceDetailLoadState]? = nil,
         resourceEventsStateByQuery: [ResourceEventsQuery: ResourceEventsLoadState]? = nil,
         envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]? = nil,
@@ -129,6 +136,7 @@ final class AppModel: ObservableObject {
         self.loadedKubeconfig = loadedKubeconfig ?? .empty
         self.discoveryByContextID = discoveryByContextID
         self.resourceListStateByQuery = resourceListStateByQuery ?? [:]
+        self.resourceWatchStatusByQuery = resourceWatchStatusByQuery ?? [:]
         self.resourceDetailStateByQuery = resourceDetailStateByQuery ?? [:]
         self.resourceEventsStateByQuery = resourceEventsStateByQuery ?? [:]
         self.envSecretValueStateByQuery = envSecretValueStateByQuery ?? [:]
@@ -602,6 +610,7 @@ final class AppModel: ObservableObject {
         if let selectedClusterID {
             discoveryByContextID[selectedClusterID] = nil
             resourceListStateByQuery = resourceListStateByQuery.filter { $0.key.contextID != selectedClusterID }
+            resourceWatchStatusByQuery = resourceWatchStatusByQuery.filter { $0.key.contextID != selectedClusterID }
             resourceDetailStateByQuery = resourceDetailStateByQuery.filter { $0.key.contextID != selectedClusterID }
             resourceEventsStateByQuery = resourceEventsStateByQuery.filter { $0.key.contextID != selectedClusterID }
             envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != selectedClusterID }
@@ -616,6 +625,15 @@ final class AppModel: ObservableObject {
         }
 
         return resourceListStateByQuery[query] ?? .idle
+    }
+
+    func resourceWatchStatus(for resource: ResourceNavigationItem) -> ResourceWatchStatus? {
+        guard let query = resourceListQuery(for: resource),
+              shouldWatchResourceList(query) else {
+            return nil
+        }
+
+        return resourceWatchStatusByQuery[query] ?? .idle
     }
 
     private func resourceListSnapshot(for resource: ResourceNavigationItem) -> ResourceListSnapshot? {
@@ -737,6 +755,7 @@ final class AppModel: ObservableObject {
         resourceListTasksByQuery[query]?.cancel()
         resourceWatchTasksByQuery[query]?.cancel()
         resourceWatchTasksByQuery[query] = nil
+        resourceWatchStatusByQuery[query] = .idle
         resourceListStateByQuery[query] = .loading(ResourceListLoadingProgress(query: query))
         recordDiagnostic(
             .info,
@@ -1378,6 +1397,7 @@ final class AppModel: ObservableObject {
 
         let kubeconfig = loadedKubeconfig
         let namespace = namespaceForRequest(query)
+        let reconnectDelays = Self.resourceWatchReconnectDelaysNanoseconds
         recordDiagnostic(
             .debug,
             category: "watch",
@@ -1385,25 +1405,71 @@ final class AppModel: ObservableObject {
             contextID: query.contextID,
             metadata: resourceListDiagnosticsMetadata(query)
         )
-        resourceWatchTasksByQuery[query] = Task.detached(priority: .utility) { [weak self, resourceListService, kubeconfig, namespace, query, resourceVersion] in
-            do {
-                for try await event in resourceListService.watchResources(
-                    contextName: query.contextID,
-                    kubeconfig: kubeconfig,
-                    resource: query.resource,
-                    namespace: namespace,
-                    resourceVersion: resourceVersion
-                ) {
-                    try Task.checkCancellation()
-                    await self?.applyResourceWatchEvent(event, query: query)
-                }
+        resourceWatchTasksByQuery[query] = Task.detached(priority: .utility) { [weak self, resourceListService, kubeconfig, namespace, query, resourceVersion, reconnectDelays] in
+            var latestResourceVersion = resourceVersion
+            var failureCount = 0
+            var attempt = 1
 
-                try Task.checkCancellation()
-                await self?.finishResourceWatch(query: query)
+            do {
+                while true {
+                    try Task.checkCancellation()
+                    guard self != nil else {
+                        return
+                    }
+
+                    await self?.startResourceWatchAttempt(query: query, attempt: attempt)
+
+                    do {
+                        for try await event in resourceListService.watchResources(
+                            contextName: query.contextID,
+                            kubeconfig: kubeconfig,
+                            resource: query.resource,
+                            namespace: namespace,
+                            resourceVersion: latestResourceVersion
+                        ) {
+                            try Task.checkCancellation()
+                            if event.type == .error {
+                                throw KubernetesClientError.statusCode(event.status?.code ?? 0, event.status?.message)
+                            }
+                            latestResourceVersion = await self?.applyResourceWatchEvent(event, query: query) ?? latestResourceVersion
+                        }
+
+                        try Task.checkCancellation()
+                        failureCount = 0
+                        attempt += 1
+                        let delay = reconnectDelays.first ?? 500_000_000
+                        await self?.scheduleResourceWatchReconnect(
+                            query: query,
+                            attempt: attempt,
+                            delayNanoseconds: delay,
+                            message: nil
+                        )
+                        try await Task.sleep(nanoseconds: delay)
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        failureCount += 1
+                        await self?.recordResourceWatchFailure(query: query, error: error)
+                        guard failureCount <= reconnectDelays.count else {
+                            await self?.failResourceWatch(query: query, message: error.localizedDescription)
+                            return
+                        }
+
+                        attempt += 1
+                        let delay = reconnectDelays[failureCount - 1]
+                        await self?.scheduleResourceWatchReconnect(
+                            query: query,
+                            attempt: attempt,
+                            delayNanoseconds: delay,
+                            message: error.localizedDescription
+                        )
+                        try await Task.sleep(nanoseconds: delay)
+                    }
+                }
             } catch is CancellationError {
                 await self?.cancelResourceWatch(query: query)
             } catch {
-                await self?.failResourceWatch(query: query, error: error)
+                await self?.failResourceWatch(query: query, message: error.localizedDescription)
             }
         }
     }
@@ -1411,15 +1477,17 @@ final class AppModel: ObservableObject {
     private func applyResourceWatchEvent(
         _ event: KubernetesWatchEvent<KubernetesUnstructuredResource>,
         query: ResourceListQuery
-    ) {
+    ) -> String? {
         guard case .loaded(var snapshot) = resourceListStateByQuery[query] else {
-            return
+            return nil
         }
+
+        markResourceWatchLive(query: query, eventAt: Date())
 
         switch event.type {
         case .added, .modified:
             guard let object = event.object else {
-                return
+                return snapshot.resourceVersion
             }
             let item = normalizedResource(object, for: query)
             if let index = snapshot.items.firstIndex(where: { $0.id == item.id }) {
@@ -1431,7 +1499,7 @@ final class AppModel: ObservableObject {
             snapshot.loadedAt = Date()
         case .deleted:
             guard let object = event.object else {
-                return
+                return snapshot.resourceVersion
             }
             let item = normalizedResource(object, for: query)
             snapshot.items.removeAll { $0.id == item.id }
@@ -1443,32 +1511,88 @@ final class AppModel: ObservableObject {
             }
             snapshot.loadedAt = Date()
         case .error:
-            failResourceWatch(
-                query: query,
-                error: KubernetesClientError.statusCode(event.status?.code ?? 0, event.status?.message)
-            )
-            return
+            return snapshot.resourceVersion
         }
 
         resourceListStateByQuery[query] = .loaded(snapshot)
+        return snapshot.resourceVersion
+    }
+
+    private func startResourceWatchAttempt(query: ResourceListQuery, attempt: Int) {
+        let now = Date()
+        if attempt == 1 {
+            resourceWatchStatusByQuery[query] = .starting(now)
+        } else {
+            resourceWatchStatusByQuery[query] = .live(since: now, lastEventAt: nil)
+        }
+    }
+
+    private func markResourceWatchLive(query: ResourceListQuery, eventAt: Date) {
+        let since: Date
+        if case .live(let currentSince, _) = resourceWatchStatusByQuery[query] {
+            since = currentSince
+        } else {
+            since = eventAt
+        }
+
+        resourceWatchStatusByQuery[query] = .live(since: since, lastEventAt: eventAt)
+    }
+
+    private func scheduleResourceWatchReconnect(
+        query: ResourceListQuery,
+        attempt: Int,
+        delayNanoseconds: UInt64,
+        message: String?
+    ) {
+        let nextRetryAt = Date().addingTimeInterval(TimeInterval(delayNanoseconds) / 1_000_000_000)
+        resourceWatchStatusByQuery[query] = .reconnecting(
+            ResourceWatchReconnectState(
+                attempt: attempt,
+                nextRetryAt: nextRetryAt,
+                message: message
+            )
+        )
     }
 
     private func finishResourceWatch(query: ResourceListQuery) {
         resourceWatchTasksByQuery[query] = nil
+        resourceWatchStatusByQuery[query] = .stale(
+            ResourceWatchStaleState(
+                endedAt: Date(),
+                message: "Watch paused after reconnect attempts. Refresh to resume live updates."
+            )
+        )
     }
 
     private func cancelResourceWatch(query: ResourceListQuery) {
         resourceWatchTasksByQuery[query] = nil
+        resourceWatchStatusByQuery[query] = .idle
     }
 
-    private func failResourceWatch(query: ResourceListQuery, error: Error) {
-        resourceWatchTasksByQuery[query] = nil
+    private func recordResourceWatchFailure(query: ResourceListQuery, error: Error) {
         recordDiagnostic(
             .warning,
             category: "watch",
             message: "Resource watch failed.",
             contextID: query.contextID,
             metadata: resourceListDiagnosticsMetadata(query).merging(errorDiagnosticsMetadata(error)) { _, new in new }
+        )
+    }
+
+    private func failResourceWatch(query: ResourceListQuery, message: String) {
+        resourceWatchTasksByQuery[query] = nil
+        resourceWatchStatusByQuery[query] = .failed(
+            ResourceWatchFailureState(
+                failedAt: Date(),
+                message: message
+            )
+        )
+        recordDiagnostic(
+            .warning,
+            category: "watch",
+            message: "Resource watch stopped after reconnect attempts.",
+            contextID: query.contextID,
+            metadata: resourceListDiagnosticsMetadata(query).merging(["error": message]) { _, new in new }
         )
     }
 
@@ -1974,8 +2098,12 @@ final class AppModel: ObservableObject {
     }
 
     private func cancelResourceWatchTasks() {
+        let cancelledQueries = Array(resourceWatchTasksByQuery.keys)
         resourceWatchTasksByQuery.values.forEach { $0.cancel() }
         resourceWatchTasksByQuery.removeAll()
+        for query in cancelledQueries {
+            resourceWatchStatusByQuery[query] = .idle
+        }
     }
 
     private func cancelDashboardMetricsTask() {

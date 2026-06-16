@@ -14,7 +14,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
 | 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, expanded Environment, YAML, Metadata, and Conditions tabs with masked Secret env reveal |
 | 7 | [Logs](PHASE7.md) | Review checkpoint | Pod detail inspector has rich logs: tail, live streaming, timestamps, search, grep, copy, save, download-all, fullscreen, and previous-container logs |
-| 8 | [Watches And Real-Time Updates](PHASE8.md) | Started | Active Pods list can merge Kubernetes watch events without manual refresh; reconnect/status UI and broader watches remain |
+| 8 | [Watches And Real-Time Updates](PHASE8.md) | Started | Active Pods list has watch merging, reconnect/backoff, and live/stale/failure status; broader/detail watches remain |
 | 9 | [Workload Debugging Basics](PHASE9.md) | Not started | Waiting for logs/detail foundations |
 | 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
 | 11 | [Preferences, Security, Packaging](PHASE11.md) | Started | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, and real Teleport/TLS validation exist; privacy remains |
@@ -29,7 +29,7 @@ The current product milestone is Vibekube 0.1.x: a fast, read-only, distributabl
 
 Recommended next focus:
 
-1. Harden watches: reconnect/status UI, broader resource watches, and detail refresh behavior.
+1. Broaden watches beyond Pods and add detail refresh behavior.
 2. Finish release readiness: clean-machine install checklist, privacy note, and settings for kubeconfig path, log buffer, and secret reveal policy.
 3. Use diagnostics on the work Mac during the next real-cluster validation pass and expand the logged categories only where gaps appear.
 4. Return to dashboard only after the read-only/debug workflows are stable enough to avoid another laggy rewrite loop.
@@ -60,7 +60,8 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Add local diagnostics/log export with secret redaction.
 - [x] Follow Kubernetes list pagination for large clusters.
 - [x] Show cancellable resource-list loading progress for slow large-cluster lists.
-- [ ] Add watch reconnect/status UI and broader resource/detail watches.
+- [x] Add watch reconnect/status UI for the active Pods list.
+- [ ] Add broader resource/detail watches.
 - [ ] Add 0.1.x clean-machine release checklist and privacy note.
 - [ ] Add safe mutations.
 - [ ] Add AI explain/summarize flows.

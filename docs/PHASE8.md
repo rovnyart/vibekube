@@ -10,8 +10,9 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Watch request support exists.
 - [x] Watch event parser exists.
 - [x] Active Pods list applies watch updates.
-- [ ] Reconnect/backoff exists.
-- [ ] UI indicates live/stale state.
+- [x] Reconnect/backoff exists for active Pods list watches.
+- [x] UI indicates live/reconnecting/stale/failure state for active Pods list watches.
+- [ ] Detail and broader resource watches exist.
 
 ## Implementation Slices
 
@@ -29,8 +30,8 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Start watches for the active Pods resource list.
 - [ ] Start detail watch for selected resource.
 - [x] Stop watches on route/context/namespace changes.
-- [ ] Apply backoff on transient failures.
-- [ ] Surface permanent errors.
+- [x] Apply backoff on transient failures for active Pods.
+- [x] Surface persistent watch errors in the resource-list header.
 
 ### 8.3 Store Integration
 
@@ -43,9 +44,9 @@ Goal: keep resource lists and details current through Kubernetes watches without
 
 ### 8.4 UI
 
-- [ ] Live status indicator.
-- [ ] Stale/offline status indicator.
-- [ ] Manual refresh fallback.
+- [x] Live status indicator.
+- [x] Reconnecting/stale/failure status indicator.
+- [x] Manual refresh fallback.
 - [ ] Subtle updated row indication.
 - [ ] No noisy notifications for normal watch updates.
 
@@ -62,7 +63,7 @@ Checkpoint: stop when pod list updates as demo CronJobs create pods.
 ## Acceptance Criteria
 
 - [ ] Resource lists update without manual refresh.
-- [ ] Watch failures are visible but not disruptive.
+- [x] Watch failures are visible but not disruptive for active Pods.
 - [ ] Switching cluster or namespace cancels old watches.
 - [ ] Selection and scroll position are not unnecessarily disrupted.
 

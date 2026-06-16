@@ -158,6 +158,10 @@ struct ResourceListView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if let watchStatus = visibleWatchStatus {
+                ResourceWatchStatusBadge(status: watchStatus)
+            }
+
             Button {
                 appModel.loadResourceList(for: item, force: true)
             } label: {
@@ -178,6 +182,16 @@ struct ResourceListView: View {
             return snapshot
         }
         return nil
+    }
+
+    private var visibleWatchStatus: ResourceWatchStatus? {
+        guard loadedSnapshot != nil,
+              let status = appModel.resourceWatchStatus(for: item),
+              status != .idle else {
+            return nil
+        }
+
+        return status
     }
 
     private var headerSubtitle: String {
@@ -275,6 +289,94 @@ struct ResourceListView: View {
         } else if self.selectedDetailRowID == nil {
             self.selectedDetailRowID = openDetailRows.first?.id
             selectedResourceID = self.selectedDetailRowID
+        }
+    }
+}
+
+private struct ResourceWatchStatusBadge: View {
+    let status: ResourceWatchStatus
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .foregroundStyle(tint)
+            .background(tint.opacity(0.12), in: Capsule())
+            .help(helpText)
+            .accessibilityLabel(helpText)
+    }
+
+    private var title: String {
+        switch status {
+        case .idle:
+            "Manual"
+        case .starting:
+            "Starting"
+        case .live:
+            "Live"
+        case .reconnecting:
+            "Reconnecting"
+        case .stale:
+            "Stale"
+        case .failed:
+            "Watch failed"
+        }
+    }
+
+    private var systemImage: String {
+        switch status {
+        case .idle:
+            "pause.circle"
+        case .starting:
+            "dot.radiowaves.left.and.right"
+        case .live:
+            "dot.radiowaves.left.and.right"
+        case .reconnecting:
+            "arrow.triangle.2.circlepath"
+        case .stale:
+            "clock.badge.exclamationmark"
+        case .failed:
+            "exclamationmark.triangle"
+        }
+    }
+
+    private var tint: Color {
+        switch status {
+        case .idle:
+            .secondary
+        case .starting, .reconnecting:
+            .orange
+        case .live:
+            .green
+        case .stale:
+            .secondary
+        case .failed:
+            .red
+        }
+    }
+
+    private var helpText: String {
+        switch status {
+        case .idle:
+            return "Live updates are not running."
+        case .starting(let startedAt):
+            return "Starting live updates since \(startedAt.formatted(date: .omitted, time: .standard))."
+        case .live(let since, let lastEventAt):
+            if let lastEventAt {
+                return "Live updates running since \(since.formatted(date: .omitted, time: .standard)); last event \(lastEventAt.formatted(date: .omitted, time: .standard))."
+            }
+            return "Live updates running since \(since.formatted(date: .omitted, time: .standard))."
+        case .reconnecting(let state):
+            let retry = state.nextRetryAt.formatted(date: .omitted, time: .standard)
+            if let message = state.message, !message.isEmpty {
+                return "Reconnecting watch, attempt \(state.attempt), next retry \(retry): \(message)"
+            }
+            return "Reconnecting watch, attempt \(state.attempt), next retry \(retry)."
+        case .stale(let state):
+            return "\(state.message) Last live attempt ended at \(state.endedAt.formatted(date: .omitted, time: .standard))."
+        case .failed(let state):
+            return "Watch failed at \(state.failedAt.formatted(date: .omitted, time: .standard)): \(state.message)"
         }
     }
 }

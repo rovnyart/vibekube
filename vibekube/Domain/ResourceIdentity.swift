@@ -76,6 +76,31 @@ struct ResourceListPageProgress: Equatable {
     var remainingItemCount: Int?
 }
 
+struct ResourceWatchReconnectState: Equatable {
+    var attempt: Int
+    var nextRetryAt: Date
+    var message: String?
+}
+
+struct ResourceWatchStaleState: Equatable {
+    var endedAt: Date
+    var message: String
+}
+
+struct ResourceWatchFailureState: Equatable {
+    var failedAt: Date
+    var message: String
+}
+
+enum ResourceWatchStatus: Equatable {
+    case idle
+    case starting(Date)
+    case live(since: Date, lastEventAt: Date?)
+    case reconnecting(ResourceWatchReconnectState)
+    case stale(ResourceWatchStaleState)
+    case failed(ResourceWatchFailureState)
+}
+
 enum ResourceListLoadState: Equatable {
     case idle
     case loading(ResourceListLoadingProgress)
