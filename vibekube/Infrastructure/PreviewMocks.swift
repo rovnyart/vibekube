@@ -23,4 +23,5 @@ struct PreviewUserPreferences: UserPreferencesProviding {
     var podLogLineLimit = 5_000
     var secretRevealRequiresConfirmation = true
     var defaultNamespaceBehavior: DefaultNamespaceBehavior = .allNamespaces
+    var resourceWatchesEnabled = true
 }

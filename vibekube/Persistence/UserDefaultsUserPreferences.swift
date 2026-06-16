@@ -11,6 +11,7 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         static let podLogLineLimit = "vibekube.logs.lineLimit"
         static let secretRevealRequiresConfirmation = "vibekube.secrets.revealRequiresConfirmation"
         static let defaultNamespaceBehavior = "vibekube.namespace.defaultBehavior"
+        static let resourceWatchesEnabled = "vibekube.watches.enabled"
     }
 
     var defaults: UserDefaults = .standard
@@ -86,6 +87,18 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Key.defaultNamespaceBehavior)
+        }
+    }
+
+    var resourceWatchesEnabled: Bool {
+        get {
+            guard defaults.object(forKey: Key.resourceWatchesEnabled) != nil else {
+                return true
+            }
+            return defaults.bool(forKey: Key.resourceWatchesEnabled)
+        }
+        set {
+            defaults.set(newValue, forKey: Key.resourceWatchesEnabled)
         }
     }
 }

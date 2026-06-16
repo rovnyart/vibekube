@@ -13,20 +13,24 @@ struct SettingsView: View {
                 header
 
                 SectionSurface(title: "Kubernetes", systemImage: "shippingbox") {
-                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 12) {
-                        GridRow {
-                            Text("Initial namespace")
-                                .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 14) {
+                        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 12) {
+                            GridRow {
+                                Text("Initial namespace")
+                                    .foregroundStyle(.secondary)
 
-                            Picker("Initial namespace", selection: defaultNamespaceBehaviorBinding) {
-                                ForEach(DefaultNamespaceBehavior.allCases) { behavior in
-                                    Text(behavior.title).tag(behavior)
+                                Picker("Initial namespace", selection: defaultNamespaceBehaviorBinding) {
+                                    ForEach(DefaultNamespaceBehavior.allCases) { behavior in
+                                        Text(behavior.title).tag(behavior)
+                                    }
                                 }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                                .frame(width: 220, alignment: .leading)
                             }
-                            .labelsHidden()
-                            .pickerStyle(.menu)
-                            .frame(width: 220, alignment: .leading)
                         }
+
+                        Toggle("Use live resource watches", isOn: resourceWatchesEnabledBinding)
                     }
                 }
 
@@ -189,6 +193,13 @@ struct SettingsView: View {
         Binding(
             get: { appModel.defaultNamespaceBehavior },
             set: { appModel.setDefaultNamespaceBehavior($0) }
+        )
+    }
+
+    private var resourceWatchesEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { appModel.resourceWatchesEnabled },
+            set: { appModel.setResourceWatchesEnabled($0) }
         )
     }
 

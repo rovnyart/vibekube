@@ -30,6 +30,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var podLogLineLimit: Int
     @Published private(set) var secretRevealRequiresConfirmation: Bool
     @Published private(set) var defaultNamespaceBehavior: DefaultNamespaceBehavior
+    @Published private(set) var resourceWatchesEnabled: Bool
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
     private let kubeconfigLoader: KubeconfigLoader?
@@ -162,6 +163,7 @@ final class AppModel: ObservableObject {
         self.podLogLineLimit = Self.clampedPodLogLineLimit(podLogLineLimit ?? userPreferences.podLogLineLimit)
         self.secretRevealRequiresConfirmation = userPreferences.secretRevealRequiresConfirmation
         self.defaultNamespaceBehavior = userPreferences.defaultNamespaceBehavior
+        self.resourceWatchesEnabled = userPreferences.resourceWatchesEnabled
         self.selectedNamespaceByContextID = selectedNamespaceByContextID.isEmpty
             ? userPreferences.selectedNamespaceByContextID
             : selectedNamespaceByContextID
@@ -479,6 +481,28 @@ final class AppModel: ObservableObject {
             metadata: ["behavior": behavior.rawValue]
         )
         refreshSelectedNamespaceScope()
+    }
+
+    func setResourceWatchesEnabled(_ enabled: Bool) {
+        guard resourceWatchesEnabled != enabled else {
+            return
+        }
+
+        resourceWatchesEnabled = enabled
+        userPreferences.resourceWatchesEnabled = enabled
+        recordDiagnostic(
+            .info,
+            category: "settings",
+            message: enabled ? "Resource watches enabled." : "Resource watches disabled.",
+            metadata: ["enabled": enabled ? "true" : "false"]
+        )
+
+        if enabled {
+            startActiveResourceWatchIfPossible()
+        } else {
+            cancelResourceWatchTasks()
+            cancelResourceDetailWatchTasks()
+        }
     }
 
     func clearRecentDiagnostics() {
@@ -1658,6 +1682,16 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func startActiveResourceWatchIfPossible() {
+        guard let selectedResource,
+              let query = resourceListQuery(for: selectedResource),
+              case .loaded(let snapshot) = resourceListStateByQuery[query] else {
+            return
+        }
+
+        startResourceWatchIfNeeded(query: query, resourceVersion: snapshot.resourceVersion)
+    }
+
     nonisolated private static func isExpiredResourceVersionError(_ error: Error) -> Bool {
         if case KubernetesClientError.statusCode(410, _) = error {
             return true
@@ -2039,7 +2073,8 @@ final class AppModel: ObservableObject {
     }
 
     private func shouldWatchResourceDetail(_ query: ResourceDetailQuery) -> Bool {
-        selectedClusterID == query.contextID &&
+        resourceWatchesEnabled &&
+            selectedClusterID == query.contextID &&
             selectedConnectionState == .connected &&
             query.resource.verbs.contains("watch")
     }
@@ -2158,7 +2193,8 @@ final class AppModel: ObservableObject {
     }
 
     private func shouldWatchResourceList(_ query: ResourceListQuery) -> Bool {
-        guard selectedClusterID == query.contextID,
+        guard resourceWatchesEnabled,
+              selectedClusterID == query.contextID,
               query.resource.verbs.contains("list"),
               query.resource.verbs.contains("watch"),
               let selectedResource,

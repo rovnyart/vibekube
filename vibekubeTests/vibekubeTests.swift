@@ -849,6 +849,57 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelCanDisableResourceWatches() async throws {
+        let resourceListService = TransientFailingWatchResourceListService()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: resourceListService,
+            userPreferences: InMemoryUserPreferences(resourceWatchesEnabled: false),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitForResourceList(model, .pods)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        #expect(!model.resourceWatchesEnabled)
+        #expect(resourceListService.watchCallCount() == 0)
+        #expect(model.resourceWatchStatus(for: .pods) == nil)
+    }
+
+    @MainActor
+    @Test func appModelResumesActiveResourceWatchWhenEnabled() async throws {
+        let resourceListService = TransientFailingWatchResourceListService()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: resourceListService,
+            userPreferences: InMemoryUserPreferences(resourceWatchesEnabled: false),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitForResourceList(model, .pods)
+        #expect(resourceListService.watchCallCount() == 0)
+
+        model.setResourceWatchesEnabled(true)
+
+        try await waitUntil("resource watch resumes") {
+            resourceListService.watchCallCount() >= 1
+        }
+
+        #expect(model.resourceWatchesEnabled)
+        #expect(model.resourceWatchStatus(for: .pods) != nil)
+    }
+
+    @MainActor
     @Test func appModelRefreshesOpenPodDetailWhenWatchUpdatesResourceVersion() async throws {
         let detailService = VersionedPodDetailService()
         let model = AppModel(

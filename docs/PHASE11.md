@@ -20,6 +20,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] Diagnostics retention and cluster-name inclusion settings exist.
 - [x] Log buffer and Secret reveal confirmation settings exist.
 - [x] Default namespace behavior setting exists.
+- [x] Refresh/watch behavior setting exists.
 - [x] Privacy statement exists.
 
 ## Implementation Slices
@@ -31,7 +32,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] Diagnostics retention setting.
 - [ ] Kubeconfig path settings.
 - [x] Default namespace behavior.
-- [ ] Refresh/watch behavior.
+- [x] Refresh/watch behavior.
 - [ ] Table density.
 - [ ] Appearance behavior.
 - [x] Log buffer limits.

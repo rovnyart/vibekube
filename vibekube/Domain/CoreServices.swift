@@ -39,4 +39,5 @@ protocol UserPreferencesProviding {
     var podLogLineLimit: Int { get set }
     var secretRevealRequiresConfirmation: Bool { get set }
     var defaultNamespaceBehavior: DefaultNamespaceBehavior { get set }
+    var resourceWatchesEnabled: Bool { get set }
 }

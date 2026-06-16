@@ -17,7 +17,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Review checkpoint | Active watchable resource lists have watch merging, durable reconnect/backoff, live/stale/failure status, burst coalescing, version-aware detail refresh, narrow selected-resource detail watches, interaction-stable table ordering, subtle updated-row feedback, and manual validation |
 | 9 | [Workload Debugging Basics](PHASE9.md) | Not started | Waiting for logs/detail foundations |
 | 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
-| 11 | [Preferences, Security, Packaging](PHASE11.md) | Started | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, log buffer, default namespace, and Secret reveal settings, privacy docs, and real Teleport/TLS validation exist |
+| 11 | [Preferences, Security, Packaging](PHASE11.md) | Started | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, log buffer, default namespace, resource watch, and Secret reveal settings, privacy docs, and real Teleport/TLS validation exist |
 | 12 | [AI Foundations](PHASE12.md) | Not started | Waiting for stable resource context model |
 | 13 | [Advanced AI Operations](PHASE13.md) | Not started | Waiting for AI foundation |
 
@@ -29,7 +29,7 @@ The current product milestone is Vibekube 0.1.x: a fast, read-only, distributabl
 
 Recommended next focus:
 
-1. Finish release readiness by running the clean-machine checklist, then add settings for kubeconfig path and refresh/watch behavior.
+1. Finish release readiness by running the clean-machine checklist, then add settings for kubeconfig path, table density, and appearance behavior.
 2. Use diagnostics on the work Mac during the next real-cluster validation pass and expand the logged categories only where gaps appear.
 3. Return to dashboard only after the read-only/debug workflows are stable enough to avoid another laggy rewrite loop.
 
