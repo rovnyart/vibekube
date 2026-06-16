@@ -4,6 +4,7 @@ import Security
 final class KubernetesURLSessionDelegate: NSObject, URLSessionDataDelegate {
     private let insecureSkipTLSVerify: Bool
     private let caCertificates: [SecCertificate]
+    private let hasKubeconfigCertificateAuthority: Bool
     private let clientIdentity: TemporaryClientIdentity?
     private let streamLock = NSLock()
     private var streamHandlers: [Int: KubernetesStreamingResponseHandler] = [:]
@@ -12,7 +13,9 @@ final class KubernetesURLSessionDelegate: NSObject, URLSessionDataDelegate {
 
     init(configuration: KubernetesClientConfiguration) throws {
         self.insecureSkipTLSVerify = configuration.insecureSkipTLSVerify
-        self.caCertificates = try configuration.certificateAuthorityData.map(Self.certificates(from:)) ?? []
+        let kubeconfigCertificates = try configuration.certificateAuthorityData.map(Self.certificates(from:)) ?? []
+        self.hasKubeconfigCertificateAuthority = !kubeconfigCertificates.isEmpty
+        self.caCertificates = try kubeconfigCertificates + Self.additionalCertificates()
 
         if case .clientCertificate(let certificateData, let keyData) = configuration.credential {
             self.clientIdentity = try TemporaryClientIdentity(certificateData: certificateData, keyData: keyData)
@@ -128,31 +131,31 @@ final class KubernetesURLSessionDelegate: NSObject, URLSessionDataDelegate {
 
         if !caCertificates.isEmpty {
             SecTrustSetAnchorCertificates(trust, caCertificates as CFArray)
-            SecTrustSetAnchorCertificatesOnly(trust, true)
+            SecTrustSetAnchorCertificatesOnly(trust, hasKubeconfigCertificateAuthority)
         }
 
         var trustError: CFError?
+        var pinnedTrustError: CFError?
         if SecTrustEvaluateWithError(trust, &trustError) {
             completionHandler(.useCredential, URLCredential(trust: trust))
-        } else if !caCertificates.isEmpty, evaluatePinnedClusterTrust(trust) {
+        } else if !caCertificates.isEmpty, evaluatePinnedClusterTrust(trust, error: &pinnedTrustError) {
             completionHandler(.useCredential, URLCredential(trust: trust))
         } else {
-            recordServerTrustError(trustError)
+            recordServerTrustError(pinnedTrustError ?? trustError)
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
     }
 
-    private func evaluatePinnedClusterTrust(_ trust: SecTrust) -> Bool {
+    private func evaluatePinnedClusterTrust(_ trust: SecTrust, error: inout CFError?) -> Bool {
         // Teleport and some Kubernetes endpoints present CA-pinned certificates
         // that are valid for Kubernetes clients but fail Apple's stricter
-        // browser/server certificate policy. Keep the kubeconfig CA pin, but
-        // fall back to basic X.509 chain validation for these cluster certs.
+        // browser/server certificate policy. Keep kubeconfig/corporate anchors
+        // available, but fall back to basic X.509 chain validation.
         SecTrustSetPolicies(trust, SecPolicyCreateBasicX509())
         SecTrustSetAnchorCertificates(trust, caCertificates as CFArray)
-        SecTrustSetAnchorCertificatesOnly(trust, true)
+        SecTrustSetAnchorCertificatesOnly(trust, false)
 
-        var trustError: CFError?
-        return SecTrustEvaluateWithError(trust, &trustError)
+        return SecTrustEvaluateWithError(trust, &error)
     }
 
     func consumeServerTrustErrorMessage() -> String? {
@@ -198,6 +201,34 @@ final class KubernetesURLSessionDelegate: NSObject, URLSessionDataDelegate {
         }
 
         return certificates
+    }
+
+    private static func additionalCertificates() throws -> [SecCertificate] {
+        var certificates: [SecCertificate] = []
+        for url in additionalCertificateURLs() {
+            guard FileManager.default.isReadableFile(atPath: url.path) else {
+                continue
+            }
+            let data = try Data(contentsOf: url)
+            certificates += try Self.certificates(from: data)
+        }
+        return certificates
+    }
+
+    private static func additionalCertificateURLs() -> [URL] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        var paths = [
+            home.appendingPathComponent("corp-ca.crt"),
+            home.appendingPathComponent(".vibekube/ca.crt")
+        ]
+
+        let configuredPaths = (ProcessInfo.processInfo.environment["VIBEKUBE_EXTRA_CA_FILE"] ?? "")
+            .split(separator: ":", omittingEmptySubsequences: true)
+            .map { URL(fileURLWithPath: (String($0) as NSString).expandingTildeInPath) }
+        paths.append(contentsOf: configuredPaths)
+
+        var seen = Set<String>()
+        return paths.filter { seen.insert($0.path).inserted }
     }
 }
 
