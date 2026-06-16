@@ -703,7 +703,7 @@ private struct DashboardRecentEventsView: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: 120)
             }
-        case .loading:
+        case .loading(_):
             ProgressView("Loading Events")
                 .frame(maxWidth: .infinity, minHeight: 120)
         case .loaded(let snapshot):

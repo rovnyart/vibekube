@@ -25,6 +25,7 @@ Goal: browse Kubernetes resources by group with sortable, filterable, namespace-
 - Toolbar namespace selection reloads namespaced resources for the selected namespace or all namespaces.
 - Secret payload fields are not decoded into list rows and are not searchable/displayed; Secret manifests redact top-level `data`, `stringData`, and `binaryData`.
 - Kubernetes list pagination is followed with bounded page sizes for namespace discovery and generic resource tables.
+- Slow resource lists show item/page progress and can be cancelled before all Kubernetes pages finish loading.
 - Custom/discovered resources are visible in the API catalog, but dynamic custom-resource table navigation is still pending.
 
 ## Implementation Slices
@@ -84,6 +85,7 @@ Goal: browse Kubernetes resources by group with sortable, filterable, namespace-
 - [ ] Row context menu.
 - [ ] Copy name, namespace/name, UID, labels, and JSON path.
 - [x] Loading/empty/error states.
+- [x] Cancellable loading progress for paginated lists.
 - [x] Row selection.
 - [x] Bottom detail inspector.
 

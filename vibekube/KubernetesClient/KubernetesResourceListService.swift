@@ -17,6 +17,16 @@ protocol KubernetesResourceListServicing {
     ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error>
 }
 
+protocol KubernetesResourceListProgressServicing: KubernetesResourceListServicing {
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        progress: @escaping (ResourceListPageProgress) async -> Void
+    ) async throws -> KubernetesUnstructuredResourceList
+}
+
 extension KubernetesResourceListServicing {
     func watchResources(
         contextName: String,
@@ -31,7 +41,7 @@ extension KubernetesResourceListServicing {
     }
 }
 
-final class KubernetesResourceListService: KubernetesResourceListServicing {
+final class KubernetesResourceListService: KubernetesResourceListProgressServicing {
     private let execCredentialProvider: KubernetesExecCredentialProviding
 
     init(execCredentialProvider: KubernetesExecCredentialProviding = DefaultKubernetesExecCredentialProvider()) {
@@ -44,12 +54,28 @@ final class KubernetesResourceListService: KubernetesResourceListServicing {
         resource: KubernetesDiscoveredResource,
         namespace: String?
     ) async throws -> KubernetesUnstructuredResourceList {
+        try await listResources(
+            contextName: contextName,
+            kubeconfig: kubeconfig,
+            resource: resource,
+            namespace: namespace,
+            progress: { _ in }
+        )
+    }
+
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        progress: @escaping (ResourceListPageProgress) async -> Void
+    ) async throws -> KubernetesUnstructuredResourceList {
         var configuration = try KubernetesClientConfiguration(contextName: contextName, kubeconfig: kubeconfig)
         let execRequest = try await resolveExecCredentialIfNeeded(configuration: &configuration)
         let client = try DefaultKubernetesAPIClient(configuration: configuration)
 
         do {
-            return try await client.resourceList(resource: resource, namespace: namespace)
+            return try await client.resourceList(resource: resource, namespace: namespace, progress: progress)
         } catch let error as KubernetesClientError where error.connectionState == .unauthorized {
             guard let execRequest else {
                 throw error
@@ -59,7 +85,7 @@ final class KubernetesResourceListService: KubernetesResourceListServicing {
             var retryConfiguration = try KubernetesClientConfiguration(contextName: contextName, kubeconfig: kubeconfig)
             _ = try await resolveExecCredentialIfNeeded(configuration: &retryConfiguration)
             let retryClient = try DefaultKubernetesAPIClient(configuration: retryConfiguration)
-            return try await retryClient.resourceList(resource: resource, namespace: namespace)
+            return try await retryClient.resourceList(resource: resource, namespace: namespace, progress: progress)
         }
     }
 

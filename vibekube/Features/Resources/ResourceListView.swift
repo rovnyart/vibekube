@@ -37,9 +37,15 @@ struct ResourceListView: View {
                 systemImage: item.systemImage
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .loading:
-            ProgressView("Loading \(item.title)")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .loading(let progress):
+            ResourceListLoadingView(
+                title: "Loading \(item.title)",
+                progress: progress,
+                cancel: {
+                    appModel.cancelResourceList(for: item)
+                }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .loaded(let snapshot):
             loadedContent(snapshot)
         case .failed(let message):

@@ -727,7 +727,7 @@ final class AppModel: ObservableObject {
             case .some(.loaded(let snapshot)):
                 startResourceWatchIfNeeded(query: query, resourceVersion: snapshot.resourceVersion)
                 return
-            case .some(.loading):
+            case .some(.loading(_)):
                 return
             case .some(.idle), .some(.failed), .none:
                 break
@@ -737,7 +737,7 @@ final class AppModel: ObservableObject {
         resourceListTasksByQuery[query]?.cancel()
         resourceWatchTasksByQuery[query]?.cancel()
         resourceWatchTasksByQuery[query] = nil
-        resourceListStateByQuery[query] = .loading
+        resourceListStateByQuery[query] = .loading(ResourceListLoadingProgress(query: query))
         recordDiagnostic(
             .info,
             category: "resourceList",
@@ -763,12 +763,25 @@ final class AppModel: ObservableObject {
         let namespace = namespaceForRequest(query)
         resourceListTasksByQuery[query] = Task.detached(priority: .utility) { [weak self, resourceListService, kubeconfig, namespace, query] in
             do {
-                let response = try await resourceListService.listResources(
-                    contextName: query.contextID,
-                    kubeconfig: kubeconfig,
-                    resource: query.resource,
-                    namespace: namespace
-                )
+                let response: KubernetesUnstructuredResourceList
+                if let progressService = resourceListService as? KubernetesResourceListProgressServicing {
+                    response = try await progressService.listResources(
+                        contextName: query.contextID,
+                        kubeconfig: kubeconfig,
+                        resource: query.resource,
+                        namespace: namespace,
+                        progress: { progress in
+                            await self?.updateResourceListProgress(query: query, progress: progress)
+                        }
+                    )
+                } else {
+                    response = try await resourceListService.listResources(
+                        contextName: query.contextID,
+                        kubeconfig: kubeconfig,
+                        resource: query.resource,
+                        namespace: namespace
+                    )
+                }
 
                 try Task.checkCancellation()
                 await self?.finishResourceList(query: query, response: response)
@@ -778,6 +791,25 @@ final class AppModel: ObservableObject {
                 await self?.failResourceList(query: query, error: error)
             }
         }
+    }
+
+    func cancelResourceList(for resource: ResourceNavigationItem) {
+        guard let query = resourceListQuery(for: resource) else {
+            return
+        }
+
+        resourceListTasksByQuery[query]?.cancel()
+        resourceListTasksByQuery[query] = nil
+        if resourceListStateByQuery[query]?.isLoading == true {
+            resourceListStateByQuery[query] = .idle
+        }
+        recordDiagnostic(
+            .info,
+            category: "resourceList",
+            message: "Resource list cancelled.",
+            contextID: query.contextID,
+            metadata: resourceListDiagnosticsMetadata(query)
+        )
     }
 
     func podLogState(
@@ -1299,9 +1331,28 @@ final class AppModel: ObservableObject {
         startResourceWatchIfNeeded(query: query, resourceVersion: response.metadata?.resourceVersion)
     }
 
+    private func updateResourceListProgress(
+        query: ResourceListQuery,
+        progress: ResourceListPageProgress
+    ) {
+        guard case .loading(let currentProgress) = resourceListStateByQuery[query] else {
+            return
+        }
+
+        resourceListStateByQuery[query] = .loading(
+            ResourceListLoadingProgress(
+                query: query,
+                startedAt: currentProgress.startedAt,
+                itemCount: progress.itemCount,
+                pageCount: progress.pageCount,
+                remainingItemCount: progress.remainingItemCount
+            )
+        )
+    }
+
     private func cancelResourceList(query: ResourceListQuery) {
         resourceListTasksByQuery[query] = nil
-        if resourceListStateByQuery[query] == .loading {
+        if resourceListStateByQuery[query]?.isLoading == true {
             resourceListStateByQuery[query] = .idle
         }
     }
@@ -1917,6 +1968,9 @@ final class AppModel: ObservableObject {
     private func cancelResourceListTasks() {
         resourceListTasksByQuery.values.forEach { $0.cancel() }
         resourceListTasksByQuery.removeAll()
+        for (query, state) in resourceListStateByQuery where state.isLoading {
+            resourceListStateByQuery[query] = .idle
+        }
     }
 
     private func cancelResourceWatchTasks() {

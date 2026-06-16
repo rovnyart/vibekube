@@ -48,11 +48,46 @@ struct ResourceListSnapshot: Equatable {
     var loadedAt: Date
 }
 
+struct ResourceListLoadingProgress: Equatable {
+    var query: ResourceListQuery
+    var startedAt: Date
+    var itemCount: Int
+    var pageCount: Int
+    var remainingItemCount: Int?
+
+    init(
+        query: ResourceListQuery,
+        startedAt: Date = Date(),
+        itemCount: Int = 0,
+        pageCount: Int = 0,
+        remainingItemCount: Int? = nil
+    ) {
+        self.query = query
+        self.startedAt = startedAt
+        self.itemCount = itemCount
+        self.pageCount = pageCount
+        self.remainingItemCount = remainingItemCount
+    }
+}
+
+struct ResourceListPageProgress: Equatable {
+    var itemCount: Int
+    var pageCount: Int
+    var remainingItemCount: Int?
+}
+
 enum ResourceListLoadState: Equatable {
     case idle
-    case loading
+    case loading(ResourceListLoadingProgress)
     case loaded(ResourceListSnapshot)
     case failed(String)
+
+    var isLoading: Bool {
+        if case .loading = self {
+            return true
+        }
+        return false
+    }
 }
 
 struct ResourceDetailQuery: Identifiable, Hashable {

@@ -71,9 +71,19 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         resource: KubernetesDiscoveredResource,
         namespace: String?
     ) async throws -> KubernetesUnstructuredResourceList {
+        try await resourceList(resource: resource, namespace: namespace, progress: { _ in })
+    }
+
+    func resourceList(
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        progress: @escaping (ResourceListPageProgress) async -> Void
+    ) async throws -> KubernetesUnstructuredResourceList {
         var pages: [KubernetesUnstructuredResourceList] = []
         var continueToken: String?
         var seenContinueTokens = Set<String>()
+        var itemCount = 0
+        var pageCount = 0
 
         repeat {
             try Task.checkCancellation()
@@ -82,6 +92,15 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
                 queryItems: Self.listQueryItems(limit: Self.defaultListLimit, continueToken: continueToken)
             )
             pages.append(page)
+            pageCount += 1
+            itemCount += page.items.count
+            await progress(
+                ResourceListPageProgress(
+                    itemCount: itemCount,
+                    pageCount: pageCount,
+                    remainingItemCount: page.metadata?.remainingItemCount
+                )
+            )
             continueToken = try nextContinueToken(
                 from: page.metadata?.continueToken,
                 seenContinueTokens: &seenContinueTokens

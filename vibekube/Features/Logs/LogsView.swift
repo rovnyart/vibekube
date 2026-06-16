@@ -53,9 +53,15 @@ struct LogsView: View {
                     systemImage: "shippingbox"
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .loading:
-                ProgressView("Loading Pods")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .loading(let progress):
+                ResourceListLoadingView(
+                    title: "Loading Pods",
+                    progress: progress,
+                    cancel: {
+                        appModel.cancelResourceList(for: .pods)
+                    }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .failed(let message):
                 VStack(spacing: 12) {
                     EmptyStateView(
