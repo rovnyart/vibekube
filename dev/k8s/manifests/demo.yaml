@@ -261,7 +261,9 @@ spec:
             - |
               i=0
               while true; do
-                echo "$(date -Iseconds) vibekube demo log line $i from ${POD_NAME:-$(hostname)} env=${APP_ENV:-unset} log=${LOG_LEVEL:-unset}"
+                ts="$(date -Iseconds)"
+                pod="${POD_NAME:-$(hostname)}"
+                printf '{"ts":"%s","level":"%s","message":"vibekube demo log line","counter":%s,"pod":"%s","env":"%s","component":"log-counter","flags":["jsonl","demo"],"details":{"namespace":"vibekube-demo","publicGreeting":"%s"}}\n' "$ts" "${LOG_LEVEL:-debug}" "$i" "$pod" "${APP_ENV:-unset}" "${PUBLIC_GREETING:-unset}"
                 i=$((i + 1))
                 sleep "${LOG_INTERVAL_SECONDS:-2}"
               done

@@ -1113,6 +1113,7 @@ private struct ResourceDetailLogsView: View {
     @State private var followsLogs = false
     @State private var searchText = ""
     @State private var filtersMatches = false
+    @State private var formatsJSONLines = false
     @State private var isExpanded = false
     @State private var isSavingLogs = false
     @State private var saveErrorMessage: String?
@@ -1254,6 +1255,10 @@ private struct ResourceDetailLogsView: View {
                     .toggleStyle(.checkbox)
                     .disabled(showsPreviousLogs)
 
+                Toggle("JSON", isOn: $formatsJSONLines)
+                    .toggleStyle(.checkbox)
+                    .help("Safely pretty-print JSON log lines")
+
                 Picker("Tail", selection: $tailSelection) {
                     ForEach(LogTailSelection.allCases) { selection in
                         Text(selection.title).tag(selection)
@@ -1363,6 +1368,7 @@ private struct ResourceDetailLogsView: View {
                     text: snapshot.text,
                     searchText: searchText,
                     filtersMatches: filtersMatches,
+                    formatsJSONLines: formatsJSONLines,
                     followsLogs: followsLogs
                 )
             }
@@ -1417,6 +1423,11 @@ private struct ResourceDetailLogsView: View {
                 Toggle("Live", isOn: $followsLogs)
                     .toggleStyle(.checkbox)
                     .disabled(showsPreviousLogs)
+                    .fixedSize()
+
+                Toggle("JSON", isOn: $formatsJSONLines)
+                    .toggleStyle(.checkbox)
+                    .help("Safely pretty-print JSON log lines")
                     .fixedSize()
 
                 HStack(spacing: 6) {
@@ -1583,6 +1594,7 @@ private struct ResourceDetailLogsView: View {
             searchText: searchText,
             filtersMatches: filtersMatches
         )
+        .displayLines(formatsJSONLines: formatsJSONLines)
         .joined(separator: "\n")
     }
 
@@ -1726,6 +1738,7 @@ private struct LogTextSurface: View {
     let text: String
     let searchText: String
     let filtersMatches: Bool
+    let formatsJSONLines: Bool
     let followsLogs: Bool
 
     private var displayedLines: [String] {
@@ -1733,7 +1746,7 @@ private struct LogTextSurface: View {
     }
 
     private var displayedText: String {
-        displayedLines.joined(separator: "\n")
+        displayedLines.displayLines(formatsJSONLines: formatsJSONLines).joined(separator: "\n")
     }
 
     var body: some View {
@@ -1758,6 +1771,7 @@ private struct LogTextSurface: View {
                 SelectableLogTextView(
                     text: displayedText,
                     searchText: searchText,
+                    formatsJSONLines: formatsJSONLines,
                     followsLogs: followsLogs
                 )
                 .accessibilityIdentifier("resource.detail.logs.text")
@@ -1789,6 +1803,7 @@ private struct LogTextSurface: View {
 private struct SelectableLogTextView: NSViewRepresentable {
     let text: String
     let searchText: String
+    let formatsJSONLines: Bool
     let followsLogs: Bool
 
     func makeCoordinator() -> Coordinator {
@@ -1838,10 +1853,19 @@ private struct SelectableLogTextView: NSViewRepresentable {
         }
 
         let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if context.coordinator.text != text || context.coordinator.searchText != needle {
-            textView.textStorage?.setAttributedString(Self.attributedText(text, searchText: needle))
+        if context.coordinator.text != text ||
+            context.coordinator.searchText != needle ||
+            context.coordinator.formatsJSONLines != formatsJSONLines {
+            textView.textStorage?.setAttributedString(
+                Self.attributedText(
+                    text,
+                    searchText: needle,
+                    highlightsJSON: formatsJSONLines
+                )
+            )
             context.coordinator.text = text
             context.coordinator.searchText = needle
+            context.coordinator.formatsJSONLines = formatsJSONLines
         }
 
         if followsLogs {
@@ -1851,7 +1875,11 @@ private struct SelectableLogTextView: NSViewRepresentable {
         }
     }
 
-    private static func attributedText(_ text: String, searchText: String) -> NSAttributedString {
+    private static func attributedText(
+        _ text: String,
+        searchText: String,
+        highlightsJSON: Bool
+    ) -> NSAttributedString {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = .byClipping
 
@@ -1861,6 +1889,10 @@ private struct SelectableLogTextView: NSViewRepresentable {
             .paragraphStyle: paragraphStyle
         ]
         let result = NSMutableAttributedString(string: text, attributes: attributes)
+
+        if highlightsJSON {
+            highlightJSONSyntax(in: result, text: text)
+        }
 
         guard !searchText.isEmpty else {
             return result
@@ -1893,10 +1925,67 @@ private struct SelectableLogTextView: NSViewRepresentable {
         return result
     }
 
+    private static func highlightJSONSyntax(in result: NSMutableAttributedString, text: String) {
+        applyRegex(
+            #""(?:\\.|[^"\\])*""#,
+            to: result,
+            text: text,
+            attributes: [.foregroundColor: NSColor.systemGreen]
+        )
+        applyRegex(
+            #""(?:\\.|[^"\\])*"(?=\s*:)"#,
+            to: result,
+            text: text,
+            attributes: [
+                .foregroundColor: NSColor.controlAccentColor,
+                .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold)
+            ]
+        )
+        applyRegex(
+            #"(?<![\w.])-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b"#,
+            to: result,
+            text: text,
+            attributes: [.foregroundColor: NSColor.systemPurple]
+        )
+        applyRegex(
+            #"\b(?:true|false|null)\b"#,
+            to: result,
+            text: text,
+            attributes: [.foregroundColor: NSColor.systemOrange]
+        )
+    }
+
+    private static func applyRegex(
+        _ pattern: String,
+        to result: NSMutableAttributedString,
+        text: String,
+        attributes: [NSAttributedString.Key: Any]
+    ) {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return
+        }
+
+        let range = NSRange(location: 0, length: (text as NSString).length)
+        regex.enumerateMatches(in: text, range: range) { match, _, _ in
+            guard let matchRange = match?.range else {
+                return
+            }
+
+            result.addAttributes(attributes, range: matchRange)
+        }
+    }
+
     final class Coordinator {
         weak var textView: NSTextView?
         var text = ""
         var searchText = ""
+        var formatsJSONLines = false
+    }
+}
+
+private extension [String] {
+    func displayLines(formatsJSONLines: Bool) -> [String] {
+        formatsJSONLines ? LogJSONLFormatter.formattedLines(from: self) : self
     }
 }
 
