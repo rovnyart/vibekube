@@ -145,7 +145,11 @@ private struct ClusterPicker: View {
     private var clusterSelection: Binding<ClusterSummary.ID?> {
         Binding(
             get: { appModel.selectedClusterID },
-            set: { appModel.selectCluster(id: $0) }
+            set: { id in
+                DispatchQueue.main.async {
+                    appModel.selectCluster(id: id)
+                }
+            }
         )
     }
 }

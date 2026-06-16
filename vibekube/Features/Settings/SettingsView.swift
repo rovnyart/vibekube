@@ -223,35 +223,55 @@ struct SettingsView: View {
     private var fileLoggingBinding: Binding<Bool> {
         Binding(
             get: { appModel.diagnosticsFileLoggingEnabled },
-            set: { appModel.setDiagnosticsFileLoggingEnabled($0) }
+            set: { enabled in
+                DispatchQueue.main.async {
+                    appModel.setDiagnosticsFileLoggingEnabled(enabled)
+                }
+            }
         )
     }
 
     private var includeClusterNamesBinding: Binding<Bool> {
         Binding(
             get: { appModel.diagnosticsIncludeClusterNames },
-            set: { appModel.setDiagnosticsIncludeClusterNames($0) }
+            set: { enabled in
+                DispatchQueue.main.async {
+                    appModel.setDiagnosticsIncludeClusterNames(enabled)
+                }
+            }
         )
     }
 
     private var retentionBinding: Binding<Int> {
         Binding(
             get: { appModel.diagnosticsRetentionDays },
-            set: { appModel.setDiagnosticsRetentionDays($0) }
+            set: { days in
+                DispatchQueue.main.async {
+                    appModel.setDiagnosticsRetentionDays(days)
+                }
+            }
         )
     }
 
     private var podLogLineLimitBinding: Binding<Int> {
         Binding(
             get: { appModel.podLogLineLimit },
-            set: { appModel.setPodLogLineLimit($0) }
+            set: { lineLimit in
+                DispatchQueue.main.async {
+                    appModel.setPodLogLineLimit(lineLimit)
+                }
+            }
         )
     }
 
     private var defaultNamespaceBehaviorBinding: Binding<DefaultNamespaceBehavior> {
         Binding(
             get: { appModel.defaultNamespaceBehavior },
-            set: { appModel.setDefaultNamespaceBehavior($0) }
+            set: { behavior in
+                DispatchQueue.main.async {
+                    appModel.setDefaultNamespaceBehavior(behavior)
+                }
+            }
         )
     }
 
@@ -278,21 +298,33 @@ struct SettingsView: View {
     private var resourceWatchesEnabledBinding: Binding<Bool> {
         Binding(
             get: { appModel.resourceWatchesEnabled },
-            set: { appModel.setResourceWatchesEnabled($0) }
+            set: { enabled in
+                DispatchQueue.main.async {
+                    appModel.setResourceWatchesEnabled(enabled)
+                }
+            }
         )
     }
 
     private var tableDensityBinding: Binding<TableDensity> {
         Binding(
             get: { appModel.tableDensity },
-            set: { appModel.setTableDensity($0) }
+            set: { density in
+                DispatchQueue.main.async {
+                    appModel.setTableDensity(density)
+                }
+            }
         )
     }
 
     private var secretRevealConfirmationBinding: Binding<Bool> {
         Binding(
             get: { appModel.secretRevealRequiresConfirmation },
-            set: { appModel.setSecretRevealRequiresConfirmation($0) }
+            set: { requiresConfirmation in
+                DispatchQueue.main.async {
+                    appModel.setSecretRevealRequiresConfirmation(requiresConfirmation)
+                }
+            }
         )
     }
 
