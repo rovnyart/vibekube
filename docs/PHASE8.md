@@ -13,7 +13,7 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Reconnect/backoff exists for active resource list watches.
 - [x] UI indicates live/reconnecting/stale/failure state for active resource list watches.
 - [x] Expired watch resourceVersions relist and resume from a fresh resourceVersion.
-- [x] Open Pod details refresh when watched list rows move to a newer resourceVersion.
+- [x] Open resource details refresh when watched list rows move to a newer resourceVersion.
 - [x] Broader active-resource list watches exist.
 - [ ] True selected-resource detail watches exist.
 
@@ -62,7 +62,7 @@ Checkpoint: stop when pod and deployment lists can receive watch updates without
 - [x] Watch parser tests.
 - [x] ResourceVersion relist tests.
 - [x] Store merge tests for active Pods and Deployments ADDED events.
-- [x] Detail refresh test for active Pods MODIFIED events.
+- [x] Detail refresh tests for active Pod and Deployment MODIFIED events.
 - [ ] Mock watch reconnect tests.
 - [ ] Manual QA with demo CronJob pods.
 

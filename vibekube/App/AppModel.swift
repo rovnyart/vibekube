@@ -1045,7 +1045,19 @@ final class AppModel: ObservableObject {
         force: Bool = false
     ) {
         guard selectedConnectionState == .connected,
-              let query = resourceDetailQuery(for: resource, row: row),
+              let query = resourceDetailQuery(for: resource, row: row) else {
+            return
+        }
+
+        loadResourceDetail(query: query, row: row, force: force)
+    }
+
+    private func loadResourceDetail(
+        query: ResourceDetailQuery,
+        row: KubernetesUnstructuredResource,
+        force: Bool = false
+    ) {
+        guard selectedConnectionState == .connected,
               query.resource.verbs.contains("get") else {
             return
         }
@@ -1588,6 +1600,7 @@ final class AppModel: ObservableObject {
         }
 
         markResourceWatchLive(query: query, eventAt: Date())
+        var detailRefreshCandidate: KubernetesUnstructuredResource?
 
         switch event.type {
         case .added, .modified:
@@ -1595,6 +1608,7 @@ final class AppModel: ObservableObject {
                 return snapshot.resourceVersion
             }
             let item = normalizedResource(object, for: query)
+            detailRefreshCandidate = item
             if let index = snapshot.items.firstIndex(where: { $0.id == item.id }) {
                 snapshot.items[index] = item
             } else {
@@ -1620,7 +1634,45 @@ final class AppModel: ObservableObject {
         }
 
         resourceListStateByQuery[query] = .loaded(snapshot)
+        if let detailRefreshCandidate {
+            refreshLoadedDetailIfStale(row: detailRefreshCandidate, listQuery: query)
+        }
         return snapshot.resourceVersion
+    }
+
+    private func refreshLoadedDetailIfStale(
+        row: KubernetesUnstructuredResource,
+        listQuery: ResourceListQuery
+    ) {
+        guard selectedConnectionState == .connected,
+              listQuery.resource.verbs.contains("get"),
+              let name = row.metadata.name,
+              !name.isEmpty else {
+            return
+        }
+
+        let namespace = namespaceForDetailRequest(
+            row: row,
+            resource: listQuery.resource,
+            namespaceSelection: listQuery.namespaceSelection
+        )
+        if listQuery.resource.namespaced, namespace == nil {
+            return
+        }
+
+        let detailQuery = ResourceDetailQuery(
+            contextID: listQuery.contextID,
+            resource: listQuery.resource,
+            namespace: namespace,
+            name: name
+        )
+
+        guard case .loaded(let snapshot) = resourceDetailStateByQuery[detailQuery],
+              !isResourceDetailSnapshot(snapshot, currentFor: row) else {
+            return
+        }
+
+        loadResourceDetail(query: detailQuery, row: row)
     }
 
     private func startResourceWatchAttempt(query: ResourceListQuery, attempt: Int) {
@@ -2436,6 +2488,18 @@ final class AppModel: ObservableObject {
         row: KubernetesUnstructuredResource,
         resource: KubernetesDiscoveredResource
     ) -> String? {
+        namespaceForDetailRequest(
+            row: row,
+            resource: resource,
+            namespaceSelection: selectedNamespaceSelection
+        )
+    }
+
+    private func namespaceForDetailRequest(
+        row: KubernetesUnstructuredResource,
+        resource: KubernetesDiscoveredResource,
+        namespaceSelection: String
+    ) -> String? {
         guard resource.namespaced else {
             return nil
         }
@@ -2444,11 +2508,11 @@ final class AppModel: ObservableObject {
             return namespace
         }
 
-        guard selectedNamespaceSelection != Self.allNamespacesSelection else {
+        guard namespaceSelection != Self.allNamespacesSelection else {
             return nil
         }
 
-        return selectedNamespaceSelection
+        return namespaceSelection
     }
 
     private func envSecretValueQuery(

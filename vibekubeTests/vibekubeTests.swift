@@ -742,12 +742,67 @@ struct vibekubeTests {
             return
         }
 
-        model.loadResourceDetail(for: .pods, row: updatedRow)
         try await waitUntil("pod detail refreshed for watched version") {
             guard case .loaded(let detail) = model.resourceDetailState(for: .pods, row: updatedRow) else {
                 return false
             }
             return detail.summary.resourceVersion == "11"
+        }
+
+        #expect(await detailService.callCount() >= 2)
+    }
+
+    @MainActor
+    @Test func appModelRefreshesOpenDeploymentDetailWhenWatchUpdatesResourceVersion() async throws {
+        let detailService = VersionedDeploymentDetailService()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: WatchableWorkloadsConnectionService(),
+            resourceListService: ModifyingDeploymentResourceListService(),
+            resourceDetailService: detailService,
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.deployments)
+        try await waitForResourceList(model, .deployments)
+
+        guard case .loaded(let firstSnapshot) = model.resourceListState(for: .deployments),
+              let initialRow = firstSnapshot.items.first(where: { $0.displayName == "web" }) else {
+            Issue.record("Expected initial deployment row")
+            return
+        }
+
+        model.loadResourceDetail(for: .deployments, row: initialRow)
+        try await waitForResourceDetail(model, resource: .deployments, row: initialRow)
+
+        guard case .loaded(let initialDetail) = model.resourceDetailState(for: .deployments, row: initialRow) else {
+            Issue.record("Expected initial deployment detail")
+            return
+        }
+        #expect(initialDetail.summary.resourceVersion == "20")
+
+        try await waitUntil("watched deployment version appears") {
+            guard case .loaded(let snapshot) = model.resourceListState(for: .deployments),
+                  let updatedRow = snapshot.items.first(where: { $0.displayName == "web" }) else {
+                return false
+            }
+            return updatedRow.metadata.resourceVersion == "21"
+        }
+
+        guard case .loaded(let updatedSnapshot) = model.resourceListState(for: .deployments),
+              let updatedRow = updatedSnapshot.items.first(where: { $0.displayName == "web" }) else {
+            Issue.record("Expected updated deployment row")
+            return
+        }
+
+        try await waitUntil("deployment detail refreshed for watched version") {
+            guard case .loaded(let detail) = model.resourceDetailState(for: .deployments, row: updatedRow) else {
+                return false
+            }
+            return detail.summary.resourceVersion == "21"
         }
 
         #expect(await detailService.callCount() >= 2)
@@ -1468,36 +1523,133 @@ private struct ModifyingPodResourceListService: KubernetesResourceListServicing 
         resourceVersion: String?
     ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error> {
         AsyncThrowingStream { continuation in
-            do {
-                let pod = try JSONDecoder().decode(
-                    KubernetesUnstructuredResource.self,
-                    from: Data(
-                        """
-                        {
-                          "apiVersion": "v1",
-                          "kind": "Pod",
-                          "metadata": {
-                            "name": "web-0",
-                            "namespace": "\(namespace ?? "vibekube-demo")",
-                            "uid": "web-uid",
-                            "resourceVersion": "11"
-                          },
-                          "status": {
-                            "phase": "Running"
-                          }
-                        }
-                        """.utf8
+            Task {
+                do {
+                    try await Task.sleep(nanoseconds: 100_000_000)
+                    let pod = try JSONDecoder().decode(
+                        KubernetesUnstructuredResource.self,
+                        from: Data(
+                            """
+                            {
+                              "apiVersion": "v1",
+                              "kind": "Pod",
+                              "metadata": {
+                                "name": "web-0",
+                                "namespace": "\(namespace ?? "vibekube-demo")",
+                                "uid": "web-uid",
+                                "resourceVersion": "11"
+                              },
+                              "status": {
+                                "phase": "Running"
+                              }
+                            }
+                            """.utf8
+                        )
                     )
-                )
-                continuation.yield(
-                    KubernetesWatchEvent(
-                        type: .modified,
-                        object: pod
+                    continuation.yield(
+                        KubernetesWatchEvent(
+                            type: .modified,
+                            object: pod
+                        )
                     )
-                )
-                continuation.finish()
-            } catch {
-                continuation.finish(throwing: error)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+}
+
+private struct ModifyingDeploymentResourceListService: KubernetesResourceListServicing {
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        #expect(resource.name == "deployments")
+        return try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "metadata": {
+                    "resourceVersion": "20"
+                  },
+                  "items": [
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "Deployment",
+                      "metadata": {
+                        "name": "web",
+                        "namespace": "\(namespace ?? "vibekube-demo")",
+                        "uid": "web-deploy-uid",
+                        "resourceVersion": "20"
+                      },
+                      "spec": {
+                        "replicas": 2
+                      },
+                      "status": {
+                        "readyReplicas": 2,
+                        "replicas": 2
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+    }
+
+    func watchResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        resourceVersion: String?
+    ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error> {
+        AsyncThrowingStream { continuation in
+            #expect(resource.name == "deployments")
+            #expect(resourceVersion == "20")
+
+            Task {
+                do {
+                    try await Task.sleep(nanoseconds: 100_000_000)
+                    let deployment = try JSONDecoder().decode(
+                        KubernetesUnstructuredResource.self,
+                        from: Data(
+                            """
+                            {
+                              "apiVersion": "apps/v1",
+                              "kind": "Deployment",
+                              "metadata": {
+                                "name": "web",
+                                "namespace": "\(namespace ?? "vibekube-demo")",
+                                "uid": "web-deploy-uid",
+                                "resourceVersion": "21"
+                              },
+                              "spec": {
+                                "replicas": 3
+                              },
+                              "status": {
+                                "readyReplicas": 3,
+                                "replicas": 3
+                              }
+                            }
+                            """.utf8
+                        )
+                    )
+                    continuation.yield(
+                        KubernetesWatchEvent(
+                            type: .modified,
+                            object: deployment
+                        )
+                    )
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
             }
         }
     }
@@ -1530,6 +1682,49 @@ private actor VersionedPodDetailService: KubernetesResourceDetailServicing {
                   },
                   "status": {
                     "phase": "Running"
+                  }
+                }
+                """.utf8
+            )
+        )
+    }
+
+    func callCount() -> Int {
+        calls
+    }
+}
+
+private actor VersionedDeploymentDetailService: KubernetesResourceDetailServicing {
+    private var calls = 0
+
+    func resourceDetail(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String
+    ) async throws -> KubernetesResourceDetail {
+        calls += 1
+        let resourceVersion = calls == 1 ? "20" : "21"
+        return try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "\(resource.groupVersion)",
+                  "kind": "\(resource.kind)",
+                  "metadata": {
+                    "name": "\(name)",
+                    "namespace": "\(namespace ?? "vibekube-demo")",
+                    "uid": "web-deploy-uid",
+                    "resourceVersion": "\(resourceVersion)"
+                  },
+                  "spec": {
+                    "replicas": \(resourceVersion == "20" ? 2 : 3)
+                  },
+                  "status": {
+                    "readyReplicas": \(resourceVersion == "20" ? 2 : 3),
+                    "replicas": \(resourceVersion == "20" ? 2 : 3)
                   }
                 }
                 """.utf8
