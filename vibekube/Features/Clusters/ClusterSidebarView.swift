@@ -93,10 +93,10 @@ private struct ClusterRow: View {
                     if cluster.isCurrentContext {
                         Text("Current")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.teal)
+                            .foregroundStyle(.white)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(.teal.opacity(0.12), in: Capsule())
+                            .background(.teal, in: Capsule())
                     }
                 }
 
