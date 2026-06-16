@@ -55,6 +55,48 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         try await get(path: resource.listPath(namespace: namespace))
     }
 
+    func resourceWatch(
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        resourceVersion: String?
+    ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error> {
+        let queryItems = Self.watchQueryItems(resourceVersion: resourceVersion)
+        let textStream = streamText(
+            path: resource.listPath(namespace: namespace),
+            queryItems: queryItems
+        )
+
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let decoder = JSONDecoder()
+                    for try await line in textStream {
+                        try Task.checkCancellation()
+                        guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                            continue
+                        }
+
+                        let event = try decoder.decode(
+                            KubernetesWatchEvent<KubernetesUnstructuredResource>.self,
+                            from: Data(line.utf8)
+                        )
+                        continuation.yield(event)
+                    }
+
+                    continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+
     func resourceDetail(
         resource: KubernetesDiscoveredResource,
         namespace: String?,
@@ -115,13 +157,25 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         podName: String,
         options: KubernetesPodLogOptions
     ) -> AsyncThrowingStream<String, Error> {
+        streamText(
+            path: Self.podLogPath(namespace: namespace, podName: podName),
+            queryItems: options.queryItems,
+            timeoutInterval: 3_600
+        )
+    }
+
+    private func streamText(
+        path: String,
+        queryItems: [URLQueryItem],
+        timeoutInterval: TimeInterval = 3_600
+    ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             var request = Self.textRequest(
                 configuration: configuration,
-                path: Self.podLogPath(namespace: namespace, podName: podName),
-                queryItems: options.queryItems
+                path: path,
+                queryItems: queryItems
             )
-            request.timeoutInterval = 3_600
+            request.timeoutInterval = timeoutInterval
             applyAuthentication(to: &request)
 
             let task = session.dataTask(with: request)
@@ -216,6 +270,20 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
 
     private static func podLogPath(namespace: String, podName: String) -> String {
         "/api/v1/namespaces/\(namespace.kubernetesPathSegment)/pods/\(podName.kubernetesPathSegment)/log"
+    }
+
+    private static func watchQueryItems(resourceVersion: String?) -> [URLQueryItem] {
+        var items = [
+            URLQueryItem(name: "watch", value: "true"),
+            URLQueryItem(name: "allowWatchBookmarks", value: "true"),
+            URLQueryItem(name: "timeoutSeconds", value: "300")
+        ]
+
+        if let resourceVersion, !resourceVersion.isEmpty {
+            items.append(URLQueryItem(name: "resourceVersion", value: resourceVersion))
+        }
+
+        return items
     }
 
     private func applyAuthentication(to request: inout URLRequest) {

@@ -30,6 +30,7 @@ final class AppModel: ObservableObject {
     private var loadedKubeconfig: Kubeconfig
     private var connectionTask: Task<Void, Never>?
     private var resourceListTasksByQuery: [ResourceListQuery: Task<Void, Never>]
+    private var resourceWatchTasksByQuery: [ResourceListQuery: Task<Void, Never>]
     private var resourceDetailTask: Task<Void, Never>?
     private var resourceEventsTask: Task<Void, Never>?
     private var dashboardMetricsTask: Task<Void, Never>?
@@ -130,6 +131,7 @@ final class AppModel: ObservableObject {
             ? userPreferences.selectedNamespaceByContextID
             : selectedNamespaceByContextID
         self.resourceListTasksByQuery = [:]
+        self.resourceWatchTasksByQuery = [:]
         self.resourceEventsTask = nil
         self.dashboardMetricsTask = nil
         self.podLogTask = nil
@@ -257,6 +259,7 @@ final class AppModel: ObservableObject {
 
         connectionTask?.cancel()
         cancelResourceListTasks()
+        cancelResourceWatchTasks()
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
         cancelDashboardMetricsTask()
@@ -272,6 +275,7 @@ final class AppModel: ObservableObject {
         }
 
         navigate(clusterID: selectedClusterID, resource: resource)
+        cancelResourceWatchTasks()
         if resource == .dashboard {
             loadDashboardResources()
             loadDashboardMetrics()
@@ -289,6 +293,7 @@ final class AppModel: ObservableObject {
 
         selectedNamespaceByContextID[selectedClusterID] = namespace
         userPreferences.selectedNamespaceByContextID = selectedNamespaceByContextID
+        cancelResourceWatchTasks()
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
         cancelPodLogTask()
@@ -323,6 +328,7 @@ final class AppModel: ObservableObject {
     }
 
     func refresh() {
+        cancelResourceWatchTasks()
         if selectedResource == .dashboard, selectedConnectionState == .connected {
             loadDashboardResources(force: true)
             loadDashboardMetrics(force: true)
@@ -390,6 +396,7 @@ final class AppModel: ObservableObject {
 
         connectionTask?.cancel()
         cancelResourceListTasks()
+        cancelResourceWatchTasks()
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
         cancelDashboardMetricsTask()
@@ -448,6 +455,7 @@ final class AppModel: ObservableObject {
     func disconnectSelectedCluster() {
         connectionTask?.cancel()
         cancelResourceListTasks()
+        cancelResourceWatchTasks()
         resourceDetailTask?.cancel()
         resourceEventsTask?.cancel()
         cancelDashboardMetricsTask()
@@ -577,7 +585,10 @@ final class AppModel: ObservableObject {
 
         if !force {
             switch resourceListStateByQuery[query] {
-            case .some(.loaded), .some(.loading):
+            case .some(.loaded(let snapshot)):
+                startResourceWatchIfNeeded(query: query, resourceVersion: snapshot.resourceVersion)
+                return
+            case .some(.loading):
                 return
             case .some(.idle), .some(.failed), .none:
                 break
@@ -585,6 +596,8 @@ final class AppModel: ObservableObject {
         }
 
         resourceListTasksByQuery[query]?.cancel()
+        resourceWatchTasksByQuery[query]?.cancel()
+        resourceWatchTasksByQuery[query] = nil
         resourceListStateByQuery[query] = .loading
 
         guard let resourceListService else {
@@ -1050,24 +1063,17 @@ final class AppModel: ObservableObject {
         response: KubernetesUnstructuredResourceList
     ) {
         resourceListTasksByQuery[query] = nil
+        let items = response.items.map { normalizedResource($0, for: query) }
         resourceListStateByQuery[query] = .loaded(
             ResourceListSnapshot(
                 query: query,
-                items: response.items.map { item in
-                    var item = item
-                    if item.kind == nil {
-                        item.kind = query.resource.kind
-                    }
-                    if item.apiVersion == nil {
-                        item.apiVersion = query.resource.groupVersion
-                    }
-                    return item
-                },
+                items: items,
                 resourceVersion: response.metadata?.resourceVersion,
                 continueToken: response.metadata?.continueToken,
                 loadedAt: Date()
             )
         )
+        startResourceWatchIfNeeded(query: query, resourceVersion: response.metadata?.resourceVersion)
     }
 
     private func cancelResourceList(query: ResourceListQuery) {
@@ -1080,6 +1086,116 @@ final class AppModel: ObservableObject {
     private func failResourceList(query: ResourceListQuery, error: Error) {
         resourceListTasksByQuery[query] = nil
         resourceListStateByQuery[query] = .failed(error.localizedDescription)
+    }
+
+    private func startResourceWatchIfNeeded(query: ResourceListQuery, resourceVersion: String?) {
+        guard shouldWatchResourceList(query),
+              resourceWatchTasksByQuery[query] == nil,
+              let resourceListService else {
+            return
+        }
+
+        let kubeconfig = loadedKubeconfig
+        let namespace = namespaceForRequest(query)
+        resourceWatchTasksByQuery[query] = Task.detached(priority: .utility) { [weak self, resourceListService, kubeconfig, namespace, query, resourceVersion] in
+            do {
+                for try await event in resourceListService.watchResources(
+                    contextName: query.contextID,
+                    kubeconfig: kubeconfig,
+                    resource: query.resource,
+                    namespace: namespace,
+                    resourceVersion: resourceVersion
+                ) {
+                    try Task.checkCancellation()
+                    await self?.applyResourceWatchEvent(event, query: query)
+                }
+
+                try Task.checkCancellation()
+                await self?.finishResourceWatch(query: query)
+            } catch is CancellationError {
+                await self?.cancelResourceWatch(query: query)
+            } catch {
+                await self?.failResourceWatch(query: query, error: error)
+            }
+        }
+    }
+
+    private func applyResourceWatchEvent(
+        _ event: KubernetesWatchEvent<KubernetesUnstructuredResource>,
+        query: ResourceListQuery
+    ) {
+        guard case .loaded(var snapshot) = resourceListStateByQuery[query] else {
+            return
+        }
+
+        switch event.type {
+        case .added, .modified:
+            guard let object = event.object else {
+                return
+            }
+            let item = normalizedResource(object, for: query)
+            if let index = snapshot.items.firstIndex(where: { $0.id == item.id }) {
+                snapshot.items[index] = item
+            } else {
+                snapshot.items.append(item)
+            }
+            snapshot.resourceVersion = item.metadata.resourceVersion ?? snapshot.resourceVersion
+            snapshot.loadedAt = Date()
+        case .deleted:
+            guard let object = event.object else {
+                return
+            }
+            let item = normalizedResource(object, for: query)
+            snapshot.items.removeAll { $0.id == item.id }
+            snapshot.resourceVersion = item.metadata.resourceVersion ?? snapshot.resourceVersion
+            snapshot.loadedAt = Date()
+        case .bookmark:
+            if let resourceVersion = event.object?.metadata.resourceVersion {
+                snapshot.resourceVersion = resourceVersion
+            }
+            snapshot.loadedAt = Date()
+        case .error:
+            failResourceWatch(
+                query: query,
+                error: KubernetesClientError.statusCode(event.status?.code ?? 0, event.status?.message)
+            )
+            return
+        }
+
+        resourceListStateByQuery[query] = .loaded(snapshot)
+    }
+
+    private func finishResourceWatch(query: ResourceListQuery) {
+        resourceWatchTasksByQuery[query] = nil
+    }
+
+    private func cancelResourceWatch(query: ResourceListQuery) {
+        resourceWatchTasksByQuery[query] = nil
+    }
+
+    private func failResourceWatch(query: ResourceListQuery, error: Error) {
+        resourceWatchTasksByQuery[query] = nil
+    }
+
+    private func shouldWatchResourceList(_ query: ResourceListQuery) -> Bool {
+        selectedClusterID == query.contextID &&
+            selectedResource == .pods &&
+            query.resource.name == "pods" &&
+            query.resource.verbs.contains("watch")
+    }
+
+    private func normalizedResource(
+        _ resource: KubernetesUnstructuredResource,
+        for query: ResourceListQuery
+    ) -> KubernetesUnstructuredResource {
+        var item = resource
+        if item.kind == nil {
+            item.kind = query.resource.kind
+        }
+        if item.apiVersion == nil {
+            item.apiVersion = query.resource.groupVersion
+        }
+        return item
     }
 
     private func finishDashboardMetrics(
@@ -1263,6 +1379,11 @@ final class AppModel: ObservableObject {
     private func cancelResourceListTasks() {
         resourceListTasksByQuery.values.forEach { $0.cancel() }
         resourceListTasksByQuery.removeAll()
+    }
+
+    private func cancelResourceWatchTasks() {
+        resourceWatchTasksByQuery.values.forEach { $0.cancel() }
+        resourceWatchTasksByQuery.removeAll()
     }
 
     private func cancelDashboardMetricsTask() {

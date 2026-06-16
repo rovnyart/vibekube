@@ -1,15 +1,15 @@
 # Phase 8: Watches And Real-Time Updates
 
-Status: Not started.
+Status: Started.
 
 Goal: keep resource lists and details current through Kubernetes watches without flicker or stale data confusion.
 
 ## Current Progress
 
 - [x] Phase plan exists.
-- [ ] Watch request support exists.
-- [ ] Watch event parser exists.
-- [ ] Resource store applies watch updates.
+- [x] Watch request support exists.
+- [x] Watch event parser exists.
+- [x] Active Pods list applies watch updates.
 - [ ] Reconnect/backoff exists.
 - [ ] UI indicates live/stale state.
 
@@ -17,27 +17,27 @@ Goal: keep resource lists and details current through Kubernetes watches without
 
 ### 8.1 Watch API
 
-- [ ] Add `watch=true` request builder.
-- [ ] Track `resourceVersion`.
-- [ ] Decode ADDED/MODIFIED/DELETED/BOOKMARK/ERROR events.
+- [x] Add `watch=true` request builder.
+- [x] Track `resourceVersion`.
+- [x] Decode ADDED/MODIFIED/DELETED/BOOKMARK/ERROR events.
 - [ ] Handle `410 Gone` by relisting.
-- [ ] Add timeout and cancellation behavior.
+- [x] Add timeout and cancellation behavior.
 
 ### 8.2 Watch Service
 
-- [ ] Define `ResourceWatchService`.
-- [ ] Start watches for active resource lists.
+- [x] Define resource watch stream on the resource list service.
+- [x] Start watches for the active Pods resource list.
 - [ ] Start detail watch for selected resource.
-- [ ] Stop watches on route/context/namespace changes.
+- [x] Stop watches on route/context/namespace changes.
 - [ ] Apply backoff on transient failures.
 - [ ] Surface permanent errors.
 
 ### 8.3 Store Integration
 
-- [ ] Merge ADDED events.
-- [ ] Merge MODIFIED events.
-- [ ] Remove DELETED resources.
-- [ ] Preserve table selection where possible.
+- [x] Merge ADDED events.
+- [x] Merge MODIFIED events.
+- [x] Remove DELETED resources.
+- [x] Preserve table selection where possible by mutating the existing loaded snapshot.
 - [ ] Throttle high-volume updates.
 - [ ] Avoid row jumping while user is interacting.
 
@@ -53,9 +53,9 @@ Checkpoint: stop when pod list updates as demo CronJobs create pods.
 
 ### 8.5 Tests
 
-- [ ] Watch parser tests.
+- [x] Watch parser tests.
 - [ ] ResourceVersion relist tests.
-- [ ] Store merge tests.
+- [x] Store merge tests for active Pods ADDED events.
 - [ ] Mock watch reconnect tests.
 - [ ] Manual QA with demo CronJob pods.
 

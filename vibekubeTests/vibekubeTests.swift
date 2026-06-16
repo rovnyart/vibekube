@@ -470,6 +470,35 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelAppliesPodWatchAddedEvents() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: WatchingPodResourceListService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitUntil("watched pod appears") {
+            guard case .loaded(let snapshot) = model.resourceListState(for: .pods) else {
+                return false
+            }
+            return snapshot.items.contains { $0.displayName == "heartbeat-1" }
+        }
+
+        guard case .loaded(let snapshot) = model.resourceListState(for: .pods) else {
+            Issue.record("Expected watched pod list")
+            return
+        }
+
+        #expect(snapshot.items.map(\.displayName).contains("web-0"))
+        #expect(snapshot.items.map(\.displayName).contains("heartbeat-1"))
+    }
+
+    @MainActor
     @Test func appModelDownloadsAllPreviousPodLogs() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -653,7 +682,7 @@ private struct SucceedingConnectionService: KubernetesConnectionServicing {
                     KubernetesAPIResourceList(
                         groupVersion: "v1",
                         resources: [
-                            KubernetesAPIResource(name: "pods", singularName: "", namespaced: true, kind: "Pod", verbs: ["get", "list"], shortNames: nil, categories: nil),
+                            KubernetesAPIResource(name: "pods", singularName: "", namespaced: true, kind: "Pod", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil),
                             KubernetesAPIResource(name: "secrets", singularName: "", namespaced: true, kind: "Secret", verbs: ["get"], shortNames: nil, categories: nil),
                             KubernetesAPIResource(name: "events", singularName: "", namespaced: true, kind: "Event", verbs: ["list"], shortNames: nil, categories: nil)
                         ]
@@ -783,6 +812,88 @@ private struct SucceedingResourceListService: KubernetesResourceListServicing {
                 """.utf8
             )
         )
+    }
+}
+
+private struct WatchingPodResourceListService: KubernetesResourceListServicing {
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "metadata": {
+                    "resourceVersion": "10"
+                  },
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "web-0",
+                        "namespace": "\(namespace ?? "vibekube-demo")",
+                        "uid": "web-uid",
+                        "resourceVersion": "10"
+                      },
+                      "status": {
+                        "phase": "Running"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+    }
+
+    func watchResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        resourceVersion: String?
+    ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error> {
+        AsyncThrowingStream { continuation in
+            #expect(resource.name == "pods")
+            #expect(resourceVersion == "10")
+
+            do {
+                let pod = try JSONDecoder().decode(
+                    KubernetesUnstructuredResource.self,
+                    from: Data(
+                        """
+                        {
+                          "apiVersion": "v1",
+                          "kind": "Pod",
+                          "metadata": {
+                            "name": "heartbeat-1",
+                            "namespace": "\(namespace ?? "vibekube-demo")",
+                            "uid": "heartbeat-uid",
+                            "resourceVersion": "11"
+                          },
+                          "status": {
+                            "phase": "Succeeded"
+                          }
+                        }
+                        """.utf8
+                    )
+                )
+                continuation.yield(
+                    KubernetesWatchEvent(
+                        type: .added,
+                        object: pod
+                    )
+                )
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
     }
 }
 

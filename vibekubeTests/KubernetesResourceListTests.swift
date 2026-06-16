@@ -61,6 +61,37 @@ struct KubernetesResourceListTests {
         #expect(values["follow"] == nil)
     }
 
+    @Test func decodesPodWatchEvent() throws {
+        let event = try JSONDecoder().decode(
+            KubernetesWatchEvent<KubernetesUnstructuredResource>.self,
+            from: Data(
+                """
+                {
+                  "type": "ADDED",
+                  "object": {
+                    "apiVersion": "v1",
+                    "kind": "Pod",
+                    "metadata": {
+                      "name": "heartbeat-1",
+                      "namespace": "vibekube-demo",
+                      "uid": "heartbeat-uid",
+                      "resourceVersion": "42"
+                    },
+                    "status": {
+                      "phase": "Running"
+                    }
+                  }
+                }
+                """.utf8
+            )
+        )
+
+        #expect(event.type == .added)
+        #expect(event.object?.displayName == "heartbeat-1")
+        #expect(event.object?.metadata.resourceVersion == "42")
+        #expect(event.status == nil)
+    }
+
     @Test func decodesResourceListMetadataAndRows() throws {
         let list = try JSONDecoder().decode(
             KubernetesUnstructuredResourceList.self,

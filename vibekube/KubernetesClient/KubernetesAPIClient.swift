@@ -10,6 +10,11 @@ protocol KubernetesAPIClient {
         resource: KubernetesDiscoveredResource,
         namespace: String?
     ) async throws -> KubernetesUnstructuredResourceList
+    func resourceWatch(
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        resourceVersion: String?
+    ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error>
     func resourceDetail(
         resource: KubernetesDiscoveredResource,
         namespace: String?,

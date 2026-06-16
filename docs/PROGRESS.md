@@ -14,7 +14,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
 | 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, Environment, YAML, Metadata, and Conditions tabs with masked Secret env reveal |
 | 7 | [Logs](PHASE7.md) | Started | Pod detail inspector can load and stream logs with timestamp, search, grep, copy, and expanded-view controls |
-| 8 | [Watches And Real-Time Updates](PHASE8.md) | Not started | Waiting for stable resource list model |
+| 8 | [Watches And Real-Time Updates](PHASE8.md) | Started | Active Pods list can merge Kubernetes watch events without manual refresh; reconnect/status UI and broader watches remain |
 | 9 | [Workload Debugging Basics](PHASE9.md) | Not started | Waiting for logs/detail foundations |
 | 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
 | 11 | [Preferences, Security, Packaging](PHASE11.md) | Not started | Waiting for core app behavior |
@@ -28,7 +28,7 @@ The implementation is intentionally allowed to take small cross-phase slices whe
 1. Close read-only foundation gaps in Phases 3-6.
 2. Finish a useful Phase 4 dashboard: health summaries, charts, warnings, node/pod/workload status, and metrics fallback.
 3. Start Phase 7 logs once dashboard and detail basics are coherent.
-4. Move to watches/realtime updates only after logs have a stable first version.
+4. Start watches/realtime updates after the stable logs checkpoint, beginning with active Pods list updates.
 
 Current stop rule: after any visible UI slice, stop for manual review before moving to the next feature family.
 
@@ -47,7 +47,8 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Inspect YAML.
 - [x] Show dashboard health summaries from live cluster resources.
 - [x] Stream logs.
-- [ ] Add real-time updates.
+- [x] Add first real-time Pods list watch updates.
+- [ ] Add watch reconnect/status UI and broader resource/detail watches.
 - [ ] Add safe mutations.
 - [ ] Add AI explain/summarize flows.
 
