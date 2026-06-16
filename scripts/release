@@ -1,0 +1,309 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_PATH="$ROOT_DIR/vibekube.xcodeproj"
+PROJECT_FILE="$PROJECT_PATH/project.pbxproj"
+SCHEME="${SCHEME:-vibekube}"
+CONFIGURATION="${CONFIGURATION:-Release}"
+APP_NAME="${APP_NAME:-Vibekube}"
+SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+DIST_DIR="$ROOT_DIR/dist"
+BUILD_DIR="$ROOT_DIR/build/release"
+DERIVED_DATA_DIR="$BUILD_DIR/DerivedData"
+
+skip_tests=0
+skip_notarize=0
+dry_run=0
+
+usage() {
+    cat <<EOF
+Usage:
+  scripts/release current [options]
+  scripts/release patch [options]
+  scripts/release minor [options]
+  scripts/release major [options]
+  scripts/release set X.Y.Z [options]
+
+Options:
+  --notary-profile NAME   Keychain profile created with xcrun notarytool store-credentials.
+  --skip-notarize         Build a signed DMG without notarizing/stapling it.
+  --skip-tests            Skip the unit test pass before archiving.
+  --dry-run               Print the version/build change and exit without editing/building.
+  -h, --help              Show this help.
+
+Examples:
+  NOTARY_PROFILE=vibekube-notary scripts/release current
+  NOTARY_PROFILE=vibekube-notary scripts/release patch
+  scripts/release minor --skip-notarize
+EOF
+}
+
+die() {
+    echo "error: $*" >&2
+    exit 1
+}
+
+note() {
+    echo "==> $*"
+}
+
+project_value() {
+    local key="$1"
+    /usr/bin/ruby - "$PROJECT_FILE" "$key" <<'RUBY'
+path, key = ARGV
+value = File.read(path)[/#{Regexp.escape(key)} = ([^;]+);/, 1]
+abort "Missing #{key}" unless value
+puts value
+RUBY
+}
+
+set_project_value() {
+    local key="$1"
+    local value="$2"
+    /usr/bin/ruby - "$PROJECT_FILE" "$key" "$value" <<'RUBY'
+path, key, value = ARGV
+text = File.read(path)
+pattern = /(#{Regexp.escape(key)} = )[^;]+;/
+count = text.scan(pattern).count
+abort "Missing #{key}" if count.zero?
+text.gsub!(pattern, "\\1#{value};")
+File.write(path, text)
+RUBY
+}
+
+validate_semver() {
+    [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+bump_version() {
+    local version="$1"
+    local bump="$2"
+    local major minor patch
+    IFS=. read -r major minor patch <<<"$version"
+
+    case "$bump" in
+        major) major=$((major + 1)); minor=0; patch=0 ;;
+        minor) minor=$((minor + 1)); patch=0 ;;
+        patch) patch=$((patch + 1)) ;;
+        *) die "Unknown bump '$bump'" ;;
+    esac
+
+    echo "$major.$minor.$patch"
+}
+
+require_tool() {
+    command -v "$1" >/dev/null 2>&1 || die "Missing required tool '$1'."
+}
+
+if [[ "${1:-}" == "release" ]]; then
+    shift
+fi
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    usage
+    exit 0
+fi
+
+if [[ $# -eq 0 ]]; then
+    usage
+    exit 64
+fi
+
+action="$1"
+shift
+
+explicit_version=""
+if [[ "$action" == "set" ]]; then
+    [[ $# -gt 0 ]] || die "Missing version for 'set'."
+    explicit_version="$1"
+    shift
+fi
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --notary-profile)
+            [[ $# -gt 1 ]] || die "Missing value for --notary-profile."
+            NOTARY_PROFILE="$2"
+            shift 2
+            ;;
+        --skip-notarize)
+            skip_notarize=1
+            shift
+            ;;
+        --skip-tests)
+            skip_tests=1
+            shift
+            ;;
+        --dry-run)
+            dry_run=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            die "Unknown option '$1'."
+            ;;
+    esac
+done
+
+require_tool xcodebuild
+require_tool hdiutil
+require_tool codesign
+require_tool security
+require_tool shasum
+
+current_version="$(project_value MARKETING_VERSION)"
+current_build="$(project_value CURRENT_PROJECT_VERSION)"
+
+if [[ ! "$current_version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+    die "Current MARKETING_VERSION '$current_version' is not semver-compatible."
+fi
+
+if [[ "$current_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+    current_version="$current_version.0"
+fi
+
+[[ "$current_build" =~ ^[0-9]+$ ]] || die "CURRENT_PROJECT_VERSION '$current_build' is not numeric."
+
+case "$action" in
+    current)
+        next_version="$current_version"
+        next_build="$current_build"
+        ;;
+    patch|minor|major)
+        next_version="$(bump_version "$current_version" "$action")"
+        next_build=$((current_build + 1))
+        ;;
+    set)
+        validate_semver "$explicit_version" || die "Version '$explicit_version' must be X.Y.Z."
+        next_version="$explicit_version"
+        if [[ "$next_version" == "$current_version" ]]; then
+            next_build="$current_build"
+        else
+            next_build=$((current_build + 1))
+        fi
+        ;;
+    *)
+        die "Unknown release action '$action'."
+        ;;
+esac
+
+development_team="$(project_value DEVELOPMENT_TEAM)"
+[[ -n "$development_team" ]] || die "DEVELOPMENT_TEAM is not configured in $PROJECT_FILE."
+
+note "Version: $current_version ($current_build) -> $next_version ($next_build)"
+
+if [[ "$dry_run" -eq 1 ]]; then
+    exit 0
+fi
+
+set_project_value MARKETING_VERSION "$next_version"
+set_project_value CURRENT_PROJECT_VERSION "$next_build"
+
+if [[ "$skip_tests" -eq 0 ]]; then
+    note "Running unit tests"
+    xcodebuild \
+        -project "$PROJECT_PATH" \
+        -scheme "$SCHEME" \
+        -destination 'platform=macOS' \
+        test \
+        -only-testing:vibekubeTests
+fi
+
+if ! security find-identity -v -p codesigning | grep -F "$SIGN_IDENTITY" >/dev/null; then
+    die "No '$SIGN_IDENTITY' code signing identity found. Install a Developer ID Application certificate or set SIGN_IDENTITY to the full identity name."
+fi
+
+archive_path="$BUILD_DIR/$APP_NAME-$next_version.xcarchive"
+export_path="$BUILD_DIR/export-$next_version"
+staging_path="$BUILD_DIR/dmg-staging-$next_version"
+export_options="$BUILD_DIR/exportOptions-$next_version.plist"
+dmg_path="$DIST_DIR/$APP_NAME-$next_version.dmg"
+checksum_path="$dmg_path.sha256"
+
+rm -rf "$archive_path" "$export_path" "$staging_path"
+mkdir -p "$BUILD_DIR" "$DIST_DIR"
+
+cat > "$export_options" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>developer-id</string>
+  <key>signingStyle</key>
+  <string>automatic</string>
+  <key>teamID</key>
+  <string>$development_team</string>
+  <key>stripSwiftSymbols</key>
+  <true/>
+</dict>
+</plist>
+EOF
+
+note "Archiving $APP_NAME"
+xcodebuild \
+    -project "$PROJECT_PATH" \
+    -scheme "$SCHEME" \
+    -configuration "$CONFIGURATION" \
+    -destination 'generic/platform=macOS' \
+    -archivePath "$archive_path" \
+    -derivedDataPath "$DERIVED_DATA_DIR" \
+    archive
+
+note "Exporting Developer ID signed app"
+xcodebuild \
+    -exportArchive \
+    -archivePath "$archive_path" \
+    -exportPath "$export_path" \
+    -exportOptionsPlist "$export_options"
+
+app_path="$(find "$export_path" -maxdepth 1 -type d -name '*.app' | head -n 1)"
+[[ -n "$app_path" ]] || die "Export did not produce an app bundle in $export_path."
+
+note "Verifying app signature"
+codesign --verify --deep --strict --verbose=2 "$app_path"
+
+note "Creating DMG"
+mkdir -p "$staging_path"
+ditto "$app_path" "$staging_path/$APP_NAME.app"
+ln -s /Applications "$staging_path/Applications"
+rm -f "$dmg_path" "$checksum_path"
+hdiutil create \
+    -volname "$APP_NAME $next_version" \
+    -srcfolder "$staging_path" \
+    -format UDZO \
+    -ov \
+    "$dmg_path"
+
+note "Signing DMG"
+codesign --force --timestamp --sign "$SIGN_IDENTITY" "$dmg_path"
+codesign --verify --verbose=2 "$dmg_path"
+hdiutil verify "$dmg_path"
+
+if [[ "$skip_notarize" -eq 0 && -n "$NOTARY_PROFILE" ]]; then
+    require_tool xcrun
+    note "Submitting DMG for notarization"
+    xcrun notarytool submit "$dmg_path" --keychain-profile "$NOTARY_PROFILE" --wait
+
+    note "Stapling notarization ticket"
+    xcrun stapler staple "$dmg_path"
+    xcrun stapler validate "$dmg_path"
+
+    note "Assessing notarized DMG with Gatekeeper"
+    spctl --assess --type open --verbose=4 "$dmg_path"
+elif [[ "$skip_notarize" -eq 1 ]]; then
+    echo "warning: notarization skipped by --skip-notarize; this DMG is not ready for public online distribution." >&2
+else
+    echo "warning: NOTARY_PROFILE is not set; DMG was signed but not notarized/stapled." >&2
+    echo "warning: public distribution should use: NOTARY_PROFILE=<profile> scripts/release $action" >&2
+fi
+
+shasum -a 256 "$dmg_path" > "$checksum_path"
+
+note "Release artifact: $dmg_path"
+note "Checksum: $checksum_path"
