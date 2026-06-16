@@ -837,6 +837,7 @@ final class AppModel: ObservableObject {
         timestamps: Bool = true,
         previous: Bool = false,
         tailLines: Int? = 200,
+        sinceSeconds: Int? = nil,
         follow: Bool = false
     ) -> PodLogLoadState {
         guard let query = podLogQuery(
@@ -845,6 +846,7 @@ final class AppModel: ObservableObject {
             timestamps: timestamps,
             previous: previous,
             tailLines: tailLines,
+            sinceSeconds: sinceSeconds,
             follow: follow
         ) else {
             return .idle
@@ -859,6 +861,7 @@ final class AppModel: ObservableObject {
         timestamps: Bool = true,
         previous: Bool = false,
         tailLines: Int? = 200,
+        sinceSeconds: Int? = nil,
         follow: Bool = false
     ) -> String {
         guard let pod,
@@ -868,9 +871,10 @@ final class AppModel: ObservableObject {
                 timestamps: timestamps,
                 previous: previous,
                 tailLines: tailLines,
+                sinceSeconds: sinceSeconds,
                 follow: follow
               ) else {
-            return "\(selectedClusterID ?? "none")|logs|none|\(containerName ?? "")|\(timestamps)|\(previous)|\(tailLines.map(String.init) ?? "all")|\(follow)"
+            return "\(selectedClusterID ?? "none")|logs|none|\(containerName ?? "")|\(timestamps)|\(previous)|\(tailLines.map(String.init) ?? "all")|\(sinceSeconds.map(String.init) ?? "any")|\(follow)"
         }
 
         return query.id
@@ -882,6 +886,7 @@ final class AppModel: ObservableObject {
         timestamps: Bool = true,
         previous: Bool = false,
         tailLines: Int? = 200,
+        sinceSeconds: Int? = nil,
         follow: Bool = false,
         force: Bool = false
     ) {
@@ -892,6 +897,7 @@ final class AppModel: ObservableObject {
                 timestamps: timestamps,
                 previous: previous,
                 tailLines: tailLines,
+                sinceSeconds: sinceSeconds,
                 follow: follow
               ) else {
             return
@@ -979,7 +985,8 @@ final class AppModel: ObservableObject {
         containerName: String?,
         timestamps: Bool = true,
         previous: Bool = false,
-        tailLines: Int?
+        tailLines: Int?,
+        sinceSeconds: Int? = nil
     ) async throws -> String {
         guard selectedConnectionState == .connected,
               let query = podLogQuery(
@@ -988,6 +995,7 @@ final class AppModel: ObservableObject {
                 timestamps: timestamps,
                 previous: previous,
                 tailLines: tailLines,
+                sinceSeconds: sinceSeconds,
                 follow: false
               ) else {
             throw KubernetesClientError.unavailable("Connect to a cluster before loading pod logs.")
@@ -1706,6 +1714,7 @@ final class AppModel: ObservableObject {
             containerName: query.containerName,
             previous: query.previous,
             tailLines: query.tailLines,
+            sinceSeconds: query.sinceSeconds,
             timestamps: query.timestamps,
             follow: false
         )
@@ -2195,6 +2204,7 @@ final class AppModel: ObservableObject {
         timestamps: Bool,
         previous: Bool,
         tailLines: Int?,
+        sinceSeconds: Int?,
         follow: Bool
     ) -> PodLogQuery? {
         guard let selectedClusterID,
@@ -2212,6 +2222,7 @@ final class AppModel: ObservableObject {
             containerName: containerName,
             previous: previous,
             tailLines: tailLines,
+            sinceSeconds: follow ? nil : sinceSeconds,
             timestamps: timestamps,
             follow: follow
         )
@@ -2223,6 +2234,7 @@ final class AppModel: ObservableObject {
             previous: query.previous,
             follow: query.follow,
             tailLines: query.follow ? 0 : query.tailLines,
+            sinceSeconds: query.follow ? nil : query.sinceSeconds,
             timestamps: query.timestamps
         )
     }
@@ -2445,7 +2457,8 @@ final class AppModel: ObservableObject {
             "previous": query.previous ? "true" : "false",
             "follow": query.follow ? "true" : "false",
             "timestamps": query.timestamps ? "true" : "false",
-            "tailLines": query.tailLines.map(String.init) ?? "all"
+            "tailLines": query.tailLines.map(String.init) ?? "all",
+            "sinceSeconds": query.sinceSeconds.map(String.init) ?? "any"
         ]
     }
 

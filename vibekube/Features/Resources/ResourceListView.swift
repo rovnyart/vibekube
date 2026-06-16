@@ -1110,6 +1110,7 @@ private struct ResourceDetailLogsView: View {
     @State private var showsTimestamps = true
     @State private var showsPreviousLogs = false
     @State private var tailSelection: LogTailSelection = .last200
+    @State private var sinceSelection: LogSinceSelection = .any
     @State private var followsLogs = false
     @State private var searchText = ""
     @State private var filtersMatches = false
@@ -1197,6 +1198,7 @@ private struct ResourceDetailLogsView: View {
                 timestamps: showsTimestamps,
                 previous: showsPreviousLogs,
                 tailLines: tailSelection.lineCount,
+                sinceSeconds: activeSinceSeconds,
                 follow: followsLogs
             )
         }
@@ -1272,6 +1274,15 @@ private struct ResourceDetailLogsView: View {
                 .frame(width: 110)
                 .disabled(followsLogs)
 
+                Picker("Since", selection: $sinceSelection) {
+                    ForEach(LogSinceSelection.allCases) { selection in
+                        Text(selection.title).tag(selection)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 110)
+                .disabled(followsLogs)
+
                 Divider()
                     .frame(height: 18)
 
@@ -1334,6 +1345,7 @@ private struct ResourceDetailLogsView: View {
                         timestamps: showsTimestamps,
                         previous: showsPreviousLogs,
                         tailLines: tailSelection.lineCount,
+                        sinceSeconds: activeSinceSeconds,
                         follow: followsLogs,
                         force: true
                     )
@@ -1462,6 +1474,21 @@ private struct ResourceDetailLogsView: View {
                     .disabled(followsLogs)
                 }
 
+                HStack(spacing: 6) {
+                    Text("Since")
+                        .foregroundStyle(.secondary)
+
+                    Picker("Since", selection: $sinceSelection) {
+                        ForEach(LogSinceSelection.allCases) { selection in
+                            Text(selection.title).tag(selection)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 105)
+                    .disabled(followsLogs)
+                }
+
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
@@ -1545,11 +1572,16 @@ private struct ResourceDetailLogsView: View {
         let namespace = row.displayNamespace == "-" ? "cluster scoped" : row.displayNamespace
         let scope = showsPreviousLogs ? "previous" : "current"
         let mode = followsLogs ? "live" : tailSelection.subtitle
+        let timeScope = followsLogs ? "" : " - \(sinceSelection.subtitle)"
         if let containerName = selectedContainerForRequest {
-            return "\(namespace) - \(containerName) - \(scope) - \(mode)"
+            return "\(namespace) - \(containerName) - \(scope) - \(mode)\(timeScope)"
         }
 
-        return "\(namespace) - \(scope) - \(mode)"
+        return "\(namespace) - \(scope) - \(mode)\(timeScope)"
+    }
+
+    private var activeSinceSeconds: Int? {
+        followsLogs ? nil : sinceSelection.seconds
     }
 
     private var currentLogState: PodLogLoadState {
@@ -1559,6 +1591,7 @@ private struct ResourceDetailLogsView: View {
             timestamps: showsTimestamps,
             previous: showsPreviousLogs,
             tailLines: tailSelection.lineCount,
+            sinceSeconds: activeSinceSeconds,
             follow: followsLogs
         )
     }
@@ -1570,6 +1603,7 @@ private struct ResourceDetailLogsView: View {
             timestamps: showsTimestamps,
             previous: showsPreviousLogs,
             tailLines: tailSelection.lineCount,
+            sinceSeconds: activeSinceSeconds,
             follow: followsLogs
         )
     }
@@ -1581,6 +1615,7 @@ private struct ResourceDetailLogsView: View {
             timestamps: showsTimestamps,
             previous: showsPreviousLogs,
             tailLines: tailSelection.lineCount,
+            sinceSeconds: activeSinceSeconds,
             follow: followsLogs,
             force: true
         )
@@ -1653,7 +1688,8 @@ private struct ResourceDetailLogsView: View {
                 containerName: selectedContainerForRequest,
                 timestamps: showsTimestamps,
                 previous: showsPreviousLogs,
-                tailLines: nil
+                tailLines: nil,
+                sinceSeconds: activeSinceSeconds
             )
             try writeLogText(text, to: url)
         } catch {
@@ -1747,6 +1783,63 @@ private enum LogTailSelection: String, CaseIterable, Identifiable {
             1_000
         case .all:
             nil
+        }
+    }
+}
+
+private enum LogSinceSelection: String, CaseIterable, Identifiable {
+    case any
+    case fiveMinutes
+    case fifteenMinutes
+    case oneHour
+    case sixHours
+
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .any:
+            "Any"
+        case .fiveMinutes:
+            "5m"
+        case .fifteenMinutes:
+            "15m"
+        case .oneHour:
+            "1h"
+        case .sixHours:
+            "6h"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .any:
+            "any time"
+        case .fiveMinutes:
+            "last 5m"
+        case .fifteenMinutes:
+            "last 15m"
+        case .oneHour:
+            "last 1h"
+        case .sixHours:
+            "last 6h"
+        }
+    }
+
+    var seconds: Int? {
+        switch self {
+        case .any:
+            nil
+        case .fiveMinutes:
+            5 * 60
+        case .fifteenMinutes:
+            15 * 60
+        case .oneHour:
+            60 * 60
+        case .sixHours:
+            6 * 60 * 60
         }
     }
 }

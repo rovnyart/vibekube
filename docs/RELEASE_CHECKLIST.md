@@ -39,7 +39,7 @@ Use this checklist before publishing a DMG outside the development machine.
 - [ ] Open a Pod detail tab and confirm Overview, YAML, Metadata, Conditions, Env, Events, and Logs work.
 - [ ] Confirm regular ConfigMap-backed env values are visible.
 - [ ] Confirm Secret-backed env values are masked until individually revealed.
-- [ ] Open Logs and test tail, live smart-follow/jump-to-latest, timestamps, JSONL formatting, search, grep, save displayed, download all, and previous logs.
+- [ ] Open Logs and test tail/since controls, live smart-follow/jump-to-latest, timestamps, JSONL formatting, search, grep, save displayed, download all, and previous logs.
 - [ ] Switch namespaces using search/filter in the namespace picker.
 
 ## Real Cluster Smoke Test

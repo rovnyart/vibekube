@@ -415,6 +415,46 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelLoadsPodLogsWithSinceSeconds() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            logService: SinceLogService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitForResourceList(model, .pods)
+
+        guard case .loaded(let listSnapshot) = model.resourceListState(for: .pods),
+              let pod = listSnapshot.items.first else {
+            Issue.record("Expected pod row")
+            return
+        }
+
+        model.loadPodLogs(for: pod, containerName: "web", tailLines: 1_000, sinceSeconds: 900)
+        try await waitForPodLogs(model, pod: pod, containerName: "web", tailLines: 1_000, sinceSeconds: 900)
+
+        guard case .loaded(let logSnapshot) = model.podLogState(
+            for: pod,
+            containerName: "web",
+            tailLines: 1_000,
+            sinceSeconds: 900
+        ) else {
+            Issue.record("Expected loaded pod logs")
+            return
+        }
+
+        #expect(logSnapshot.query.tailLines == 1_000)
+        #expect(logSnapshot.query.sinceSeconds == 900)
+        #expect(logSnapshot.text.contains("recent line"))
+    }
+
+    @MainActor
     @Test func appModelInfersMissingPodKindAndLoadsLogs() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -708,10 +748,18 @@ private func waitForPodLogs(
     _ model: AppModel,
     pod: KubernetesUnstructuredResource,
     containerName: String?,
+    tailLines: Int? = 200,
+    sinceSeconds: Int? = nil,
     follow: Bool = false
 ) async throws {
     try await waitUntil("pod logs loaded") {
-        if case .loaded = model.podLogState(for: pod, containerName: containerName, follow: follow) {
+        if case .loaded = model.podLogState(
+            for: pod,
+            containerName: containerName,
+            tailLines: tailLines,
+            sinceSeconds: sinceSeconds,
+            follow: follow
+        ) {
             return true
         }
         return false
@@ -1312,6 +1360,7 @@ private struct SucceedingLogService: KubernetesLogServicing {
         #expect(podName == "web-0")
         #expect(options.container == "web")
         #expect(options.tailLines == 200)
+        #expect(options.sinceSeconds == nil)
         #expect(options.timestamps == true)
         #expect(options.follow == false)
 
@@ -1332,8 +1381,42 @@ private struct SucceedingLogService: KubernetesLogServicing {
             #expect(options.container == "web")
             #expect(options.follow == true)
             #expect(options.tailLines == 0)
+            #expect(options.sinceSeconds == nil)
 
             continuation.yield("2026-06-15T10:01:01Z still running\n")
+            continuation.finish()
+        }
+    }
+}
+
+private struct SinceLogService: KubernetesLogServicing {
+    func podLogs(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) async throws -> String {
+        #expect(contextName == "kind-vibekube-dev")
+        #expect(namespace == "vibekube-demo")
+        #expect(podName == "web-0")
+        #expect(options.container == "web")
+        #expect(options.tailLines == 1_000)
+        #expect(options.sinceSeconds == 900)
+        #expect(options.timestamps == true)
+        #expect(options.follow == false)
+
+        return "2026-06-15T10:14:00Z recent line"
+    }
+
+    func podLogStream(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
             continuation.finish()
         }
     }
@@ -1353,6 +1436,7 @@ private struct AllPreviousLogService: KubernetesLogServicing {
         #expect(options.container == "web")
         #expect(options.previous == true)
         #expect(options.tailLines == nil)
+        #expect(options.sinceSeconds == nil)
         #expect(options.timestamps == true)
         #expect(options.follow == false)
 

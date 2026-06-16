@@ -7,6 +7,7 @@ struct PodLogQuery: Identifiable, Hashable {
     var containerName: String?
     var previous: Bool
     var tailLines: Int?
+    var sinceSeconds: Int?
     var timestamps: Bool
     var follow: Bool
 
@@ -18,6 +19,7 @@ struct PodLogQuery: Identifiable, Hashable {
             containerName ?? "",
             previous ? "previous" : "current",
             tailLines.map(String.init) ?? "all",
+            sinceSeconds.map(String.init) ?? "any",
             timestamps ? "timestamps" : "plain",
             follow ? "follow" : "tail"
         ].joined(separator: "|")
