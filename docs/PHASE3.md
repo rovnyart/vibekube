@@ -10,7 +10,7 @@ Goal: make the app navigation feel like a real Kubernetes client: cluster, dashb
 - [x] Basic route state exists through `ResourceNavigationItem` and `AppModel.selectedResource`.
 - [x] Sidebar uses real cluster/namespace state.
 - [x] Resource groups are navigable.
-- [x] Toolbar exposes cluster, namespace, search, refresh, and settings controls.
+- [x] Toolbar exposes cluster, searchable namespace, search, refresh, and settings controls.
 - [x] Keyboard shortcuts exist for search, common routes, detail tabs, YAML, logs handoff, and refresh.
 - [x] Formal top-level app route model with selected cluster/resource restoration exists.
 - [x] Menus expose route-aware resource detail/YAML/log actions.
@@ -19,7 +19,7 @@ Goal: make the app navigation feel like a real Kubernetes client: cluster, dashb
 ## Checkpoint Notes
 
 - The app uses a three-column native `NavigationSplitView`: clusters, resource navigation, and detail content.
-- Cluster selection, connect/disconnect, namespace selection, search, refresh, and settings are reachable from the toolbar.
+- Cluster selection, connect/disconnect, searchable namespace selection, search, refresh, and settings are reachable from the toolbar.
 - Resource navigation is grouped into Overview, Workloads, Network, Config, Storage, Access Control, Cluster, and Custom.
 - Built-in resource groups route to live list views when discovery finds the matching API resource.
 - Dashboard, Logs, Settings, Custom Resources, resource lists, bottom detail inspector tabs, and placeholder states are reachable without dead ends.
@@ -54,6 +54,7 @@ Goal: make the app navigation feel like a real Kubernetes client: cluster, dashb
 - [x] Add search command.
 - [ ] Add true quick-open palette.
 - [x] Add namespace switching control.
+- [x] Add namespace search for clusters with large namespace counts.
 - [x] Add copy resource identity commands.
 - [x] Add open YAML command for active detail inspector.
 - [x] Add open logs command where applicable.

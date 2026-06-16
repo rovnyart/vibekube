@@ -9,7 +9,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 0 | [Project Foundation](PHASE0.md) | Review checkpoint | Native shell foundation builds; unit and UI tests pass with preview fixtures |
 | 1 | [Kubeconfig Discovery](PHASE1.md) | Review checkpoint | App loads kubeconfig contexts, including exec/Teleport metadata; parser/unit/UI tests pass |
 | 2 | [Kubernetes API Connectivity](PHASE2.md) | Review checkpoint | Native client connects, runs exec auth, discovers API resources, and loads namespaces |
-| 3 | [Main App Shell](PHASE3.md) | Review checkpoint | NavigationSplitView shell has persisted top-level route state, grouped nav, toolbar controls, route-aware commands, detail/YAML shortcuts, and basic keyboard navigation |
+| 3 | [Main App Shell](PHASE3.md) | Review checkpoint | NavigationSplitView shell has persisted top-level route state, grouped nav, searchable namespace switching, route-aware commands, detail/YAML shortcuts, and basic keyboard navigation |
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Started | Dashboard is simplified to a fast nodes/pods/discovery/metrics overview while workload, event, and storage summaries wait for a non-blocking design |
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
 | 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, Environment, YAML, Metadata, and Conditions tabs with masked Secret env reveal |
@@ -43,6 +43,7 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Connect to demo cluster.
 - [x] Discover Kubernetes API groups/resources.
 - [x] Load namespaces and expose namespace scope.
+- [x] Search/filter namespaces from the toolbar selector.
 - [x] Browse resources.
 - [x] Inspect YAML.
 - [x] Show dashboard health summaries from live cluster resources.

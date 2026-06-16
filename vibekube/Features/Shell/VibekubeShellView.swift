@@ -74,6 +74,10 @@ private enum ShellFocusedField {
     case search
 }
 
+private enum NamespacePickerFocusedField {
+    case search
+}
+
 private struct ClusterPicker: View {
     @EnvironmentObject private var appModel: AppModel
 
@@ -146,26 +150,155 @@ private struct ClusterPicker: View {
 
 private struct NamespacePicker: View {
     @EnvironmentObject private var appModel: AppModel
+    @State private var isPresented = false
+    @State private var searchText = ""
+    @FocusState private var focusedField: NamespacePickerFocusedField?
 
     var body: some View {
         if appModel.selectedConnectionState == .connected {
-            Picker("Namespace", selection: namespaceSelection) {
-                ForEach(appModel.namespaceSelectionOptions, id: \.self) { namespace in
-                    Text(appModel.namespaceTitle(for: namespace))
-                        .tag(namespace)
+            Button {
+                isPresented.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder")
+                        .foregroundStyle(.secondary)
+                    Text(appModel.selectedNamespaceTitle)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                .frame(width: 190, alignment: .leading)
             }
-            .pickerStyle(.menu)
-            .frame(width: 170)
+            .buttonStyle(.bordered)
+            .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+                namespacePopover
+            }
             .help(appModel.namespaceAccessErrorMessage ?? "Namespace scope")
             .accessibilityIdentifier("toolbar.namespace")
         }
     }
 
-    private var namespaceSelection: Binding<String> {
-        Binding(
-            get: { appModel.selectedNamespaceSelection },
-            set: { appModel.selectNamespace($0) }
-        )
+    private var namespacePopover: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+
+                TextField("Search namespaces", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .focused($focusedField, equals: .search)
+
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Label("Clear", systemImage: "xmark.circle.fill")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Clear")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+
+            Divider()
+
+            if filteredNamespaces.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                    Text("No namespaces match")
+                        .font(.headline)
+                    Text(searchText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 180)
+                .padding()
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(filteredNamespaces, id: \.self) { namespace in
+                            namespaceRow(namespace)
+                        }
+                    }
+                    .padding(6)
+                }
+                .frame(maxHeight: 360)
+            }
+
+            if let error = appModel.namespaceAccessErrorMessage {
+                Divider()
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(width: 360)
+        .onAppear {
+            searchText = ""
+            focusedField = .search
+        }
+    }
+
+    private func namespaceRow(_ namespace: String) -> some View {
+        Button {
+            appModel.selectNamespace(namespace)
+            isPresented = false
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark")
+                    .frame(width: 14)
+                    .foregroundStyle(.blue)
+                    .opacity(namespace == appModel.selectedNamespaceSelection ? 1 : 0)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(appModel.namespaceTitle(for: namespace))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    if namespace == AppModel.allNamespacesSelection {
+                        Text("Cluster scope")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+        }
+        .buttonStyle(.plain)
+        .background {
+            if namespace == appModel.selectedNamespaceSelection {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.accentColor.opacity(0.12))
+            }
+        }
+        .accessibilityIdentifier("namespace.option.\(namespace)")
+    }
+
+    private var filteredNamespaces: [String] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            return appModel.namespaceSelectionOptions
+        }
+
+        return appModel.namespaceSelectionOptions.filter { namespace in
+            appModel.namespaceTitle(for: namespace)
+                .localizedStandardContains(query)
+        }
     }
 }
