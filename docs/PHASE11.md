@@ -1,6 +1,6 @@
 # Phase 11: Preferences, Security, And Packaging
 
-Status: Not started.
+Status: Started.
 
 Goal: make Vibekube safe and comfortable as a daily app outside the development machine.
 
@@ -10,8 +10,13 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [ ] Settings window exists.
 - [ ] Secret handling audit complete.
 - [ ] Keychain strategy implemented where needed.
-- [ ] Packaging/signing path documented.
-- [ ] Release build works.
+- [x] Packaging/signing path documented.
+- [x] Release script exists.
+- [x] App version/build appears in About Vibekube.
+- [x] Signed/notarized DMG path has been exercised on the development machine.
+- [ ] Clean-machine release validation complete.
+- [ ] Diagnostics export exists.
+- [ ] Privacy statement exists.
 
 ## Implementation Slices
 
@@ -32,6 +37,8 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [ ] Audit API client logs.
 - [ ] Audit error surfaces.
 - [ ] Audit YAML secret display.
+- [x] Keep Secret manifest payload fields redacted by default.
+- [x] Keep Secret-backed environment values masked by default.
 - [ ] Audit AI context redaction hooks.
 - [ ] Add redaction utilities where missing.
 - [ ] Add tests for redaction.
@@ -46,11 +53,12 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 ### 11.4 Packaging
 
 - [ ] Decide sandbox entitlement strategy.
-- [ ] Configure signing.
-- [ ] Configure notarization path.
-- [ ] Create release build script.
+- [x] Configure signing.
+- [x] Configure notarization path.
+- [x] Create release build script.
 - [ ] Test app on a clean macOS user profile.
-- [ ] Add release checklist.
+- [x] Add release checklist.
+- [ ] Confirm released DMG against at least one non-development Mac.
 
 Checkpoint: stop before changing sandbox/signing settings if they affect local development.
 
@@ -58,14 +66,14 @@ Checkpoint: stop before changing sandbox/signing settings if they affect local d
 
 - [ ] Add privacy statement.
 - [ ] Add diagnostics export with redaction.
-- [ ] Add app version/build display.
+- [x] Add app version/build display.
 - [ ] Decide crash reporting policy.
 
 ## Acceptance Criteria
 
 - [ ] Settings cover the important app behaviors.
 - [ ] No secrets appear in logs, diagnostics, or normal UI errors.
-- [ ] App can be signed and packaged.
+- [x] App can be signed and packaged.
 - [ ] Fresh-machine setup is documented.
 
 ## Validation Commands

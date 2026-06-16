@@ -1,6 +1,6 @@
 # Phase 7: Logs
 
-Status: Started.
+Status: Review checkpoint.
 
 Goal: provide a fast, native log viewer for pods, containers, and common workload-owned pods.
 
@@ -26,6 +26,7 @@ Goal: provide a fast, native log viewer for pods, containers, and common workloa
 - Live logs are capped in memory to the most recent 5,000 lines.
 - Previous terminated-container logs, tail selector, download-all logs, and save-current-view are wired through the Pod detail Logs tab.
 - Pause/resume and since controls remain pending.
+- Large-log hardening still needs scroll-aware follow behavior, stream retry UI, ANSI handling, and explicit buffer-limit tests.
 
 ## Implementation Slices
 

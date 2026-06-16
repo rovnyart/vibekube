@@ -1,6 +1,6 @@
 # Phase 6: Resource Detail, YAML, Events, And Relationships
 
-Status: Started.
+Status: Review checkpoint.
 
 Goal: inspect any Kubernetes resource deeply, including readable YAML, conditions, events, metadata, and related resources.
 
@@ -25,9 +25,12 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - Resource detail now has Overview, YAML, Metadata, and Conditions tabs.
 - The overview tab extracts status, identity, owner references, conditions, and pod-like container summaries.
 - Pod details now include an Environment tab for `env`, `envFrom`, ConfigMap refs, field refs, resource refs, and Secret key refs.
+- Pod `envFrom` ConfigMaps and Secrets are resolved into the env vars Kubernetes actually injects when the user has `get` access to the referenced object.
+- Literal and ConfigMap-backed values render directly; only Secret-backed values are masked and revealable.
+- Invalid `envFrom` keys are skipped using Kubernetes-style env var name rules instead of being shown as fake variables.
 - Secret-backed env values are masked by default and fetched/decoded on demand through an eye reveal button.
 - Resource details now include an Events tab that reads Kubernetes Events for the selected object using `events.k8s.io/v1` or core `v1/Event`.
-- The richer Phase 6 detail experience still needs save/export YAML tools, relationships, ConfigMap value reveal, and custom metadata sections.
+- The richer Phase 6 detail experience still needs save/export YAML tools, relationships, and custom metadata sections.
 
 ## Implementation Slices
 
@@ -42,6 +45,8 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - [x] Extract resource-specific status.
 - [x] Extract pod container environment variables.
 - [x] Extract pod `envFrom` ConfigMap/Secret references.
+- [x] Resolve ConfigMap values used by explicit `configMapKeyRef` env vars.
+- [x] Resolve ConfigMap/Secret keys used by `envFrom`, preserving Secret masking.
 
 ### 6.2 YAML Viewer
 
@@ -86,7 +91,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] Metadata tab.
 - [x] Environment tab for pod-like resources.
 - [ ] Dedicated containers tab for pod-like resources.
-- [ ] ConfigMap value reveal for environment references.
+- [x] ConfigMap values render directly for environment references.
 
 ### 6.6 Secret Reveal
 
@@ -104,6 +109,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] Resource summary extraction tests.
 - [x] Pod environment extraction tests.
 - [x] Secret env reveal tests.
+- [x] `envFrom` expansion tests.
 - [x] Preview UI smoke test opens resource detail overview.
 - [ ] Relationship resolver tests.
 - [x] Resource event decoding tests.

@@ -14,9 +14,9 @@ This document describes how to build a signed DMG for direct macOS distribution.
 - notarizes, staples, and Gatekeeper-assesses the DMG when `NOTARY_PROFILE` is configured;
 - writes `dist/Vibekube-X.Y.Z.dmg.sha256`.
 
-## First 0.1.0 Build
+## Current Build
 
-The project is currently set to `0.1.0` with build `1`.
+The project is currently set to `0.1.5` with build `6`.
 
 ```sh
 NOTARY_PROFILE=vibekube-notary scripts/release current
@@ -89,3 +89,14 @@ spctl --assess --type open --verbose=4 Vibekube-X.Y.Z.dmg
 ```
 
 The `stapler` and `spctl` checks only run when notarization is enabled.
+
+## 0.1.x Release Checklist
+
+- Run `scripts/release current` with notarization enabled.
+- Install the DMG on a non-development Mac.
+- Confirm About Vibekube shows the expected version/build.
+- Connect to the local demo cluster.
+- Connect to at least one real exec-auth cluster.
+- Open Pods, Logs, YAML, Events, and Env for a real workload.
+- Verify regular env values are visible and Secret-backed env values stay masked until reveal.
+- Confirm app errors are actionable enough to debug without Xcode.

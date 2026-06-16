@@ -12,23 +12,27 @@ This file tracks implementation status across all phases. Keep this updated when
 | 3 | [Main App Shell](PHASE3.md) | Review checkpoint | NavigationSplitView shell has persisted top-level route state, grouped nav, searchable namespace switching, route-aware commands, detail/YAML shortcuts, and basic keyboard navigation |
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Started | Dashboard is simplified to a fast nodes/pods/discovery/metrics overview while workload, event, and storage summaries wait for a non-blocking design |
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
-| 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, Environment, YAML, Metadata, and Conditions tabs with masked Secret env reveal |
-| 7 | [Logs](PHASE7.md) | Started | Pod detail inspector can load and stream logs with timestamp, search, grep, copy, and expanded-view controls |
+| 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, expanded Environment, YAML, Metadata, and Conditions tabs with masked Secret env reveal |
+| 7 | [Logs](PHASE7.md) | Review checkpoint | Pod detail inspector has rich logs: tail, live streaming, timestamps, search, grep, copy, save, download-all, fullscreen, and previous-container logs |
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Started | Active Pods list can merge Kubernetes watch events without manual refresh; reconnect/status UI and broader watches remain |
 | 9 | [Workload Debugging Basics](PHASE9.md) | Not started | Waiting for logs/detail foundations |
 | 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
-| 11 | [Preferences, Security, Packaging](PHASE11.md) | Not started | Waiting for core app behavior |
+| 11 | [Preferences, Security, Packaging](PHASE11.md) | Started | Release script, versioning, About version display, signing/notarization docs, and real Teleport/TLS validation exist; diagnostics/privacy/settings remain |
 | 12 | [AI Foundations](PHASE12.md) | Not started | Waiting for stable resource context model |
 | 13 | [Advanced AI Operations](PHASE13.md) | Not started | Waiting for AI foundation |
 
 ## Current Execution Track
 
-The implementation is intentionally allowed to take small cross-phase slices when user-visible gaps are found, but the product milestone remains ordered:
+The implementation is intentionally allowed to take small cross-phase slices when user-visible gaps are found. That is why logs, release packaging, Teleport/TLS hardening, namespace search, and Env rendering landed before every item in Phases 4-6 was complete.
 
-1. Close read-only foundation gaps in Phases 3-6.
-2. Finish a useful Phase 4 dashboard: health summaries, charts, warnings, node/pod/workload status, and metrics fallback.
-3. Start Phase 7 logs once dashboard and detail basics are coherent.
-4. Start watches/realtime updates after the stable logs checkpoint, beginning with active Pods list updates.
+The current product milestone is Vibekube 0.1.x: a fast, read-only, distributable Kubernetes cockpit for real clusters.
+
+Recommended next focus:
+
+1. Add local app diagnostics and a redacted diagnostics export so real-machine failures are debuggable without screenshots and guesswork.
+2. Harden large-cluster browsing: pagination, list limits, cancellation, and watch reconnect/status UI.
+3. Finish release readiness: clean-machine install checklist, privacy note, and settings for kubeconfig path, log buffer, and secret reveal policy.
+4. Return to dashboard only after the read-only/debug workflows are stable enough to avoid another laggy rewrite loop.
 
 Current stop rule: after any visible UI slice, stop for manual review before moving to the next feature family.
 
@@ -48,8 +52,15 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Inspect YAML.
 - [x] Show dashboard health summaries from live cluster resources.
 - [x] Stream logs.
+- [x] Search, grep, copy, save, download, fullscreen, and previous-container Pod logs.
+- [x] Connect to real Teleport-backed corporate clusters through kubeconfig exec auth.
+- [x] Package signed/notarized DMG builds through `scripts/release`.
+- [x] Expand Pod `envFrom` ConfigMap and Secret keys in the Env inspector.
 - [x] Add first real-time Pods list watch updates.
+- [ ] Add local diagnostics/log export with secret redaction.
+- [ ] Follow Kubernetes list pagination for large clusters.
 - [ ] Add watch reconnect/status UI and broader resource/detail watches.
+- [ ] Add 0.1.x clean-machine release checklist and privacy note.
 - [ ] Add safe mutations.
 - [ ] Add AI explain/summarize flows.
 

@@ -1,6 +1,6 @@
 # Kubernetes Client Design
 
-Status: Draft, updated during Phase 5.
+Status: Living design note, updated through the 0.1.x release-hardening track.
 
 This document captures client behavior that should stay true across implementation phases. The most important rule: Vibekube should behave like `kubectl` and established clients wherever kubeconfig semantics already define the right thing.
 
@@ -26,6 +26,8 @@ Implemented:
 - client certificate/key data and file paths
 - exec credential plugin execution
 - Teleport `tsh` support through the kubeconfig exec path
+- real Teleport-backed corporate cluster validation on a separate work machine
+- certificate-authority pinned TLS for corporate clusters with non-public/internal certificates
 - `/api` core version discovery
 - `/apis` group discovery
 - per-group/version API resource discovery
@@ -41,10 +43,9 @@ Implemented:
 Not implemented yet:
 
 - save/export YAML detail tools
-- watch/streaming updates
 - pagination follow-up requests for large resource lists
 - dedicated signing-in UI for long-running exec auth
-- manual validation against a real Teleport-backed corporate kubeconfig
+- broader watch/streaming updates beyond the active Pods list
 
 Client certificate note: URLSession needs a `SecIdentity` for mTLS. The current implementation imports the PEM certificate/key into a temporary keychain, uses the identity for the session challenge, and deletes the keychain afterward. This avoids polluting the login keychain, but it uses deprecated `SecKeychain` APIs; revisit the long-term packaging/security approach in Phase 11.
 
@@ -84,7 +85,7 @@ Expected UX:
 - If the user cancels, the app returns to disconnected.
 - If `tsh` is missing, show the kubeconfig `installHint` or a concise install message.
 
-Manual validation still needed: test this on a machine with a real Teleport kubeconfig and expired/missing `tsh` credentials to confirm browser SSO/MFA opens from the GUI app process.
+Manual validation completed: Vibekube can connect to real Teleport-backed dev and prod clusters from a separate work Mac through kubeconfig exec auth. Remaining UX work is to show a clearer signing-in/credential-refresh state while the exec plugin is running.
 
 ## API Discovery
 
