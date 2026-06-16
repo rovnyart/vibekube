@@ -59,6 +59,8 @@ struct VibekubeShellView: View {
             DashboardView()
         case .logs:
             LogsView()
+        case .settings:
+            SettingsView()
         case .customResources:
             ResourceCatalogView()
         case let resource where resource.discoveredResource(in: appModel.selectedDiscovery) != nil:

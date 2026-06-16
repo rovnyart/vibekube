@@ -5,6 +5,9 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         static let selectedContextID = "vibekube.selectedContextID"
         static let selectedResourceID = "vibekube.selectedResourceID"
         static let selectedNamespaceByContextID = "vibekube.selectedNamespaceByContextID"
+        static let diagnosticsFileLoggingEnabled = "vibekube.diagnostics.fileLoggingEnabled"
+        static let diagnosticsIncludeClusterNames = "vibekube.diagnostics.includeClusterNames"
+        static let diagnosticsRetentionDays = "vibekube.diagnostics.retentionDays"
     }
 
     var defaults: UserDefaults = .standard
@@ -25,6 +28,26 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         }
         set {
             defaults.set(newValue, forKey: Key.selectedNamespaceByContextID)
+        }
+    }
+
+    var diagnosticsFileLoggingEnabled: Bool {
+        get { defaults.bool(forKey: Key.diagnosticsFileLoggingEnabled) }
+        set { defaults.set(newValue, forKey: Key.diagnosticsFileLoggingEnabled) }
+    }
+
+    var diagnosticsIncludeClusterNames: Bool {
+        get { defaults.bool(forKey: Key.diagnosticsIncludeClusterNames) }
+        set { defaults.set(newValue, forKey: Key.diagnosticsIncludeClusterNames) }
+    }
+
+    var diagnosticsRetentionDays: Int {
+        get {
+            let value = defaults.integer(forKey: Key.diagnosticsRetentionDays)
+            return value > 0 ? value : 7
+        }
+        set {
+            defaults.set(max(1, min(newValue, 30)), forKey: Key.diagnosticsRetentionDays)
         }
     }
 }

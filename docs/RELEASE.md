@@ -16,7 +16,7 @@ This document describes how to build a signed DMG for direct macOS distribution.
 
 ## Current Build
 
-The project is currently set to `0.1.5` with build `6`.
+The project is currently set to `0.1.6` with build `7`.
 
 ```sh
 NOTARY_PROFILE=vibekube-notary scripts/release current

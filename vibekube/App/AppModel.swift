@@ -17,6 +17,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var dashboardMetricsStateByQuery: [DashboardMetricsQuery: DashboardMetricsLoadState]
     @Published private(set) var podLogStateByQuery: [PodLogQuery: PodLogLoadState]
     @Published private(set) var searchFocusRequestID = 0
+    @Published private(set) var diagnosticsFileLoggingEnabled: Bool
+    @Published private(set) var diagnosticsIncludeClusterNames: Bool
+    @Published private(set) var diagnosticsRetentionDays: Int
+    @Published private(set) var diagnosticsLogDirectoryPath: String
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
     private let kubeconfigLoader: KubeconfigLoader?
@@ -26,6 +30,7 @@ final class AppModel: ObservableObject {
     private let resourceEventService: KubernetesResourceEventServicing?
     private let metricsService: KubernetesMetricsServicing?
     private let logService: KubernetesLogServicing?
+    private let diagnosticsLogger: DiagnosticsLogger
     private var userPreferences: UserPreferencesProviding
     private var loadedKubeconfig: Kubeconfig
     private var connectionTask: Task<Void, Never>?
@@ -97,6 +102,7 @@ final class AppModel: ObservableObject {
         envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]? = nil,
         dashboardMetricsStateByQuery: [DashboardMetricsQuery: DashboardMetricsLoadState]? = nil,
         podLogStateByQuery: [PodLogQuery: PodLogLoadState]? = nil,
+        diagnosticsLogger: DiagnosticsLogger = .shared,
         selectedNamespaceByContextID: [ClusterSummary.ID: String] = [:]
     ) {
         var userPreferences = userPreferences ?? InMemoryUserPreferences()
@@ -118,6 +124,7 @@ final class AppModel: ObservableObject {
         self.resourceEventService = resourceEventService
         self.metricsService = metricsService
         self.logService = logService
+        self.diagnosticsLogger = diagnosticsLogger
         self.userPreferences = userPreferences
         self.loadedKubeconfig = loadedKubeconfig ?? .empty
         self.discoveryByContextID = discoveryByContextID
@@ -127,6 +134,10 @@ final class AppModel: ObservableObject {
         self.envSecretValueStateByQuery = envSecretValueStateByQuery ?? [:]
         self.dashboardMetricsStateByQuery = dashboardMetricsStateByQuery ?? [:]
         self.podLogStateByQuery = podLogStateByQuery ?? [:]
+        self.diagnosticsFileLoggingEnabled = userPreferences.diagnosticsFileLoggingEnabled
+        self.diagnosticsIncludeClusterNames = userPreferences.diagnosticsIncludeClusterNames
+        self.diagnosticsRetentionDays = userPreferences.diagnosticsRetentionDays
+        self.diagnosticsLogDirectoryPath = DiagnosticsLogger.defaultLogDirectoryURL().path
         self.selectedNamespaceByContextID = selectedNamespaceByContextID.isEmpty
             ? userPreferences.selectedNamespaceByContextID
             : selectedNamespaceByContextID
@@ -140,6 +151,8 @@ final class AppModel: ObservableObject {
         userPreferences.selectedContextID = initialClusterID
         userPreferences.selectedResourceID = initialResource.rawValue
         self.userPreferences = userPreferences
+        configureDiagnostics()
+        recordDiagnostic(.info, category: "app", message: "App model initialized.")
     }
 
     var selectedClusterID: ClusterSummary.ID? {
@@ -252,6 +265,13 @@ final class AppModel: ObservableObject {
         )
     }
 
+    private var appVersionDescription: String {
+        let bundle = Bundle.main
+        let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+        return "\(version) (\(build))"
+    }
+
     func selectCluster(id: ClusterSummary.ID?) {
         guard route.clusterID != id else {
             return
@@ -319,6 +339,71 @@ final class AppModel: ObservableObject {
         searchText = ""
     }
 
+    func setDiagnosticsFileLoggingEnabled(_ enabled: Bool) {
+        guard diagnosticsFileLoggingEnabled != enabled else {
+            return
+        }
+
+        diagnosticsFileLoggingEnabled = enabled
+        userPreferences.diagnosticsFileLoggingEnabled = enabled
+        configureDiagnostics()
+        recordDiagnostic(
+            .info,
+            category: "diagnostics",
+            message: enabled ? "File diagnostics enabled." : "File diagnostics disabled."
+        )
+    }
+
+    func setDiagnosticsIncludeClusterNames(_ enabled: Bool) {
+        guard diagnosticsIncludeClusterNames != enabled else {
+            return
+        }
+
+        diagnosticsIncludeClusterNames = enabled
+        userPreferences.diagnosticsIncludeClusterNames = enabled
+        configureDiagnostics()
+        recordDiagnostic(
+            .info,
+            category: "diagnostics",
+            message: enabled ? "Cluster names enabled for diagnostics." : "Cluster names disabled for diagnostics."
+        )
+    }
+
+    func setDiagnosticsRetentionDays(_ days: Int) {
+        let clampedDays = max(1, min(days, 30))
+        guard diagnosticsRetentionDays != clampedDays else {
+            return
+        }
+
+        diagnosticsRetentionDays = clampedDays
+        userPreferences.diagnosticsRetentionDays = clampedDays
+        configureDiagnostics()
+        recordDiagnostic(
+            .info,
+            category: "diagnostics",
+            message: "Diagnostics retention changed.",
+            metadata: ["days": "\(clampedDays)"]
+        )
+    }
+
+    func clearRecentDiagnostics() {
+        Task { [diagnosticsLogger] in
+            await diagnosticsLogger.clearRecentEvents()
+        }
+    }
+
+    func diagnosticsExportText() async -> String {
+        await diagnosticsLogger.exportText(
+            appVersion: appVersionDescription,
+            selectedContextID: selectedClusterID,
+            selectedContextName: selectedCluster?.contextName,
+            selectedConnectionState: selectedConnectionState.rawValue,
+            selectedRoute: route.title,
+            namespace: selectedNamespaceTitle,
+            kubeconfigState: kubeconfigState.diagnosticsDescription
+        )
+    }
+
     func openLogsForSelectedRoute() {
         guard canOpenLogsForSelectedRoute else {
             return
@@ -348,6 +433,7 @@ final class AppModel: ObservableObject {
     func reloadKubeconfig() {
         guard let kubeconfigLoader else { return }
 
+        recordDiagnostic(.info, category: "kubeconfig", message: "Reloading kubeconfig.")
         let previousRoute = route
         let result = kubeconfigLoader.load()
         let discoveredClusters = result.kubeconfig.clusterSummaries()
@@ -369,6 +455,15 @@ final class AppModel: ObservableObject {
             kubeconfigState = result.hasExistingSource
                 ? .failed(message: result.issueSummary ?? "No contexts were found in kubeconfig.")
                 : .missing(paths: result.requestedPaths.map(\.displayPath))
+            recordDiagnostic(
+                .warning,
+                category: "kubeconfig",
+                message: "No kubeconfig contexts loaded.",
+                metadata: [
+                    "sourceCount": "\(result.existingSources.count)",
+                    "requestedPathCount": "\(result.requestedPaths.count)"
+                ]
+            )
             return
         }
 
@@ -389,6 +484,15 @@ final class AppModel: ObservableObject {
             contextCount: discoveredClusters.count,
             sourceCount: result.existingSources.count
         )
+        recordDiagnostic(
+            .info,
+            category: "kubeconfig",
+            message: "Kubeconfig loaded.",
+            metadata: [
+                "contextCount": "\(discoveredClusters.count)",
+                "sourceCount": "\(result.existingSources.count)"
+            ]
+        )
     }
 
     func connectSelectedCluster() {
@@ -403,6 +507,13 @@ final class AppModel: ObservableObject {
         cancelPodLogTask()
         cancelEnvSecretValueTasks()
         connectionErrorMessage = nil
+        recordDiagnostic(
+            .info,
+            category: "connection",
+            message: "Connecting to cluster.",
+            contextID: selectedClusterID,
+            metadata: clusterDiagnosticsMetadata(id: selectedClusterID)
+        )
 
         guard let connectionService else {
             updateCluster(id: selectedClusterID) { cluster in
@@ -410,6 +521,13 @@ final class AppModel: ObservableObject {
                 cluster.lastSeenAt = Date()
             }
             discoveryByContextID[selectedClusterID] = .preview
+            recordDiagnostic(
+                .info,
+                category: "connection",
+                message: "Preview cluster connected.",
+                contextID: selectedClusterID,
+                metadata: clusterDiagnosticsMetadata(id: selectedClusterID)
+            )
             if selectedResource == .dashboard {
                 loadDashboardResources()
                 loadDashboardMetrics()
@@ -467,6 +585,13 @@ final class AppModel: ObservableObject {
         dashboardMetricsTask = nil
         podLogTask = nil
         connectionErrorMessage = nil
+        recordDiagnostic(
+            .info,
+            category: "connection",
+            message: "Disconnecting cluster.",
+            contextID: selectedClusterID,
+            metadata: selectedClusterID.map { clusterDiagnosticsMetadata(id: $0) } ?? [:]
+        )
 
         updateSelectedCluster { cluster in
             cluster.connectionState = .disconnected
@@ -534,6 +659,13 @@ final class AppModel: ObservableObject {
 
         guard selectedDiscovery?.hasMetricsAPI == true else {
             dashboardMetricsStateByQuery[query] = .unavailable("Metrics API was not discovered for this cluster.")
+            recordDiagnostic(
+                .warning,
+                category: "metrics",
+                message: "Metrics API unavailable.",
+                contextID: query.contextID,
+                metadata: metricsDiagnosticsMetadata(query)
+            )
             return
         }
 
@@ -548,6 +680,13 @@ final class AppModel: ObservableObject {
 
         dashboardMetricsTask?.cancel()
         dashboardMetricsStateByQuery[query] = .loading
+        recordDiagnostic(
+            .info,
+            category: "metrics",
+            message: "Loading dashboard metrics.",
+            contextID: query.contextID,
+            metadata: metricsDiagnosticsMetadata(query)
+        )
 
         guard let metricsService else {
             dashboardMetricsStateByQuery[query] = .unavailable("Metrics service is unavailable.")
@@ -599,6 +738,13 @@ final class AppModel: ObservableObject {
         resourceWatchTasksByQuery[query]?.cancel()
         resourceWatchTasksByQuery[query] = nil
         resourceListStateByQuery[query] = .loading
+        recordDiagnostic(
+            .info,
+            category: "resourceList",
+            message: "Loading resource list.",
+            contextID: query.contextID,
+            metadata: resourceListDiagnosticsMetadata(query)
+        )
 
         guard let resourceListService else {
             finishResourceList(
@@ -719,6 +865,13 @@ final class AppModel: ObservableObject {
         } else {
             podLogStateByQuery[query] = .loading
         }
+        recordDiagnostic(
+            .info,
+            category: "logs",
+            message: query.follow ? "Starting pod log stream." : "Loading pod logs.",
+            contextID: query.contextID,
+            metadata: podLogDiagnosticsMetadata(query)
+        )
 
         guard let logService else {
             finishPodLogs(query: query, text: PreviewKubernetesLogService.previewLogText)
@@ -842,6 +995,13 @@ final class AppModel: ObservableObject {
 
         resourceDetailTask?.cancel()
         resourceDetailStateByQuery[query] = .loading
+        recordDiagnostic(
+            .info,
+            category: "resourceDetail",
+            message: "Loading resource detail.",
+            contextID: query.contextID,
+            metadata: resourceDetailDiagnosticsMetadata(query)
+        )
 
         guard let resourceDetailService else {
             failResourceDetail(query: query, error: KubernetesClientError.unavailable("Resource detail service is unavailable."))
@@ -913,6 +1073,13 @@ final class AppModel: ObservableObject {
 
         resourceEventsTask?.cancel()
         resourceEventsStateByQuery[query] = .loading
+        recordDiagnostic(
+            .info,
+            category: "events",
+            message: "Loading resource events.",
+            contextID: query.contextID,
+            metadata: resourceEventsDiagnosticsMetadata(query)
+        )
 
         guard let resourceEventService else {
             failResourceEvents(query: query, error: KubernetesClientError.unavailable("Resource event service is unavailable."))
@@ -982,6 +1149,17 @@ final class AppModel: ObservableObject {
 
         envSecretValueTasksByQuery[query]?.cancel()
         envSecretValueStateByQuery[query] = .loading
+        recordDiagnostic(
+            .info,
+            category: "secrets",
+            message: "Revealing environment Secret value.",
+            contextID: query.contextID,
+            metadata: [
+                "namespaceHash": DiagnosticsRedactor.hashIdentifier(query.namespace) ?? "-",
+                "secretHash": DiagnosticsRedactor.hashIdentifier(query.secretName) ?? "-",
+                "keyHash": DiagnosticsRedactor.hashIdentifier(query.key) ?? "-"
+            ]
+        )
 
         guard let resourceDetailService else {
             failEnvSecretValue(query: query, message: "Resource detail service is unavailable.")
@@ -1020,6 +1198,13 @@ final class AppModel: ObservableObject {
                 cluster.connectionState = .disconnected
             }
         }
+        recordDiagnostic(
+            .info,
+            category: "connection",
+            message: "Connection cancelled.",
+            contextID: contextID,
+            metadata: clusterDiagnosticsMetadata(id: contextID)
+        )
     }
 
     private func finishConnection(contextID: ClusterSummary.ID, snapshot: KubernetesConnectionSnapshot) {
@@ -1029,6 +1214,17 @@ final class AppModel: ObservableObject {
             cluster.lastSeenAt = Date()
         }
         discoveryByContextID[contextID] = snapshot.discovery
+        recordDiagnostic(
+            .info,
+            category: "connection",
+            message: "Cluster connected.",
+            contextID: contextID,
+            metadata: clusterDiagnosticsMetadata(id: contextID).merging([
+                "kubernetesVersion": snapshot.version.gitVersion,
+                "apiResourceCount": "\(snapshot.discovery.resourceCount)",
+                "namespaceCount": "\(snapshot.discovery.namespaceDiscovery.items.count)"
+            ]) { _, new in new }
+        )
 
         if selectedNamespaceByContextID[contextID] == nil {
             selectedNamespaceByContextID[contextID] = Self.allNamespacesSelection
@@ -1059,6 +1255,13 @@ final class AppModel: ObservableObject {
         if selectedClusterID == contextID {
             connectionErrorMessage = error.localizedDescription
         }
+        recordDiagnostic(
+            .error,
+            category: "connection",
+            message: "Cluster connection failed.",
+            contextID: contextID,
+            metadata: clusterDiagnosticsMetadata(id: contextID).merging(errorDiagnosticsMetadata(error)) { _, new in new }
+        )
         discoveryByContextID[contextID] = nil
         resourceListStateByQuery = resourceListStateByQuery.filter { $0.key.contextID != contextID }
         resourceDetailStateByQuery = resourceDetailStateByQuery.filter { $0.key.contextID != contextID }
@@ -1083,6 +1286,16 @@ final class AppModel: ObservableObject {
                 loadedAt: Date()
             )
         )
+        recordDiagnostic(
+            .info,
+            category: "resourceList",
+            message: "Resource list loaded.",
+            contextID: query.contextID,
+            metadata: resourceListDiagnosticsMetadata(query).merging([
+                "itemCount": "\(items.count)",
+                "hasContinueToken": response.metadata?.continueToken == nil ? "false" : "true"
+            ]) { _, new in new }
+        )
         startResourceWatchIfNeeded(query: query, resourceVersion: response.metadata?.resourceVersion)
     }
 
@@ -1096,6 +1309,13 @@ final class AppModel: ObservableObject {
     private func failResourceList(query: ResourceListQuery, error: Error) {
         resourceListTasksByQuery[query] = nil
         resourceListStateByQuery[query] = .failed(error.localizedDescription)
+        recordDiagnostic(
+            .error,
+            category: "resourceList",
+            message: "Resource list failed.",
+            contextID: query.contextID,
+            metadata: resourceListDiagnosticsMetadata(query).merging(errorDiagnosticsMetadata(error)) { _, new in new }
+        )
     }
 
     private func startResourceWatchIfNeeded(query: ResourceListQuery, resourceVersion: String?) {
@@ -1107,6 +1327,13 @@ final class AppModel: ObservableObject {
 
         let kubeconfig = loadedKubeconfig
         let namespace = namespaceForRequest(query)
+        recordDiagnostic(
+            .debug,
+            category: "watch",
+            message: "Starting resource watch.",
+            contextID: query.contextID,
+            metadata: resourceListDiagnosticsMetadata(query)
+        )
         resourceWatchTasksByQuery[query] = Task.detached(priority: .utility) { [weak self, resourceListService, kubeconfig, namespace, query, resourceVersion] in
             do {
                 for try await event in resourceListService.watchResources(
@@ -1185,6 +1412,13 @@ final class AppModel: ObservableObject {
 
     private func failResourceWatch(query: ResourceListQuery, error: Error) {
         resourceWatchTasksByQuery[query] = nil
+        recordDiagnostic(
+            .warning,
+            category: "watch",
+            message: "Resource watch failed.",
+            contextID: query.contextID,
+            metadata: resourceListDiagnosticsMetadata(query).merging(errorDiagnosticsMetadata(error)) { _, new in new }
+        )
     }
 
     private func shouldWatchResourceList(_ query: ResourceListQuery) -> Bool {
@@ -1221,6 +1455,16 @@ final class AppModel: ObservableObject {
                 loadedAt: Date()
             )
         )
+        recordDiagnostic(
+            .info,
+            category: "metrics",
+            message: "Dashboard metrics loaded.",
+            contextID: query.contextID,
+            metadata: metricsDiagnosticsMetadata(query).merging([
+                "nodeMetricCount": "\(metrics.nodeMetrics.count)",
+                "podMetricCount": "\(metrics.podMetrics.count)"
+            ]) { _, new in new }
+        )
     }
 
     private func cancelDashboardMetrics(query: DashboardMetricsQuery) {
@@ -1237,6 +1481,13 @@ final class AppModel: ObservableObject {
         } else {
             dashboardMetricsStateByQuery[query] = .failed(error.localizedDescription)
         }
+        recordDiagnostic(
+            .warning,
+            category: "metrics",
+            message: "Dashboard metrics failed.",
+            contextID: query.contextID,
+            metadata: metricsDiagnosticsMetadata(query).merging(errorDiagnosticsMetadata(error)) { _, new in new }
+        )
     }
 
     private func finishPodLogs(query: PodLogQuery, text: String) {
@@ -1247,6 +1498,15 @@ final class AppModel: ObservableObject {
                 text: Self.cappedPodLogText(text),
                 loadedAt: Date()
             )
+        )
+        recordDiagnostic(
+            .info,
+            category: "logs",
+            message: "Pod logs loaded.",
+            contextID: query.contextID,
+            metadata: podLogDiagnosticsMetadata(query).merging([
+                "lineCount": "\(text.split(separator: "\n", omittingEmptySubsequences: false).count)"
+            ]) { _, new in new }
         )
     }
 
@@ -1302,6 +1562,15 @@ final class AppModel: ObservableObject {
         if !receivedChunk, podLogStateByQuery[query] == .loading {
             finishPodLogs(query: query, text: "")
         }
+        recordDiagnostic(
+            .info,
+            category: "logs",
+            message: "Pod log stream ended.",
+            contextID: query.contextID,
+            metadata: podLogDiagnosticsMetadata(query).merging([
+                "receivedChunk": receivedChunk ? "true" : "false"
+            ]) { _, new in new }
+        )
     }
 
     private func cancelPodLogs(query: PodLogQuery) {
@@ -1314,6 +1583,13 @@ final class AppModel: ObservableObject {
     private func failPodLogs(query: PodLogQuery, error: Error) {
         podLogTask = nil
         podLogStateByQuery[query] = .failed(error.localizedDescription)
+        recordDiagnostic(
+            .error,
+            category: "logs",
+            message: "Pod logs failed.",
+            contextID: query.contextID,
+            metadata: podLogDiagnosticsMetadata(query).merging(errorDiagnosticsMetadata(error)) { _, new in new }
+        )
     }
 
     nonisolated private static func expandedEnvironmentSummary(
@@ -1524,6 +1800,16 @@ final class AppModel: ObservableObject {
                 loadedAt: Date()
             )
         )
+        recordDiagnostic(
+            .info,
+            category: "resourceDetail",
+            message: "Resource detail loaded.",
+            contextID: query.contextID,
+            metadata: resourceDetailDiagnosticsMetadata(query).merging([
+                "kind": summary.kind ?? query.resource.kind,
+                "hasEnvironment": summary.environment.isEmpty ? "false" : "true"
+            ]) { _, new in new }
+        )
     }
 
     private func cancelResourceDetail(query: ResourceDetailQuery) {
@@ -1534,6 +1820,13 @@ final class AppModel: ObservableObject {
 
     private func failResourceDetail(query: ResourceDetailQuery, error: Error) {
         resourceDetailStateByQuery[query] = .failed(error.localizedDescription)
+        recordDiagnostic(
+            .error,
+            category: "resourceDetail",
+            message: "Resource detail failed.",
+            contextID: query.contextID,
+            metadata: resourceDetailDiagnosticsMetadata(query).merging(errorDiagnosticsMetadata(error)) { _, new in new }
+        )
     }
 
     private func finishResourceEvents(
@@ -1548,6 +1841,15 @@ final class AppModel: ObservableObject {
                 loadedAt: Date()
             )
         )
+        recordDiagnostic(
+            .info,
+            category: "events",
+            message: "Resource events loaded.",
+            contextID: query.contextID,
+            metadata: resourceEventsDiagnosticsMetadata(query).merging([
+                "eventCount": "\(response.summaries.count)"
+            ]) { _, new in new }
+        )
     }
 
     private func cancelResourceEvents(query: ResourceEventsQuery) {
@@ -1558,11 +1860,29 @@ final class AppModel: ObservableObject {
 
     private func failResourceEvents(query: ResourceEventsQuery, error: Error) {
         resourceEventsStateByQuery[query] = .failed(error.localizedDescription)
+        recordDiagnostic(
+            .warning,
+            category: "events",
+            message: "Resource events failed.",
+            contextID: query.contextID,
+            metadata: resourceEventsDiagnosticsMetadata(query).merging(errorDiagnosticsMetadata(error)) { _, new in new }
+        )
     }
 
     private func finishEnvSecretValue(query: ResourceEnvSecretValueQuery, value: String) {
         envSecretValueTasksByQuery[query] = nil
         envSecretValueStateByQuery[query] = .loaded(value)
+        recordDiagnostic(
+            .info,
+            category: "secrets",
+            message: "Environment Secret value revealed.",
+            contextID: query.contextID,
+            metadata: [
+                "namespaceHash": DiagnosticsRedactor.hashIdentifier(query.namespace) ?? "-",
+                "secretHash": DiagnosticsRedactor.hashIdentifier(query.secretName) ?? "-",
+                "keyHash": DiagnosticsRedactor.hashIdentifier(query.key) ?? "-"
+            ]
+        )
     }
 
     private func cancelEnvSecretValue(query: ResourceEnvSecretValueQuery) {
@@ -1575,6 +1895,18 @@ final class AppModel: ObservableObject {
     private func failEnvSecretValue(query: ResourceEnvSecretValueQuery, message: String) {
         envSecretValueTasksByQuery[query] = nil
         envSecretValueStateByQuery[query] = .failed(message)
+        recordDiagnostic(
+            .warning,
+            category: "secrets",
+            message: "Environment Secret value reveal failed.",
+            contextID: query.contextID,
+            metadata: [
+                "namespaceHash": DiagnosticsRedactor.hashIdentifier(query.namespace) ?? "-",
+                "secretHash": DiagnosticsRedactor.hashIdentifier(query.secretName) ?? "-",
+                "keyHash": DiagnosticsRedactor.hashIdentifier(query.key) ?? "-",
+                "error": message
+            ]
+        )
     }
 
     private func cancelEnvSecretValueTasks() {
@@ -1821,6 +2153,125 @@ final class AppModel: ObservableObject {
             secretName: secretName,
             key: key
         )
+    }
+
+    private func configureDiagnostics() {
+        let settings = DiagnosticsSettings(
+            fileLoggingEnabled: diagnosticsFileLoggingEnabled,
+            includeClusterNames: diagnosticsIncludeClusterNames,
+            retentionDays: diagnosticsRetentionDays,
+            maxTotalMegabytes: 50
+        )
+
+        Task { [diagnosticsLogger] in
+            await diagnosticsLogger.configure(settings)
+        }
+    }
+
+    private func recordDiagnostic(
+        _ level: DiagnosticsLevel,
+        category: String,
+        message: String,
+        contextID: String? = nil,
+        metadata: [String: String] = [:]
+    ) {
+        let contextName = contextID.flatMap { id in
+            clusters.first { $0.id == id }?.contextName
+        }
+
+        Task { [diagnosticsLogger] in
+            await diagnosticsLogger.record(
+                level,
+                category: category,
+                message: message,
+                contextID: contextID,
+                contextName: contextName,
+                metadata: metadata
+            )
+        }
+    }
+
+    private func clusterDiagnosticsMetadata(id: ClusterSummary.ID) -> [String: String] {
+        guard let cluster = clusters.first(where: { $0.id == id }) else {
+            return [:]
+        }
+
+        let serverURL = URL(string: cluster.server)
+        let serverHost = serverURL?.host ?? cluster.server
+        return [
+            "auth": cluster.authDescription,
+            "serverScheme": serverURL?.scheme ?? "-",
+            "serverHostHash": DiagnosticsRedactor.hashIdentifier(serverHost) ?? "-",
+            "namespaceMode": cluster.namespace.isEmpty ? "none" : "context-default"
+        ]
+    }
+
+    private func resourceListDiagnosticsMetadata(_ query: ResourceListQuery) -> [String: String] {
+        [
+            "resource": query.resource.name,
+            "kind": query.resource.kind,
+            "groupVersion": query.resource.groupVersion,
+            "scope": query.resource.namespaced ? "namespaced" : "cluster",
+            "namespace": namespaceDiagnosticsValue(query.namespaceSelection)
+        ]
+    }
+
+    private func metricsDiagnosticsMetadata(_ query: DashboardMetricsQuery) -> [String: String] {
+        [
+            "namespace": namespaceDiagnosticsValue(query.namespaceSelection)
+        ]
+    }
+
+    private func resourceDetailDiagnosticsMetadata(_ query: ResourceDetailQuery) -> [String: String] {
+        [
+            "resource": query.resource.name,
+            "kind": query.resource.kind,
+            "groupVersion": query.resource.groupVersion,
+            "namespaceHash": DiagnosticsRedactor.hashIdentifier(query.namespace) ?? "-",
+            "nameHash": DiagnosticsRedactor.hashIdentifier(query.name) ?? "-"
+        ]
+    }
+
+    private func resourceEventsDiagnosticsMetadata(_ query: ResourceEventsQuery) -> [String: String] {
+        [
+            "resourceKind": query.involvedKind,
+            "resourceNamespaceHash": DiagnosticsRedactor.hashIdentifier(query.namespace) ?? "-",
+            "resourceNameHash": DiagnosticsRedactor.hashIdentifier(query.involvedName) ?? "-",
+            "resourceUIDHash": DiagnosticsRedactor.hashIdentifier(query.involvedUID) ?? "-"
+        ]
+    }
+
+    private func podLogDiagnosticsMetadata(_ query: PodLogQuery) -> [String: String] {
+        [
+            "namespaceHash": DiagnosticsRedactor.hashIdentifier(query.namespace) ?? "-",
+            "podHash": DiagnosticsRedactor.hashIdentifier(query.podName) ?? "-",
+            "containerHash": DiagnosticsRedactor.hashIdentifier(query.containerName) ?? "-",
+            "previous": query.previous ? "true" : "false",
+            "follow": query.follow ? "true" : "false",
+            "timestamps": query.timestamps ? "true" : "false",
+            "tailLines": query.tailLines.map(String.init) ?? "all"
+        ]
+    }
+
+    private func errorDiagnosticsMetadata(_ error: Error) -> [String: String] {
+        var metadata: [String: String] = [
+            "errorType": String(describing: type(of: error)),
+            "error": error.localizedDescription
+        ]
+
+        if let clientError = error as? KubernetesClientError {
+            metadata["connectionState"] = clientError.connectionState.rawValue
+        }
+
+        return metadata
+    }
+
+    private func namespaceDiagnosticsValue(_ namespace: String) -> String {
+        if namespace == Self.allNamespacesSelection {
+            return "all"
+        }
+
+        return DiagnosticsRedactor.hashIdentifier(namespace) ?? "-"
     }
 
     private func orderedUnique(_ values: [String]) -> [String] {

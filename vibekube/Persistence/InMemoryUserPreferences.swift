@@ -4,4 +4,7 @@ struct InMemoryUserPreferences: UserPreferencesProviding {
     var selectedContextID: String?
     var selectedResourceID: String?
     var selectedNamespaceByContextID: [String: String] = [:]
+    var diagnosticsFileLoggingEnabled = false
+    var diagnosticsIncludeClusterNames = false
+    var diagnosticsRetentionDays = 7
 }

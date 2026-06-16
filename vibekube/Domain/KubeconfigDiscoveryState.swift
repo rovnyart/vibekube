@@ -31,4 +31,17 @@ enum KubeconfigDiscoveryState: Equatable {
             message
         }
     }
+
+    var diagnosticsDescription: String {
+        switch self {
+        case .notLoaded:
+            "notLoaded"
+        case .loaded(let contextCount, let sourceCount):
+            "loaded contexts=\(contextCount) sources=\(sourceCount)"
+        case .missing(let paths):
+            "missing requestedPaths=\(paths.count)"
+        case .failed:
+            "failed"
+        }
+    }
 }

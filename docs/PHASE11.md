@@ -7,7 +7,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 ## Current Progress
 
 - [x] Phase plan exists.
-- [ ] Settings window exists.
+- [x] Settings view exists for diagnostics.
 - [ ] Secret handling audit complete.
 - [ ] Keychain strategy implemented where needed.
 - [x] Packaging/signing path documented.
@@ -15,13 +15,18 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] App version/build appears in About Vibekube.
 - [x] Signed/notarized DMG path has been exercised on the development machine.
 - [ ] Clean-machine release validation complete.
-- [ ] Diagnostics export exists.
+- [x] Diagnostics export exists.
+- [x] Optional local JSONL file logging exists and is disabled by default.
+- [x] Diagnostics retention and cluster-name inclusion settings exist.
 - [ ] Privacy statement exists.
 
 ## Implementation Slices
 
 ### 11.1 Settings
 
+- [x] Diagnostics file logging toggle.
+- [x] Diagnostics cluster-name inclusion toggle.
+- [x] Diagnostics retention setting.
 - [ ] Kubeconfig path settings.
 - [ ] Default namespace behavior.
 - [ ] Refresh/watch behavior.
@@ -40,8 +45,8 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] Keep Secret manifest payload fields redacted by default.
 - [x] Keep Secret-backed environment values masked by default.
 - [ ] Audit AI context redaction hooks.
-- [ ] Add redaction utilities where missing.
-- [ ] Add tests for redaction.
+- [x] Add diagnostics redaction utilities.
+- [x] Add diagnostics redaction tests.
 
 ### 11.3 Credential Storage
 
@@ -65,7 +70,9 @@ Checkpoint: stop before changing sandbox/signing settings if they affect local d
 ### 11.5 Privacy And Diagnostics
 
 - [ ] Add privacy statement.
-- [ ] Add diagnostics export with redaction.
+- [x] Add in-memory diagnostics ring buffer.
+- [x] Add optional local JSONL diagnostics logging.
+- [x] Add diagnostics export with redaction.
 - [x] Add app version/build display.
 - [ ] Decide crash reporting policy.
 

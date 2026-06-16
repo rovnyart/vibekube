@@ -17,4 +17,7 @@ protocol UserPreferencesProviding {
     var selectedContextID: String? { get set }
     var selectedResourceID: String? { get set }
     var selectedNamespaceByContextID: [String: String] { get set }
+    var diagnosticsFileLoggingEnabled: Bool { get set }
+    var diagnosticsIncludeClusterNames: Bool { get set }
+    var diagnosticsRetentionDays: Int { get set }
 }
