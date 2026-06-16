@@ -224,7 +224,7 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            throw KubernetesClientError.unavailable(error.localizedDescription)
+            throw mappedTransportError(error)
         }
     }
 
@@ -251,8 +251,20 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            throw KubernetesClientError.unavailable(error.localizedDescription)
+            throw mappedTransportError(error)
         }
+    }
+
+    private func mappedTransportError(_ error: Error) -> KubernetesClientError {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain,
+           nsError.code == NSURLErrorCancelled,
+           !Task.isCancelled,
+           let trustMessage = delegate.consumeServerTrustErrorMessage() {
+            return .certificateError(trustMessage)
+        }
+
+        return .unavailable(error.localizedDescription)
     }
 
     private static func textRequest(

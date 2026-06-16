@@ -7,6 +7,8 @@ final class KubernetesURLSessionDelegate: NSObject, URLSessionDataDelegate {
     private let clientIdentity: TemporaryClientIdentity?
     private let streamLock = NSLock()
     private var streamHandlers: [Int: KubernetesStreamingResponseHandler] = [:]
+    private let trustErrorLock = NSLock()
+    private var lastServerTrustErrorMessage: String?
 
     init(configuration: KubernetesClientConfiguration) throws {
         self.insecureSkipTLSVerify = configuration.insecureSkipTLSVerify
@@ -133,8 +135,24 @@ final class KubernetesURLSessionDelegate: NSObject, URLSessionDataDelegate {
         if SecTrustEvaluateWithError(trust, &trustError) {
             completionHandler(.useCredential, URLCredential(trust: trust))
         } else {
+            recordServerTrustError(trustError)
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
+    }
+
+    func consumeServerTrustErrorMessage() -> String? {
+        trustErrorLock.lock()
+        let message = lastServerTrustErrorMessage
+        lastServerTrustErrorMessage = nil
+        trustErrorLock.unlock()
+        return message
+    }
+
+    private func recordServerTrustError(_ error: CFError?) {
+        trustErrorLock.lock()
+        lastServerTrustErrorMessage = error.map { CFErrorCopyDescription($0) as String }
+            ?? "The server certificate could not be trusted."
+        trustErrorLock.unlock()
     }
 
     private func handleClientCertificate(

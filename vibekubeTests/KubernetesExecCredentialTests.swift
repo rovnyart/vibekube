@@ -177,6 +177,36 @@ struct KubernetesExecCredentialTests {
         #expect(token == "from-process")
     }
 
+    @Test func defaultRunnerReportsExecPluginStderr() async throws {
+        let request = KubernetesExecCredentialRequest(
+            contextName: "teleport",
+            clusterName: "prod",
+            userName: "teleport-user",
+            exec: KubeExecAuth(
+                apiVersion: "client.authentication.k8s.io/v1beta1",
+                command: "/bin/sh",
+                args: ["-c", "echo 'tsh: profile is not logged in' >&2; exit 1"],
+                env: [],
+                installHint: nil,
+                provideClusterInfo: false,
+                interactiveMode: "Never"
+            ),
+            cluster: KubernetesExecClusterInfo(
+                server: "https://teleport.example.com",
+                certificateAuthorityData: nil,
+                insecureSkipTLSVerify: false
+            )
+        )
+
+        do {
+            _ = try await DefaultKubernetesExecCredentialRunner().run(request: request)
+            Issue.record("Expected exec credential failure")
+        } catch let error as KubernetesClientError {
+            #expect(error.localizedDescription.contains("failed with exit code 1"))
+            #expect(error.localizedDescription.contains("tsh: profile is not logged in"))
+        }
+    }
+
     private func execRequest() -> KubernetesExecCredentialRequest {
         KubernetesExecCredentialRequest(
             contextName: "demo",

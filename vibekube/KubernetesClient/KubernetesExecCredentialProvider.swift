@@ -90,7 +90,9 @@ struct DefaultKubernetesExecCredentialRunner: KubernetesExecCredentialRunning {
         do {
             try process.run()
         } catch {
-            throw KubernetesClientError.execCredential("Exec credential command '\(request.commandDisplayName)' could not be started.")
+            throw KubernetesClientError.execCredential(
+                "Exec credential command '\(request.commandDisplayName)' could not be started: \(error.localizedDescription)"
+            )
         }
 
         try Task.checkCancellation()
@@ -102,17 +104,40 @@ struct DefaultKubernetesExecCredentialRunner: KubernetesExecCredentialRunning {
         try Task.checkCancellation()
 
         let output = stdout.fileHandleForReading.readDataToEndOfFile()
-        _ = stderr.fileHandleForReading.readDataToEndOfFile()
+        let errorOutput = stderr.fileHandleForReading.readDataToEndOfFile()
+        let stderrMessage = Self.diagnosticMessage(from: errorOutput)
 
         guard status == 0 else {
-            throw KubernetesClientError.execCredential("Exec credential command '\(request.commandDisplayName)' failed with exit code \(status).")
+            throw KubernetesClientError.execCredential(
+                "Exec credential command '\(request.commandDisplayName)' failed with exit code \(status)\(stderrMessage.map { ": \($0)" } ?? ".")"
+            )
         }
 
         do {
             return try JSONDecoder.kubernetesExecCredential.decode(KubernetesExecCredential.self, from: output)
         } catch {
-            throw KubernetesClientError.execCredential("Exec credential command '\(request.commandDisplayName)' did not return valid ExecCredential JSON.")
+            throw KubernetesClientError.execCredential(
+                "Exec credential command '\(request.commandDisplayName)' did not return valid ExecCredential JSON\(stderrMessage.map { ": \($0)" } ?? ".")"
+            )
         }
+    }
+
+    private static func diagnosticMessage(from data: Data) -> String? {
+        let message = String(decoding: data, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !message.isEmpty else {
+            return nil
+        }
+
+        let lines = message
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .prefix(4)
+            .joined(separator: " ")
+
+        return String(lines.prefix(1_000))
     }
 
     private func executableURL(for command: String, installHint: String?) throws -> URL {
