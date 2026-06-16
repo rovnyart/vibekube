@@ -2,6 +2,23 @@
 
 All notable user-facing changes are tracked here.
 
+## 0.3.0 - 2026-06-16
+
+Changes since 0.2.0:
+
+### Added
+
+- Settings for the default namespace behavior when connecting to a cluster.
+- Setting to enable or disable live Kubernetes resource watches.
+- Kubeconfig path override setting for custom files or colon-separated KUBECONFIG lists.
+- Table density setting for compact, comfortable, and spacious resource/log layouts.
+- Appearance setting for System, Light, and Dark themes.
+
+### Changed
+
+- Table density now lives in the Appearance settings section with theme controls.
+- Settings mutations are deferred out of SwiftUI view updates to avoid undefined update behavior warnings.
+
 ## 0.2.0 - 2026-06-16
 
 Changes since 0.1.7:
@@ -42,4 +59,3 @@ Changes since 0.1.7:
 - Client certificate chain handling avoids empty certificate arrays and local crashes.
 - Kubernetes TLS handling works for CA-pinned and exec-auth corporate clusters.
 - Resource-list loading and dashboard navigation remain responsive on larger or slower clusters.
-
