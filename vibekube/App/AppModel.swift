@@ -1021,7 +1021,10 @@ final class AppModel: ObservableObject {
         for resource: ResourceNavigationItem,
         row: KubernetesUnstructuredResource
     ) -> String {
-        resourceDetailQuery(for: resource, row: row)?.id ?? "\(selectedClusterID ?? "none")|\(resource.id)|\(row.id)"
+        [
+            resourceDetailQuery(for: resource, row: row)?.id ?? "\(selectedClusterID ?? "none")|\(resource.id)|\(row.id)",
+            row.metadata.resourceVersion ?? "no-resource-version"
+        ].joined(separator: "|")
     }
 
     func loadResourceDetail(
@@ -1037,9 +1040,11 @@ final class AppModel: ObservableObject {
 
         if !force {
             switch resourceDetailStateByQuery[query] {
-            case .some(.loaded), .some(.loading):
+            case .some(.loaded(let snapshot)) where isResourceDetailSnapshot(snapshot, currentFor: row):
                 return
-            case .some(.idle), .some(.failed), .none:
+            case .some(.loading):
+                return
+            case .some(.loaded), .some(.idle), .some(.failed), .none:
                 break
             }
         }
@@ -1158,6 +1163,18 @@ final class AppModel: ObservableObject {
                 await self?.failResourceEvents(query: query, error: error)
             }
         }
+    }
+
+    private func isResourceDetailSnapshot(
+        _ snapshot: ResourceDetailSnapshot,
+        currentFor row: KubernetesUnstructuredResource
+    ) -> Bool {
+        guard let rowResourceVersion = row.metadata.resourceVersion,
+              !rowResourceVersion.isEmpty else {
+            return true
+        }
+
+        return snapshot.summary.resourceVersion == rowResourceVersion
     }
 
     func envSecretValueState(
@@ -2274,7 +2291,8 @@ final class AppModel: ObservableObject {
             namespace: eventsResource.namespaced ? namespace : nil,
             involvedKind: detail.summary.kind ?? detail.query.resource.kind,
             involvedName: involvedName,
-            involvedUID: detail.summary.uid
+            involvedUID: detail.summary.uid,
+            involvedResourceVersion: detail.summary.resourceVersion
         )
     }
 

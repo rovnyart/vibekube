@@ -20,6 +20,7 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - Resource details now open in a bottom inspector instead of a right-side pane, which preserves table width on laptop screens.
 - The bottom inspector supports multiple open resource tabs with close controls.
 - The inspector fetches the full object through generic discovery-derived `get` endpoints.
+- Open detail tabs refresh their manifest when the backing list row reports a newer Kubernetes `resourceVersion`.
 - The manifest view is read-only, selectable, line-numbered, searchable, copyable, and lightly syntax-highlighted.
 - Secret manifests redact top-level `data`, `stringData`, and `binaryData`.
 - Resource detail now has Overview, YAML, Metadata, and Conditions tabs.
@@ -47,6 +48,7 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - [x] Extract pod `envFrom` ConfigMap/Secret references.
 - [x] Resolve ConfigMap values used by explicit `configMapKeyRef` env vars.
 - [x] Resolve ConfigMap/Secret keys used by `envFrom`, preserving Secret masking.
+- [x] Treat loaded details as stale when the selected row has a newer `resourceVersion`.
 
 ### 6.2 YAML Viewer
 
@@ -92,6 +94,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] Environment tab for pod-like resources.
 - [ ] Dedicated containers tab for pod-like resources.
 - [x] ConfigMap values render directly for environment references.
+- [x] Manifest freshness indicator in the detail header.
 
 ### 6.6 Secret Reveal
 
@@ -114,6 +117,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [ ] Relationship resolver tests.
 - [x] Resource event decoding tests.
 - [x] Resource event model load tests.
+- [x] Version-aware detail refresh test for watched Pod rows.
 - [ ] UI navigation tests for related resources.
 
 ## Acceptance Criteria

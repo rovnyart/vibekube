@@ -152,6 +152,7 @@ struct ResourceEventsQuery: Identifiable, Hashable {
     var involvedKind: String
     var involvedName: String
     var involvedUID: String?
+    var involvedResourceVersion: String?
 
     var id: String {
         [
@@ -160,7 +161,8 @@ struct ResourceEventsQuery: Identifiable, Hashable {
             namespace ?? "",
             involvedKind,
             involvedName,
-            involvedUID ?? ""
+            involvedUID ?? "",
+            involvedResourceVersion ?? ""
         ].joined(separator: "|")
     }
 }

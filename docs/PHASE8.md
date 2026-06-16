@@ -12,7 +12,8 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Active Pods list applies watch updates.
 - [x] Reconnect/backoff exists for active Pods list watches.
 - [x] UI indicates live/reconnecting/stale/failure state for active Pods list watches.
-- [ ] Detail and broader resource watches exist.
+- [x] Open Pod details refresh when watched list rows move to a newer resourceVersion.
+- [ ] True selected-resource detail watches and broader resource watches exist.
 
 ## Implementation Slices
 
@@ -39,6 +40,7 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Merge MODIFIED events.
 - [x] Remove DELETED resources.
 - [x] Preserve table selection where possible by mutating the existing loaded snapshot.
+- [x] Refresh selected detail manifests when watched rows report a newer resourceVersion.
 - [ ] Throttle high-volume updates.
 - [ ] Avoid row jumping while user is interacting.
 
@@ -47,6 +49,7 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Live status indicator.
 - [x] Reconnecting/stale/failure status indicator.
 - [x] Manual refresh fallback.
+- [x] Detail header shows refreshing/updated/stale state.
 - [ ] Subtle updated row indication.
 - [ ] No noisy notifications for normal watch updates.
 
@@ -57,6 +60,7 @@ Checkpoint: stop when pod list updates as demo CronJobs create pods.
 - [x] Watch parser tests.
 - [ ] ResourceVersion relist tests.
 - [x] Store merge tests for active Pods ADDED events.
+- [x] Detail refresh test for active Pods MODIFIED events.
 - [ ] Mock watch reconnect tests.
 - [ ] Manual QA with demo CronJob pods.
 

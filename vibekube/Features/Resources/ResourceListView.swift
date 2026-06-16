@@ -550,6 +550,14 @@ private struct ResourceDetailView: View {
 
             Spacer()
 
+            if let detailStatusText {
+                Text(detailStatusText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(detailStatusTint)
+                    .lineLimit(1)
+                    .help(detailStatusHelp)
+            }
+
             ResourceDetailPanelTabBar(
                 selection: $selectedPanel,
                 isEnabled: isLoaded
@@ -633,6 +641,60 @@ private struct ResourceDetailView: View {
             return true
         }
         return false
+    }
+
+    private var detailStatusText: String? {
+        switch appModel.resourceDetailState(for: item, row: row) {
+        case .loaded(let snapshot):
+            if let rowResourceVersion = row.metadata.resourceVersion,
+               !rowResourceVersion.isEmpty,
+               snapshot.summary.resourceVersion != rowResourceVersion {
+                return "Stale"
+            }
+            return "Updated \(snapshot.loadedAt.formatted(date: .omitted, time: .standard))"
+        case .loading:
+            return "Refreshing..."
+        case .failed:
+            return "Stale"
+        case .idle:
+            return nil
+        }
+    }
+
+    private var detailStatusTint: Color {
+        switch appModel.resourceDetailState(for: item, row: row) {
+        case .loaded(let snapshot):
+            if let rowResourceVersion = row.metadata.resourceVersion,
+               !rowResourceVersion.isEmpty,
+               snapshot.summary.resourceVersion != rowResourceVersion {
+                return .orange
+            }
+            return .secondary
+        case .loading:
+            return .orange
+        case .failed:
+            return .red
+        case .idle:
+            return .secondary
+        }
+    }
+
+    private var detailStatusHelp: String {
+        switch appModel.resourceDetailState(for: item, row: row) {
+        case .loaded(let snapshot):
+            if let rowResourceVersion = row.metadata.resourceVersion,
+               !rowResourceVersion.isEmpty,
+               snapshot.summary.resourceVersion != rowResourceVersion {
+                return "The list row has resourceVersion \(rowResourceVersion), but the loaded detail has \(snapshot.summary.resourceVersion ?? "-")."
+            }
+            return "Manifest loaded at \(snapshot.loadedAt.formatted(date: .omitted, time: .standard))."
+        case .loading:
+            return "Refreshing manifest for the current row."
+        case .failed(let message):
+            return "The current manifest could not be refreshed: \(message)"
+        case .idle:
+            return "Manifest has not loaded yet."
+        }
     }
 
     private var detailCommandContext: ResourceDetailCommandContext {
