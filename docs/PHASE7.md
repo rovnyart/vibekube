@@ -14,7 +14,9 @@ Goal: provide a fast, native log viewer for pods, containers, and common workloa
 - [x] Timestamp, live/follow, search, grep/filter, copy, and expanded-view controls exist.
 - [x] Previous terminated-container logs, tail selector, download-all, and save-current-view controls exist.
 - [x] Safe JSONL pretty-print mode exists for readable structured logs.
-- [ ] Pause/resume and since selector exist.
+- [x] Scroll-aware live follow with jump-to-latest exists.
+- [x] Pause/resume exists via the Live toggle.
+- [ ] Since selector exists.
 
 ## Checkpoint Notes
 
@@ -22,13 +24,15 @@ Goal: provide a fast, native log viewer for pods, containers, and common workloa
 - The standalone Logs route is hidden from primary navigation until it has a clearer product role.
 - The Logs tab supports bounded tail loading and live streaming via Kubernetes `follow=true`.
 - Live streaming starts with `tailLines=0` and seeds from the already-loaded recent tail, so enabling Live appends new lines instead of replaying the pod log backlog.
+- The Live checkbox is the pause/resume control: turning it off stops streaming and keeps the current snapshot visible.
 - Log requests support container, previous, follow, tailLines, sinceSeconds, and timestamps at the request model level.
 - The UI can toggle timestamps, live streaming, JSONL pretty-printing, search highlighting, grep-style line filtering, manual refresh, displayed-log copy, and an expanded log sheet.
+- Live auto-follow is scroll-aware: if the user scrolls away from the bottom, Vibekube stops forcing the view downward and shows a jump-to-latest action.
 - Live logs are capped in memory to the most recent 5,000 lines.
 - Previous terminated-container logs, tail selector, download-all logs, and save-current-view are wired through the Pod detail Logs tab.
 - JSONL mode safely pretty-prints valid object/array log lines and leaves malformed or plain-text lines unchanged. Grep still filters against raw log lines; copy/save displayed logs use the rendered view.
-- Pause/resume and since controls remain pending.
-- Large-log hardening still needs scroll-aware follow behavior, stream retry UI, ANSI handling, and explicit buffer-limit tests.
+- Since controls remain pending.
+- Large-log hardening still needs stream retry UI, ANSI handling, and explicit buffer-limit tests.
 
 ## Implementation Slices
 
@@ -66,14 +70,15 @@ Goal: provide a fast, native log viewer for pods, containers, and common workloa
 - [x] Grep-style filter for matching log lines.
 - [x] Safe JSONL pretty-print mode for structured log lines.
 - [x] Expanded log view.
-- [ ] Pause/resume.
+- [x] Pause/resume through the Live toggle.
+- [x] Scroll-aware live follow and jump-to-latest.
 - [x] Copy displayed lines.
 - [x] Download all available logs for the selected pod/container.
 - [x] Save currently displayed/filtered logs.
 - [ ] Inline retry on stream failure.
 - [x] Manual refresh for current Pod logs.
 
-Checkpoint: stop when selecting `log-counter` can tail, stream, search, grep-filter, JSON-format, copy, and expand logs without freezing.
+Checkpoint: stop when selecting `log-counter` can tail, stream, scroll without forced follow, jump to latest, search, grep-filter, JSON-format, copy, and expand logs without freezing.
 
 ### 7.4 Workload Logs
 
@@ -94,9 +99,9 @@ Checkpoint: stop when selecting `log-counter` can tail, stream, search, grep-fil
 ## Acceptance Criteria
 
 - [x] User can stream live logs from the demo `log-counter` pod.
-- [ ] User can pause logs.
+- [x] User can pause logs by turning Live off.
 - [x] User can search, grep, JSON-format, copy, download all logs, save displayed logs, and view previous terminated-container logs.
-- [ ] Scrolling away from the bottom disables aggressive auto-follow behavior.
+- [x] Scrolling away from the bottom disables aggressive auto-follow behavior.
 - [ ] Large logs do not freeze the app.
 
 ## Validation Commands

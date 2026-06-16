@@ -13,7 +13,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Started | Dashboard is simplified to a fast nodes/pods/discovery/metrics overview while workload, event, and storage summaries wait for a non-blocking design |
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
 | 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, expanded Environment, YAML, Metadata, Conditions, masked Secret env reveal, and version-aware refresh |
-| 7 | [Logs](PHASE7.md) | Review checkpoint | Pod detail inspector has rich logs: tail, live streaming, timestamps, safe JSONL formatting, search, grep, copy, save, download-all, fullscreen, and previous-container logs |
+| 7 | [Logs](PHASE7.md) | Review checkpoint | Pod detail inspector has rich logs: tail, live streaming with smart follow, timestamps, safe JSONL formatting, search, grep, copy, save, download-all, fullscreen, and previous-container logs |
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Started | Active Pods list has watch merging, reconnect/backoff, live/stale/failure status, and version-aware detail refresh; broader watches remain |
 | 9 | [Workload Debugging Basics](PHASE9.md) | Not started | Waiting for logs/detail foundations |
 | 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
@@ -52,7 +52,7 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Inspect YAML.
 - [x] Show dashboard health summaries from live cluster resources.
 - [x] Stream logs.
-- [x] Search, grep, safe JSONL formatting, copy, save, download, fullscreen, and previous-container Pod logs.
+- [x] Search, grep, smart live follow, safe JSONL formatting, copy, save, download, fullscreen, and previous-container Pod logs.
 - [x] Connect to real Teleport-backed corporate clusters through kubeconfig exec auth.
 - [x] Package signed/notarized DMG builds through `scripts/release`.
 - [x] Expand Pod `envFrom` ConfigMap and Secret keys in the Env inspector.

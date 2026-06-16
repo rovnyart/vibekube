@@ -1114,6 +1114,8 @@ private struct ResourceDetailLogsView: View {
     @State private var searchText = ""
     @State private var filtersMatches = false
     @State private var formatsJSONLines = false
+    @State private var logViewIsPinnedToBottom = true
+    @State private var jumpToLatestRequestID = 0
     @State private var isExpanded = false
     @State private var isSavingLogs = false
     @State private var saveErrorMessage: String?
@@ -1149,6 +1151,8 @@ private struct ResourceDetailLogsView: View {
         .onChange(of: followsLogs) {
             if followsLogs {
                 showsPreviousLogs = false
+                logViewIsPinnedToBottom = true
+                jumpToLatestRequestID += 1
             }
         }
         .onDisappear {
@@ -1349,6 +1353,17 @@ private struct ResourceDetailLogsView: View {
 
                     Spacer()
 
+                    if followsLogs && !logViewIsPinnedToBottom {
+                        Button {
+                            logViewIsPinnedToBottom = true
+                            jumpToLatestRequestID += 1
+                        } label: {
+                            Label("Jump to Latest", systemImage: "arrow.down.to.line")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Jump to the newest live log line")
+                    }
+
                     Button {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(displayedLogText(snapshot.text), forType: .string)
@@ -1369,6 +1384,8 @@ private struct ResourceDetailLogsView: View {
                     searchText: searchText,
                     filtersMatches: filtersMatches,
                     formatsJSONLines: formatsJSONLines,
+                    isPinnedToBottom: $logViewIsPinnedToBottom,
+                    jumpToLatestRequestID: jumpToLatestRequestID,
                     followsLogs: followsLogs
                 )
             }
@@ -1739,6 +1756,8 @@ private struct LogTextSurface: View {
     let searchText: String
     let filtersMatches: Bool
     let formatsJSONLines: Bool
+    @Binding var isPinnedToBottom: Bool
+    let jumpToLatestRequestID: Int
     let followsLogs: Bool
 
     private var displayedLines: [String] {
@@ -1772,6 +1791,8 @@ private struct LogTextSurface: View {
                     text: displayedText,
                     searchText: searchText,
                     formatsJSONLines: formatsJSONLines,
+                    isPinnedToBottom: $isPinnedToBottom,
+                    jumpToLatestRequestID: jumpToLatestRequestID,
                     followsLogs: followsLogs
                 )
                 .accessibilityIdentifier("resource.detail.logs.text")
@@ -1804,6 +1825,8 @@ private struct SelectableLogTextView: NSViewRepresentable {
     let text: String
     let searchText: String
     let formatsJSONLines: Bool
+    @Binding var isPinnedToBottom: Bool
+    let jumpToLatestRequestID: Int
     let followsLogs: Bool
 
     func makeCoordinator() -> Coordinator {
@@ -1818,6 +1841,7 @@ private struct SelectableLogTextView: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = true
         scrollView.backgroundColor = .textBackgroundColor
+        scrollView.contentView.postsBoundsChangedNotifications = true
 
         let textView = NSTextView(frame: .zero)
         textView.isEditable = false
@@ -1844,7 +1868,12 @@ private struct SelectableLogTextView: NSViewRepresentable {
 
         scrollView.documentView = textView
         context.coordinator.textView = textView
+        context.coordinator.startObserving(scrollView)
         return scrollView
+    }
+
+    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+        coordinator.stopObserving()
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
@@ -1852,7 +1881,9 @@ private struct SelectableLogTextView: NSViewRepresentable {
             return
         }
 
+        context.coordinator.isPinnedToBottom = $isPinnedToBottom
         let needle = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shouldFollow = followsLogs && context.coordinator.isScrolledNearBottom(in: scrollView)
         if context.coordinator.text != text ||
             context.coordinator.searchText != needle ||
             context.coordinator.formatsJSONLines != formatsJSONLines {
@@ -1866,12 +1897,15 @@ private struct SelectableLogTextView: NSViewRepresentable {
             context.coordinator.text = text
             context.coordinator.searchText = needle
             context.coordinator.formatsJSONLines = formatsJSONLines
+
+            if shouldFollow {
+                context.coordinator.scrollToBottom(in: scrollView)
+            }
         }
 
-        if followsLogs {
-            DispatchQueue.main.async {
-                textView.scrollToEndOfDocument(nil)
-            }
+        if context.coordinator.jumpToLatestRequestID != jumpToLatestRequestID {
+            context.coordinator.jumpToLatestRequestID = jumpToLatestRequestID
+            context.coordinator.scrollToBottom(in: scrollView)
         }
     }
 
@@ -1977,9 +2011,67 @@ private struct SelectableLogTextView: NSViewRepresentable {
 
     final class Coordinator {
         weak var textView: NSTextView?
+        private weak var scrollView: NSScrollView?
+        private var boundsObserver: NSObjectProtocol?
+        var isPinnedToBottom: Binding<Bool>?
         var text = ""
         var searchText = ""
         var formatsJSONLines = false
+        var jumpToLatestRequestID = 0
+
+        func startObserving(_ scrollView: NSScrollView) {
+            stopObserving()
+            self.scrollView = scrollView
+            boundsObserver = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification,
+                object: scrollView.contentView,
+                queue: .main
+            ) { [weak self, weak scrollView] _ in
+                guard let self, let scrollView else {
+                    return
+                }
+
+                self.publishPinnedState(for: scrollView)
+            }
+        }
+
+        func stopObserving() {
+            if let boundsObserver {
+                NotificationCenter.default.removeObserver(boundsObserver)
+            }
+            boundsObserver = nil
+            scrollView = nil
+        }
+
+        func scrollToBottom(in scrollView: NSScrollView) {
+            DispatchQueue.main.async { [weak self, weak scrollView] in
+                guard let self, let scrollView else {
+                    return
+                }
+
+                self.textView?.scrollToEndOfDocument(nil)
+                self.publishPinnedState(for: scrollView, forcedValue: true)
+            }
+        }
+
+        func isScrolledNearBottom(in scrollView: NSScrollView) -> Bool {
+            guard let documentView = scrollView.documentView else {
+                return true
+            }
+
+            let visibleMaxY = scrollView.contentView.bounds.maxY
+            let documentHeight = documentView.bounds.height
+            return documentHeight - visibleMaxY <= 36
+        }
+
+        private func publishPinnedState(for scrollView: NSScrollView, forcedValue: Bool? = nil) {
+            let newValue = forcedValue ?? isScrolledNearBottom(in: scrollView)
+            guard isPinnedToBottom?.wrappedValue != newValue else {
+                return
+            }
+
+            isPinnedToBottom?.wrappedValue = newValue
+        }
     }
 }
 
