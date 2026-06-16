@@ -606,14 +606,15 @@ private struct ResourceDetailPanelTabButton: View {
             HStack(spacing: 5) {
                 Image(systemName: tab.systemImage)
                     .imageScale(.small)
+                    .foregroundStyle(iconColor)
                 Text(tab.title)
+                    .foregroundStyle(titleColor)
             }
             .font(.caption.weight(isSelected ? .semibold : .medium))
-            .foregroundStyle(isSelected ? .primary : .secondary)
             .frame(minWidth: 82)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .background(isSelected ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.26) : .clear)
+            .background(tabBackground)
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.borderless)
@@ -622,6 +623,33 @@ private struct ResourceDetailPanelTabButton: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tab.title)
         .accessibilityIdentifier("resource.detail.content.tab.\(tab.id)")
+    }
+
+    private var titleColor: Color {
+        if !isEnabled {
+            return .secondary.opacity(0.48)
+        }
+
+        return isSelected ? .primary : .primary.opacity(0.72)
+    }
+
+    private var iconColor: Color {
+        if !isEnabled {
+            return .secondary.opacity(0.42)
+        }
+
+        return isSelected ? .primary.opacity(0.82) : .secondary.opacity(0.82)
+    }
+
+    @ViewBuilder
+    private var tabBackground: some View {
+        if isSelected {
+            Color(nsColor: .selectedContentBackgroundColor).opacity(0.26)
+        } else if isEnabled {
+            Color.primary.opacity(0.035)
+        } else {
+            Color.clear
+        }
     }
 }
 
