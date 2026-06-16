@@ -697,6 +697,38 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelKeepsReconnectingTransientResourceWatchFailures() async throws {
+        let resourceListService = TransientFailingWatchResourceListService()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: resourceListService,
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitUntil(
+            "watch retries past transient failure budget",
+            attempts: 120,
+            sleepNanoseconds: 50_000_000
+        ) {
+            resourceListService.watchCallCount() >= 4
+        }
+
+        guard let status = model.resourceWatchStatus(for: .pods) else {
+            Issue.record("Expected resource watch status")
+            return
+        }
+
+        if case .failed = status {
+            Issue.record("Transient watch failures should keep reconnecting instead of failing permanently")
+        }
+    }
+
+    @MainActor
     @Test func appModelRefreshesOpenPodDetailWhenWatchUpdatesResourceVersion() async throws {
         let detailService = VersionedPodDetailService()
         let model = AppModel(
@@ -1065,13 +1097,15 @@ private func waitForEnvSecretValue(
 @MainActor
 private func waitUntil(
     _ description: String,
+    attempts: Int = 60,
+    sleepNanoseconds: UInt64 = 5_000_000,
     condition: @escaping @MainActor () -> Bool
 ) async throws {
-    for _ in 0..<60 {
+    for _ in 0..<attempts {
         if condition() {
             return
         }
-        try await Task.sleep(nanoseconds: 5_000_000)
+        try await Task.sleep(nanoseconds: sleepNanoseconds)
     }
 
     Issue.record("Timed out waiting for \(description)")
@@ -1569,6 +1603,71 @@ private final class ExpiringWatchResourceListService: KubernetesResourceListServ
     private func appendWatchedResourceVersion(_ resourceVersion: String) {
         lock.withLock {
             watchedVersions.append(resourceVersion)
+        }
+    }
+}
+
+private final class TransientFailingWatchResourceListService: KubernetesResourceListServicing {
+    private let lock = NSLock()
+    private var watchCalls = 0
+
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "metadata": {
+                    "resourceVersion": "10"
+                  },
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "web-0",
+                        "namespace": "\(namespace ?? "vibekube-demo")",
+                        "uid": "web-uid",
+                        "resourceVersion": "10"
+                      },
+                      "status": {
+                        "phase": "Running"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+    }
+
+    func watchResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        resourceVersion: String?
+    ) -> AsyncThrowingStream<KubernetesWatchEvent<KubernetesUnstructuredResource>, Error> {
+        incrementWatchCallCount()
+        return AsyncThrowingStream { continuation in
+            continuation.finish(throwing: KubernetesClientError.unavailable("The request timed out."))
+        }
+    }
+
+    func watchCallCount() -> Int {
+        lock.withLock {
+            watchCalls
+        }
+    }
+
+    private func incrementWatchCallCount() {
+        lock.withLock {
+            watchCalls += 1
         }
     }
 }

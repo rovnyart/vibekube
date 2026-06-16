@@ -17,7 +17,7 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         self.delegate = try KubernetesURLSessionDelegate(configuration: configuration)
         let sessionConfiguration = URLSessionConfiguration.ephemeral
         sessionConfiguration.timeoutIntervalForRequest = 15
-        sessionConfiguration.timeoutIntervalForResource = 30
+        sessionConfiguration.timeoutIntervalForResource = 3_600
 
         self.session = URLSession(
             configuration: sessionConfiguration,

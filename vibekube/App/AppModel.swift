@@ -1535,13 +1535,20 @@ final class AppModel: ObservableObject {
                             } catch {
                                 failureCount += 1
                                 await self?.recordResourceWatchFailure(query: query, error: error)
-                                guard failureCount <= reconnectDelays.count else {
+                                guard Self.shouldRetryResourceWatch(
+                                    error: error,
+                                    failureCount: failureCount,
+                                    retryBudget: reconnectDelays.count
+                                ) else {
                                     await self?.failResourceWatch(query: query, message: error.localizedDescription)
                                     return
                                 }
 
                                 attempt += 1
-                                let delay = reconnectDelays[failureCount - 1]
+                                let delay = Self.resourceWatchReconnectDelay(
+                                    failureCount: failureCount,
+                                    reconnectDelays: reconnectDelays
+                                )
                                 await self?.scheduleResourceWatchReconnect(
                                     query: query,
                                     attempt: attempt,
@@ -1555,13 +1562,20 @@ final class AppModel: ObservableObject {
 
                         failureCount += 1
                         await self?.recordResourceWatchFailure(query: query, error: error)
-                        guard failureCount <= reconnectDelays.count else {
+                        guard Self.shouldRetryResourceWatch(
+                            error: error,
+                            failureCount: failureCount,
+                            retryBudget: reconnectDelays.count
+                        ) else {
                             await self?.failResourceWatch(query: query, message: error.localizedDescription)
                             return
                         }
 
                         attempt += 1
-                        let delay = reconnectDelays[failureCount - 1]
+                        let delay = Self.resourceWatchReconnectDelay(
+                            failureCount: failureCount,
+                            reconnectDelays: reconnectDelays
+                        )
                         await self?.scheduleResourceWatchReconnect(
                             query: query,
                             attempt: attempt,
@@ -1585,6 +1599,37 @@ final class AppModel: ObservableObject {
         }
 
         return false
+    }
+
+    nonisolated private static func shouldRetryResourceWatch(
+        error: Error,
+        failureCount: Int,
+        retryBudget: Int
+    ) -> Bool {
+        isTransientResourceWatchError(error) || failureCount <= retryBudget
+    }
+
+    nonisolated private static func isTransientResourceWatchError(_ error: Error) -> Bool {
+        switch error {
+        case KubernetesClientError.unavailable:
+            return true
+        case KubernetesClientError.statusCode(let code, _):
+            return code == 429 || (500..<600).contains(code)
+        default:
+            return false
+        }
+    }
+
+    nonisolated private static func resourceWatchReconnectDelay(
+        failureCount: Int,
+        reconnectDelays: [UInt64]
+    ) -> UInt64 {
+        guard !reconnectDelays.isEmpty else {
+            return 1_000_000_000
+        }
+
+        let index = min(max(failureCount - 1, 0), reconnectDelays.count - 1)
+        return reconnectDelays[index]
     }
 
     private func relistResourceAfterExpiredWatch(
@@ -1827,12 +1872,19 @@ final class AppModel: ObservableObject {
 
                         failureCount += 1
                         await self?.recordResourceDetailWatchFailure(query: query, error: error)
-                        guard failureCount <= reconnectDelays.count else {
+                        guard Self.shouldRetryResourceWatch(
+                            error: error,
+                            failureCount: failureCount,
+                            retryBudget: reconnectDelays.count
+                        ) else {
                             await self?.finishResourceDetailWatch(query: query)
                             return
                         }
 
-                        let delay = reconnectDelays[failureCount - 1]
+                        let delay = Self.resourceWatchReconnectDelay(
+                            failureCount: failureCount,
+                            reconnectDelays: reconnectDelays
+                        )
                         try await Task.sleep(nanoseconds: delay)
                     }
                 }

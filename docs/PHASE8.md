@@ -16,6 +16,7 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Open resource details refresh when watched list rows move to a newer resourceVersion.
 - [x] Broader active-resource list watches exist.
 - [x] True selected-resource detail watches exist.
+- [x] Transient watch timeouts keep reconnecting after long idle/background periods.
 
 ## Implementation Slices
 
@@ -35,6 +36,7 @@ Goal: keep resource lists and details current through Kubernetes watches without
 - [x] Stop watches on route/context/namespace changes.
 - [x] Apply backoff on transient failures for active resource watches.
 - [x] Surface persistent watch errors in the resource-list header.
+- [x] Keep retrying transient transport failures with capped backoff instead of stopping after a small retry budget.
 
 ### 8.3 Store Integration
 
@@ -61,6 +63,7 @@ Checkpoint: stop when pod and deployment lists can receive watch updates without
 
 - [x] Watch parser tests.
 - [x] ResourceVersion relist tests.
+- [x] Transient watch reconnect persistence test.
 - [x] Store merge tests for active Pods and Deployments ADDED events.
 - [x] Detail refresh tests for active Pod and Deployment MODIFIED events.
 - [x] Selected-resource detail watch refresh test.
