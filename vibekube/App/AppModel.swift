@@ -849,7 +849,9 @@ final class AppModel: ObservableObject {
         }
 
         let kubeconfig = loadedKubeconfig
-        resourceDetailTask = Task.detached(priority: .utility) { [weak self, resourceDetailService, kubeconfig, query] in
+        let configMapResource = ResourceNavigationItem.configMaps.discoveredResource(in: selectedDiscovery)
+        let secretResource = ResourceNavigationItem.secrets.discoveredResource(in: selectedDiscovery)
+        resourceDetailTask = Task.detached(priority: .utility) { [weak self, resourceDetailService, kubeconfig, query, configMapResource, secretResource] in
             do {
                 let detail = try await resourceDetailService.resourceDetail(
                     contextName: query.contextID,
@@ -858,9 +860,17 @@ final class AppModel: ObservableObject {
                     namespace: query.namespace,
                     name: query.name
                 )
+                let summary = await Self.expandedEnvironmentSummary(
+                    for: detail,
+                    query: query,
+                    kubeconfig: kubeconfig,
+                    resourceDetailService: resourceDetailService,
+                    configMapResource: configMapResource,
+                    secretResource: secretResource
+                )
 
                 try Task.checkCancellation()
-                await self?.finishResourceDetail(query: query, detail: detail)
+                await self?.finishResourceDetail(query: query, detail: detail, summary: summary)
             } catch is CancellationError {
                 await self?.cancelResourceDetail(query: query)
             } catch {
@@ -1306,15 +1316,211 @@ final class AppModel: ObservableObject {
         podLogStateByQuery[query] = .failed(error.localizedDescription)
     }
 
+    nonisolated private static func expandedEnvironmentSummary(
+        for detail: KubernetesResourceDetail,
+        query: ResourceDetailQuery,
+        kubeconfig: Kubeconfig,
+        resourceDetailService: KubernetesResourceDetailServicing,
+        configMapResource: KubernetesDiscoveredResource?,
+        secretResource: KubernetesDiscoveredResource?
+    ) async -> KubernetesResourceDetailSummary {
+        var summary = detail.summary
+        guard summary.kind == "Pod",
+              !summary.environment.isEmpty,
+              let namespace = summary.namespace ?? query.namespace else {
+            return summary
+        }
+
+        var configMapCache: [String: [String: String]] = [:]
+        var missingConfigMaps = Set<String>()
+        var secretKeyCache: [String: [String]] = [:]
+        var missingSecrets = Set<String>()
+
+        func configMapValues(name: String) async -> [String: String]? {
+            guard !missingConfigMaps.contains(name) else {
+                return nil
+            }
+            if let cachedValues = configMapCache[name] {
+                return cachedValues
+            }
+            guard let configMapResource, configMapResource.verbs.contains("get") else {
+                missingConfigMaps.insert(name)
+                return nil
+            }
+
+            do {
+                let detail = try await resourceDetailService.resourceDetail(
+                    contextName: query.contextID,
+                    kubeconfig: kubeconfig,
+                    resource: configMapResource,
+                    namespace: namespace,
+                    name: name
+                )
+                let values = detail.configMapValues
+                configMapCache[name] = values
+                return values
+            } catch {
+                missingConfigMaps.insert(name)
+                return nil
+            }
+        }
+
+        func secretKeys(name: String) async -> [String]? {
+            guard !missingSecrets.contains(name) else {
+                return nil
+            }
+            if let cachedKeys = secretKeyCache[name] {
+                return cachedKeys
+            }
+            guard let secretResource, secretResource.verbs.contains("get") else {
+                missingSecrets.insert(name)
+                return nil
+            }
+
+            do {
+                let detail = try await resourceDetailService.resourceDetail(
+                    contextName: query.contextID,
+                    kubeconfig: kubeconfig,
+                    resource: secretResource,
+                    namespace: namespace,
+                    name: name
+                )
+                let keys = detail.secretKeys
+                secretKeyCache[name] = keys
+                return keys
+            } catch {
+                missingSecrets.insert(name)
+                return nil
+            }
+        }
+
+        var expandedContainers: [KubernetesContainerEnvironmentSummary] = []
+        for container in summary.environment {
+            var variables: [KubernetesEnvVarSummary] = []
+            var indexByVariableName: [String: Int] = [:]
+            var unresolvedEnvFrom: [KubernetesEnvFromSummary] = []
+
+            func appendOrReplace(_ variable: KubernetesEnvVarSummary) {
+                if let index = indexByVariableName[variable.name] {
+                    variables[index] = variable
+                } else {
+                    indexByVariableName[variable.name] = variables.count
+                    variables.append(variable)
+                }
+            }
+
+            for source in container.envFrom {
+                switch source.kind {
+                case .configMapRef:
+                    if let values = await configMapValues(name: source.name) {
+                        for key in values.keys.sorted() {
+                            let variableName = "\(source.prefix ?? "")\(key)"
+                            guard isValidEnvironmentVariableName(variableName) else {
+                                continue
+                            }
+
+                            appendOrReplace(KubernetesEnvVarSummary(
+                                name: variableName,
+                                literalValue: values[key],
+                                source: KubernetesEnvVarSourceSummary(
+                                    kind: .configMapKeyRef,
+                                    name: source.name,
+                                    key: key,
+                                    fieldPath: nil,
+                                    resource: nil,
+                                    isOptional: source.isOptional
+                                )
+                            ))
+                        }
+                    } else {
+                        unresolvedEnvFrom.append(source)
+                    }
+                case .secretRef:
+                    if let keys = await secretKeys(name: source.name) {
+                        for key in keys {
+                            let variableName = "\(source.prefix ?? "")\(key)"
+                            guard isValidEnvironmentVariableName(variableName) else {
+                                continue
+                            }
+
+                            appendOrReplace(KubernetesEnvVarSummary(
+                                name: variableName,
+                                literalValue: nil,
+                                source: KubernetesEnvVarSourceSummary(
+                                    kind: .secretKeyRef,
+                                    name: source.name,
+                                    key: key,
+                                    fieldPath: nil,
+                                    resource: nil,
+                                    isOptional: source.isOptional
+                                )
+                            ))
+                        }
+                    } else {
+                        unresolvedEnvFrom.append(source)
+                    }
+                }
+            }
+
+            for variable in container.variables {
+                appendOrReplace(await environmentVariableWithResolvedConfigMapValue(variable, configMapValues: configMapValues))
+            }
+
+            expandedContainers.append(
+                KubernetesContainerEnvironmentSummary(
+                    containerName: container.containerName,
+                    variables: variables,
+                    envFrom: unresolvedEnvFrom
+                )
+            )
+        }
+
+        summary.environment = expandedContainers
+        return summary
+    }
+
+    nonisolated private static func environmentVariableWithResolvedConfigMapValue(
+        _ variable: KubernetesEnvVarSummary,
+        configMapValues: (String) async -> [String: String]?
+    ) async -> KubernetesEnvVarSummary {
+        guard let source = variable.source,
+              source.kind == .configMapKeyRef,
+              let name = source.name,
+              let key = source.key,
+              variable.literalValue == nil,
+              let values = await configMapValues(name),
+              let value = values[key] else {
+            return variable
+        }
+
+        return KubernetesEnvVarSummary(
+            name: variable.name,
+            literalValue: value,
+            source: source
+        )
+    }
+
+    nonisolated private static func isValidEnvironmentVariableName(_ value: String) -> Bool {
+        guard let first = value.unicodeScalars.first,
+              first == "_" || (first >= "A" && first <= "Z") || (first >= "a" && first <= "z") else {
+            return false
+        }
+
+        return value.unicodeScalars.dropFirst().allSatisfy { scalar in
+            scalar == "_" || (scalar >= "A" && scalar <= "Z") || (scalar >= "a" && scalar <= "z") || (scalar >= "0" && scalar <= "9")
+        }
+    }
+
     private func finishResourceDetail(
         query: ResourceDetailQuery,
-        detail: KubernetesResourceDetail
+        detail: KubernetesResourceDetail,
+        summary: KubernetesResourceDetailSummary
     ) {
         resourceDetailStateByQuery[query] = .loaded(
             ResourceDetailSnapshot(
                 query: query,
                 yaml: detail.yaml,
-                summary: detail.summary,
+                summary: summary,
                 loadedAt: Date()
             )
         )

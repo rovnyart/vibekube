@@ -15,6 +15,7 @@ metadata:
     app.kubernetes.io/name: demo-runtime-config
 data:
   APP_MODE: "demo"
+  ENV_FROM_CONFIG_VALUE: "expanded-from-configmap-envfrom"
   FEATURE_FLAGS: "env-panel,secret-reveal,configmap-ref"
   LOG_LEVEL: "debug"
   PUBLIC_GREETING: "hello-from-configmap"
@@ -96,6 +97,7 @@ metadata:
     app.kubernetes.io/name: demo-envfrom-secret
 type: Opaque
 stringData:
+  ENV_FROM_SECRET_TOKEN: "expanded-from-secret-envfrom"
   PAYMENT_KEY: "secret-from-envfrom"
   WEBHOOK_SECRET: "envfrom-webhook-secret"
 ---

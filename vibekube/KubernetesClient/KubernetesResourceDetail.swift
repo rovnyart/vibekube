@@ -35,12 +35,59 @@ struct KubernetesResourceDetail: Decodable, Equatable {
         return String(decoding: data, as: UTF8.self)
     }
 
+    nonisolated var configMapValues: [String: String] {
+        guard kind == "ConfigMap" else {
+            return [:]
+        }
+
+        var values = Self.stringValues(in: value["data"])
+        for (key, value) in Self.base64Values(in: value["binaryData"]) {
+            values[key] = value
+        }
+        return values
+    }
+
+    nonisolated var secretKeys: [String] {
+        guard isSecret else {
+            return []
+        }
+
+        let dataKeys = value["data"]?.objectValue.map { Array($0.keys) } ?? []
+        let stringDataKeys = value["stringData"]?.objectValue.map { Array($0.keys) } ?? []
+        return Array(Set(dataKeys).union(stringDataKeys)).sorted()
+    }
+
     nonisolated var summary: KubernetesResourceDetailSummary {
         KubernetesResourceDetailSummary(value: value)
     }
 
     private nonisolated var isSecret: Bool {
         kind == "Secret"
+    }
+
+    private nonisolated static func stringValues(in value: KubernetesJSONValue?) -> [String: String] {
+        guard let object = value?.objectValue else {
+            return [:]
+        }
+
+        return object.reduce(into: [:]) { result, entry in
+            result[entry.key] = entry.value.displayValue
+        }
+    }
+
+    private nonisolated static func base64Values(in value: KubernetesJSONValue?) -> [String: String] {
+        guard let object = value?.objectValue else {
+            return [:]
+        }
+
+        return object.reduce(into: [:]) { result, entry in
+            guard let encodedValue = entry.value.stringValue,
+                  let data = Data(base64Encoded: encodedValue) else {
+                return
+            }
+
+            result[entry.key] = String(data: data, encoding: .utf8) ?? "<binary data>"
+        }
     }
 }
 

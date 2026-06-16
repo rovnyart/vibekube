@@ -132,7 +132,7 @@ struct vibekubeTests {
 
         #expect(model.selectedConnectionState == .connected)
         #expect(model.selectedCluster?.kubernetesVersion == "v1.30.0")
-        #expect(model.selectedDiscovery?.resourceCount == 3)
+        #expect(model.selectedDiscovery?.resourceCount == 4)
         #expect(model.selectedNamespaceSelection == AppModel.allNamespacesSelection)
         #expect(model.selectedNamespaceTitle == "All Namespaces")
         #expect(model.namespaceSelectionOptions.contains(AppModel.allNamespacesSelection))
@@ -282,6 +282,32 @@ struct vibekubeTests {
         #expect(detail.yaml.contains("kind: Pod"))
         #expect(detail.yaml.contains("name: web-0"))
         #expect(detail.yaml.contains("namespace: vibekube-demo"))
+
+        let environment = try #require(detail.summary.environment.first)
+        #expect(environment.envFrom.isEmpty)
+        #expect(environment.variables.contains {
+            $0.name == "APP_MODE" &&
+                $0.literalValue == "demo" &&
+                $0.source?.kind == .configMapKeyRef &&
+                $0.source?.name == "web-config" &&
+                $0.source?.key == "APP_MODE"
+        })
+        #expect(environment.variables.filter { $0.name == "PUBLIC_GREETING" }.count == 1)
+        #expect(environment.variables.contains {
+            $0.name == "PUBLIC_GREETING" &&
+                $0.literalValue == "hello-from-configmap" &&
+                $0.source?.kind == .configMapKeyRef &&
+                $0.source?.name == "web-config" &&
+                $0.source?.key == "PUBLIC_GREETING"
+        })
+        #expect(environment.variables.contains {
+            $0.name == "EXTRA_API_TOKEN" &&
+                $0.literalValue == nil &&
+                $0.source?.kind == .secretKeyRef &&
+                $0.source?.name == "web-secrets" &&
+                $0.source?.key == "API_TOKEN"
+        })
+        #expect(!environment.variables.contains { $0.name == "EXTRA_db-password" })
     }
 
     @MainActor
@@ -683,6 +709,7 @@ private struct SucceedingConnectionService: KubernetesConnectionServicing {
                         groupVersion: "v1",
                         resources: [
                             KubernetesAPIResource(name: "pods", singularName: "", namespaced: true, kind: "Pod", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil),
+                            KubernetesAPIResource(name: "configmaps", singularName: "", namespaced: true, kind: "ConfigMap", verbs: ["get"], shortNames: nil, categories: nil),
                             KubernetesAPIResource(name: "secrets", singularName: "", namespaced: true, kind: "Secret", verbs: ["get"], shortNames: nil, categories: nil),
                             KubernetesAPIResource(name: "events", singularName: "", namespaced: true, kind: "Event", verbs: ["list"], shortNames: nil, categories: nil)
                         ]
@@ -935,6 +962,28 @@ private struct SucceedingResourceDetailService: KubernetesResourceDetailServicin
         namespace: String?,
         name: String
     ) async throws -> KubernetesResourceDetail {
+        if resource.name == "configmaps" {
+            return try JSONDecoder().decode(
+                KubernetesResourceDetail.self,
+                from: Data(
+                    """
+                    {
+                      "apiVersion": "v1",
+                      "kind": "ConfigMap",
+                      "metadata": {
+                        "name": "\(name)",
+                        "namespace": "\(namespace ?? "vibekube-demo")"
+                      },
+                      "data": {
+                        "APP_MODE": "demo",
+                        "PUBLIC_GREETING": "hello-from-configmap"
+                      }
+                    }
+                    """.utf8
+                )
+            )
+        }
+
         if resource.name == "secrets" {
             return try JSONDecoder().decode(
                 KubernetesResourceDetail.self,
@@ -948,6 +997,7 @@ private struct SucceedingResourceDetailService: KubernetesResourceDetailServicin
                         "namespace": "\(namespace ?? "vibekube-demo")"
                       },
                       "data": {
+                        "API_TOKEN": "dGVzdC10b2tlbg==",
                         "db-password": "dGVzdC1wYXNzd29yZA=="
                       },
                       "type": "Opaque"
@@ -958,6 +1008,42 @@ private struct SucceedingResourceDetailService: KubernetesResourceDetailServicin
         }
 
         let namespaceLine = namespace.map { #""namespace": "\#($0)","# } ?? ""
+        let specLine = resource.name == "pods" ?
+            """
+            ,
+                  "spec": {
+                    "containers": [
+                      {
+                        "name": "web",
+                        "image": "nginx:1.27-alpine",
+                        "env": [
+                          {
+                            "name": "PUBLIC_GREETING",
+                            "valueFrom": {
+                              "configMapKeyRef": {
+                                "name": "web-config",
+                                "key": "PUBLIC_GREETING"
+                              }
+                            }
+                          }
+                        ],
+                        "envFrom": [
+                          {
+                            "configMapRef": {
+                              "name": "web-config"
+                            }
+                          },
+                          {
+                            "prefix": "EXTRA_",
+                            "secretRef": {
+                              "name": "web-secrets"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+            """ : ""
         return try JSONDecoder().decode(
             KubernetesResourceDetail.self,
             from: Data(
@@ -976,6 +1062,7 @@ private struct SucceedingResourceDetailService: KubernetesResourceDetailServicin
                   "status": {
                     "phase": "Running"
                   }
+                  \(specLine)
                 }
                 """.utf8
             )
