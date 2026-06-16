@@ -134,10 +134,25 @@ final class KubernetesURLSessionDelegate: NSObject, URLSessionDataDelegate {
         var trustError: CFError?
         if SecTrustEvaluateWithError(trust, &trustError) {
             completionHandler(.useCredential, URLCredential(trust: trust))
+        } else if !caCertificates.isEmpty, evaluatePinnedClusterTrust(trust) {
+            completionHandler(.useCredential, URLCredential(trust: trust))
         } else {
             recordServerTrustError(trustError)
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
+    }
+
+    private func evaluatePinnedClusterTrust(_ trust: SecTrust) -> Bool {
+        // Teleport and some Kubernetes endpoints present CA-pinned certificates
+        // that are valid for Kubernetes clients but fail Apple's stricter
+        // browser/server certificate policy. Keep the kubeconfig CA pin, but
+        // fall back to basic X.509 chain validation for these cluster certs.
+        SecTrustSetPolicies(trust, SecPolicyCreateBasicX509())
+        SecTrustSetAnchorCertificates(trust, caCertificates as CFArray)
+        SecTrustSetAnchorCertificatesOnly(trust, true)
+
+        var trustError: CFError?
+        return SecTrustEvaluateWithError(trust, &trustError)
     }
 
     func consumeServerTrustErrorMessage() -> String? {
