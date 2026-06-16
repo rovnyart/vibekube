@@ -17,6 +17,8 @@ Goal: provide a fast, native log viewer for pods, containers, and common workloa
 - [x] Scroll-aware live follow with jump-to-latest exists.
 - [x] Pause/resume exists via the Live toggle.
 - [x] Since selector exists.
+- [x] ANSI terminal escape sequences are stripped from loaded, live, copied, saved, and downloaded logs.
+- [x] Live log buffer limit is explicit and tested.
 
 ## Checkpoint Notes
 
@@ -28,11 +30,12 @@ Goal: provide a fast, native log viewer for pods, containers, and common workloa
 - Log requests support container, previous, follow, tailLines, sinceSeconds, and timestamps at the request model level.
 - The UI can toggle timestamps, live streaming, JSONL pretty-printing, search highlighting, grep-style line filtering, manual refresh, displayed-log copy, since-window filtering, and an expanded log sheet.
 - Live auto-follow is scroll-aware: if the user scrolls away from the bottom, Vibekube stops forcing the view downward and shows a jump-to-latest action.
-- Live logs are capped in memory to the most recent 5,000 lines.
+- Live logs are capped in memory to the most recent 5,000 actual log lines.
 - Previous terminated-container logs, tail selector, download-all logs, and save-current-view are wired through the Pod detail Logs tab.
 - JSONL mode safely pretty-prints valid object/array log lines and leaves malformed or plain-text lines unchanged. Grep still filters against raw log lines; copy/save displayed logs use the rendered view.
 - Since controls can limit non-live log loads to any time, 5m, 15m, 1h, or 6h. The control is disabled while Live is active because streaming should continue from the current tail instead of replaying a historical time window.
-- Large-log hardening still needs stream retry UI, ANSI handling, and explicit buffer-limit tests.
+- ANSI/control sequences are stripped before log text is stored, so search, grep, JSONL formatting, copy, save, and download all use clean text.
+- Large-log hardening still needs stream retry UI and a future Settings control for the buffer size.
 
 ## Implementation Slices
 
@@ -52,7 +55,7 @@ Goal: provide a fast, native log viewer for pods, containers, and common workloa
 - [x] Represent logs as cancellable async sequence.
 - [x] Buffer log chunks off the main actor.
 - [x] Cap memory for long streams.
-- [ ] Strip or render ANSI sequences.
+- [x] Strip ANSI sequences.
 - [ ] Handle reconnect/retry manually.
 - [x] Cancel streams on route/context change.
 
@@ -92,8 +95,8 @@ Checkpoint: stop when selecting `log-counter` can tail, stream, scroll without f
 - [x] Log query construction tests.
 - [x] App model log route and Pod log load tests.
 - [x] App model streaming append tests.
-- [ ] Streaming parser tests.
-- [ ] Buffer limit tests.
+- [x] ANSI sanitizer tests.
+- [x] Buffer limit tests.
 - [ ] Integration/manual QA against `vibekube-demo/log-counter` JSONL logs.
 
 ## Acceptance Criteria
@@ -102,7 +105,8 @@ Checkpoint: stop when selecting `log-counter` can tail, stream, scroll without f
 - [x] User can pause logs by turning Live off.
 - [x] User can search, grep, JSON-format, copy, download all logs, save displayed logs, limit logs by since-window, and view previous terminated-container logs.
 - [x] Scrolling away from the bottom disables aggressive auto-follow behavior.
-- [ ] Large logs do not freeze the app.
+- [x] Large live logs are capped before they can grow without bound.
+- [ ] Stream failure retry UI is explicit and clear.
 
 ## Validation Commands
 

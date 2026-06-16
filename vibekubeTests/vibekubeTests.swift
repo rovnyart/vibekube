@@ -455,6 +455,42 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelStripsANSISequencesFromPodLogs() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            logService: ANSILogService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitForResourceList(model, .pods)
+
+        guard case .loaded(let listSnapshot) = model.resourceListState(for: .pods),
+              let pod = listSnapshot.items.first else {
+            Issue.record("Expected pod row")
+            return
+        }
+
+        model.loadPodLogs(for: pod, containerName: "web")
+        try await waitForPodLogs(model, pod: pod, containerName: "web")
+
+        guard case .loaded(let logSnapshot) = model.podLogState(for: pod, containerName: "web") else {
+            Issue.record("Expected loaded pod logs")
+            return
+        }
+
+        #expect(logSnapshot.text == "2026-06-15T10:01:00Z error plain ok")
+
+        let downloadedText = try await model.podLogsText(for: pod, containerName: "web", tailLines: nil)
+        #expect(downloadedText == "2026-06-15T10:01:00Z error plain ok")
+    }
+
+    @MainActor
     @Test func appModelInfersMissingPodKindAndLoadsLogs() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -533,6 +569,46 @@ struct vibekubeTests {
         #expect(logSnapshot.text.contains("hello from web-0"))
         #expect(logSnapshot.text.contains("still running"))
         #expect(logSnapshot.text.components(separatedBy: "hello from web-0").count == 2)
+    }
+
+    @MainActor
+    @Test func appModelCapsLivePodLogBuffer() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            logService: BufferingLogService(),
+            loadedKubeconfig: kubeconfig(),
+            podLogLineLimit: 3
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.selectResource(.pods)
+        try await waitForResourceList(model, .pods)
+
+        guard case .loaded(let listSnapshot) = model.resourceListState(for: .pods),
+              let pod = listSnapshot.items.first else {
+            Issue.record("Expected pod row")
+            return
+        }
+
+        model.loadPodLogs(for: pod, containerName: "web", follow: true)
+        try await waitUntil("streaming pod logs capped") {
+            if case .loaded(let snapshot) = model.podLogState(for: pod, containerName: "web", follow: true) {
+                return snapshot.text.contains("line 6")
+            }
+            return false
+        }
+
+        guard case .loaded(let logSnapshot) = model.podLogState(for: pod, containerName: "web", follow: true) else {
+            Issue.record("Expected streaming pod logs")
+            return
+        }
+
+        #expect(logSnapshot.lines == ["line 4", "line 5", "line 6", ""])
+        #expect(!logSnapshot.text.contains("line 1"))
     }
 
     @MainActor
@@ -1417,6 +1493,57 @@ private struct SinceLogService: KubernetesLogServicing {
         options: KubernetesPodLogOptions
     ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
+            continuation.finish()
+        }
+    }
+}
+
+private struct ANSILogService: KubernetesLogServicing {
+    func podLogs(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) async throws -> String {
+        "2026-06-15T10:01:00Z \u{001B}[31merror\u{001B}[0m plain \u{001B}[1;32mok\u{001B}[0m"
+    }
+
+    func podLogStream(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish()
+        }
+    }
+}
+
+private struct BufferingLogService: KubernetesLogServicing {
+    func podLogs(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) async throws -> String {
+        ""
+    }
+
+    func podLogStream(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            for index in 1...6 {
+                continuation.yield("line \(index)\n")
+            }
             continuation.finish()
         }
     }

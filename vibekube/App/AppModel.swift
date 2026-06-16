@@ -42,7 +42,8 @@ final class AppModel: ObservableObject {
     private var dashboardMetricsTask: Task<Void, Never>?
     private var podLogTask: Task<Void, Never>?
     private var envSecretValueTasksByQuery: [ResourceEnvSecretValueQuery: Task<Void, Never>]
-    private static let podLogLineLimit = 5_000
+    private let podLogLineLimit: Int
+    nonisolated static let defaultPodLogLineLimit = 5_000
     private static let resourceWatchReconnectDelaysNanoseconds: [UInt64] = [
         500_000_000,
         1_000_000_000,
@@ -110,6 +111,7 @@ final class AppModel: ObservableObject {
         dashboardMetricsStateByQuery: [DashboardMetricsQuery: DashboardMetricsLoadState]? = nil,
         podLogStateByQuery: [PodLogQuery: PodLogLoadState]? = nil,
         diagnosticsLogger: DiagnosticsLogger = .shared,
+        podLogLineLimit: Int = 5_000,
         selectedNamespaceByContextID: [ClusterSummary.ID: String] = [:]
     ) {
         var userPreferences = userPreferences ?? InMemoryUserPreferences()
@@ -132,6 +134,7 @@ final class AppModel: ObservableObject {
         self.metricsService = metricsService
         self.logService = logService
         self.diagnosticsLogger = diagnosticsLogger
+        self.podLogLineLimit = max(1, podLogLineLimit)
         self.userPreferences = userPreferences
         self.loadedKubeconfig = loadedKubeconfig ?? .empty
         self.discoveryByContextID = discoveryByContextID
@@ -1002,16 +1005,17 @@ final class AppModel: ObservableObject {
         }
 
         guard let logService else {
-            return PreviewKubernetesLogService.previewLogText
+            return Self.sanitizedPodLogText(PreviewKubernetesLogService.previewLogText)
         }
 
-        return try await logService.podLogs(
+        let text = try await logService.podLogs(
             contextName: query.contextID,
             kubeconfig: loadedKubeconfig,
             namespace: query.namespace,
             podName: query.podName,
             options: podLogOptions(for: query)
         )
+        return Self.sanitizedPodLogText(text)
     }
 
     func resourceDetailState(
@@ -1687,11 +1691,12 @@ final class AppModel: ObservableObject {
     }
 
     private func finishPodLogs(query: PodLogQuery, text: String) {
+        let sanitizedText = Self.sanitizedPodLogText(text)
         podLogTask = nil
         podLogStateByQuery[query] = .loaded(
             PodLogSnapshot(
                 query: query,
-                text: Self.cappedPodLogText(text),
+                text: Self.cappedPodLogText(sanitizedText, lineLimit: podLogLineLimit),
                 loadedAt: Date()
             )
         )
@@ -1701,7 +1706,8 @@ final class AppModel: ObservableObject {
             message: "Pod logs loaded.",
             contextID: query.contextID,
             metadata: podLogDiagnosticsMetadata(query).merging([
-                "lineCount": "\(text.split(separator: "\n", omittingEmptySubsequences: false).count)"
+                "lineCount": "\(sanitizedText.split(separator: "\n", omittingEmptySubsequences: false).count)",
+                "lineLimit": "\(podLogLineLimit)"
             ]) { _, new in new }
         )
     }
@@ -1748,7 +1754,10 @@ final class AppModel: ObservableObject {
         podLogStateByQuery[query] = .loaded(
             PodLogSnapshot(
                 query: query,
-                text: Self.cappedPodLogText(currentText + chunk),
+                text: Self.cappedPodLogText(
+                    Self.sanitizedPodLogText(currentText + chunk),
+                    lineLimit: podLogLineLimit
+                ),
                 loadedAt: Date()
             )
         )
@@ -2239,13 +2248,23 @@ final class AppModel: ObservableObject {
         )
     }
 
-    private static func cappedPodLogText(_ text: String) -> String {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        guard lines.count > podLogLineLimit else {
+    private static func sanitizedPodLogText(_ text: String) -> String {
+        LogTextSanitizer.stripANSISequences(from: text)
+    }
+
+    private static func cappedPodLogText(_ text: String, lineLimit: Int) -> String {
+        let hasTrailingNewline = text.hasSuffix("\n")
+        var lines = text.components(separatedBy: "\n")
+        if hasTrailingNewline {
+            lines.removeLast()
+        }
+
+        guard lines.count > lineLimit else {
             return text
         }
 
-        return lines.suffix(podLogLineLimit).joined(separator: "\n")
+        let cappedText = lines.suffix(lineLimit).joined(separator: "\n")
+        return hasTrailingNewline ? cappedText + "\n" : cappedText
     }
 
     private func dashboardResourceStates() -> [ResourceNavigationItem: ResourceListLoadState] {
