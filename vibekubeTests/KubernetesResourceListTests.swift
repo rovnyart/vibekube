@@ -1407,6 +1407,37 @@ struct KubernetesResourceListTests {
         #expect(detail.summary.ingressServices.last?.route == "echo-web.vibekube.local /api")
     }
 
+    @Test func extractsResourceDetailPersistentVolumeClaimBinding() throws {
+        let detail = try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "PersistentVolumeClaim",
+                  "metadata": {
+                    "name": "demo-shared-cache",
+                    "namespace": "vibekube-demo"
+                  },
+                  "spec": {
+                    "volumeName": "demo-shared-cache-pv",
+                    "accessModes": [
+                      "ReadWriteOnce"
+                    ],
+                    "resources": {
+                      "requests": {
+                        "storage": "64Mi"
+                      }
+                    }
+                  }
+                }
+                """.utf8
+            )
+        )
+
+        #expect(detail.summary.persistentVolumeName == "demo-shared-cache-pv")
+    }
+
     @Test func decodesCoreAndEventsAPIResourceEvents() throws {
         let list = try JSONDecoder().decode(
             KubernetesResourceEventList.self,

@@ -107,6 +107,7 @@ struct KubernetesResourceDetailSummary: Equatable {
     var ownerReferences: [KubernetesOwnerReferenceSummary]
     var labelSelector: KubernetesLabelSelectorSummary?
     var ingressServices: [KubernetesIngressServiceBackendSummary]
+    var persistentVolumeName: String?
     var conditions: [KubernetesConditionSummary]
     var containers: [KubernetesContainerSummary]
     var environment: [KubernetesContainerEnvironmentSummary]
@@ -132,6 +133,7 @@ struct KubernetesResourceDetailSummary: Equatable {
         self.ownerReferences = Self.ownerReferences(in: metadata)
         self.labelSelector = Self.labelSelector(in: spec, kind: kind)
         self.ingressServices = Self.ingressServices(in: spec, kind: kind)
+        self.persistentVolumeName = Self.persistentVolumeName(in: spec, kind: kind)
         self.conditions = Self.conditions(in: statusObject)
         self.containers = Self.containers(in: spec, status: statusObject)
         self.environment = Self.environment(in: spec)
@@ -284,6 +286,19 @@ struct KubernetesResourceDetailSummary: Equatable {
         let hostText = host?.isEmpty == false ? host : "*"
         let pathText = path?.isEmpty == false ? path : "/"
         return "\(hostText ?? "*") \(pathText ?? "/")"
+    }
+
+    nonisolated private static func persistentVolumeName(
+        in spec: KubernetesJSONValue?,
+        kind: String?
+    ) -> String? {
+        guard kind == "PersistentVolumeClaim",
+              let volumeName = spec?["volumeName"]?.stringValue,
+              !volumeName.isEmpty else {
+            return nil
+        }
+
+        return volumeName
     }
 
     nonisolated private static func conditions(in status: KubernetesJSONValue?) -> [KubernetesConditionSummary] {

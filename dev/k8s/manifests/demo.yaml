@@ -6,6 +6,42 @@ metadata:
     app.kubernetes.io/part-of: vibekube
 ---
 apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: demo-shared-cache-pv
+  labels:
+    app.kubernetes.io/name: demo-shared-cache
+    app.kubernetes.io/part-of: vibekube
+spec:
+  capacity:
+    storage: 64Mi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  volumeMode: Filesystem
+  hostPath:
+    path: /tmp/vibekube-demo/shared-cache
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: demo-shared-cache
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/name: demo-shared-cache
+    app.kubernetes.io/part-of: vibekube
+spec:
+  storageClassName: ""
+  volumeName: demo-shared-cache-pv
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 64Mi
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: demo-runner

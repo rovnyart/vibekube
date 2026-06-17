@@ -2167,6 +2167,19 @@ private struct ResourceDetailOverviewView: View {
                     }
                 }
 
+                if let persistentVolumeName = summary.persistentVolumeName {
+                    SectionSurface(title: "Related Storage", systemImage: "externaldrive") {
+                        ResourceRelatedNamedResourceRow(
+                            title: "Open PersistentVolume",
+                            resource: .persistentVolumes,
+                            name: persistentVolumeName,
+                            detail: "Bound volume",
+                            namespace: nil,
+                            openNamedResource: openNamedResource
+                        )
+                    }
+                }
+
                 if !summary.conditions.isEmpty {
                     SectionSurface(title: "Conditions", systemImage: "checklist") {
                         VStack(spacing: 10) {
