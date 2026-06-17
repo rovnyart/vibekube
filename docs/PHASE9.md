@@ -53,8 +53,8 @@ Checkpoint: keep `kubectl` isolated behind a service protocol. Native API stream
 - [x] Select pod from Pods table context menu.
 - [x] Select container from Pod Containers detail tab.
 - [x] Select default shell command.
+- [x] Add terminal app preference.
 - [ ] Add command/shell picker.
-- [ ] Add terminal app preference.
 - [ ] Track external exec launches as lightweight history.
 - [ ] Cleanup on app quit/context switch if future native sessions are added.
 
@@ -72,6 +72,7 @@ Checkpoint: keep `kubectl` isolated behind a service protocol. Native API stream
 - [x] Unit tests for workload debug summary signals.
 - [x] Unit tests for port-forward session lifecycle.
 - [x] Unit tests for external-terminal exec command construction.
+- [x] Unit tests for external-terminal exec preference wiring.
 - [ ] Manual QA for port-forwarding demo service.
 - [ ] Manual QA for exec into demo pod.
 - [ ] Shutdown cleanup QA.

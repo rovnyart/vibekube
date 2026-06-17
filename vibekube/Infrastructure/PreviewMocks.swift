@@ -27,6 +27,7 @@ struct PreviewUserPreferences: UserPreferencesProviding {
     var kubeconfigPathOverride: String?
     var tableDensity: TableDensity = .comfortable
     var appAppearance: AppAppearance = .system
+    var externalTerminalApp: ExternalTerminalApp = .terminal
 
     mutating func resetLocalPreferences() {
         self = PreviewUserPreferences()

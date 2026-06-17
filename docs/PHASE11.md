@@ -24,6 +24,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] Kubeconfig path override setting exists.
 - [x] Table density setting exists.
 - [x] Appearance behavior setting exists.
+- [x] External terminal app setting exists.
 - [x] Reset local preferences action exists.
 - [x] Privacy statement exists.
 
@@ -39,6 +40,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] Refresh/watch behavior.
 - [x] Table density.
 - [x] Appearance behavior.
+- [x] External terminal app.
 - [x] Log buffer limits.
 - [x] Secret reveal confirmation behavior.
 - [ ] AI settings placeholder.

@@ -110,6 +110,19 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelUpdatesExternalTerminalAppSetting() {
+        let model = AppModel(clusters: ClusterSummary.preview)
+
+        #expect(model.externalTerminalApp == .terminal)
+
+        model.setExternalTerminalApp(.ghostty)
+        #expect(model.externalTerminalApp == .ghostty)
+
+        model.setExternalTerminalApp(.warp)
+        #expect(model.externalTerminalApp == .warp)
+    }
+
+    @MainActor
     @Test func appModelResetsLocalPreferences() {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -126,7 +139,8 @@ struct vibekubeTests {
                 resourceWatchesEnabled: false,
                 kubeconfigPathOverride: "/tmp/custom-kubeconfig",
                 tableDensity: .compact,
-                appAppearance: .dark
+                appAppearance: .dark,
+                externalTerminalApp: .ghostty
             )
         )
 
@@ -145,6 +159,7 @@ struct vibekubeTests {
         #expect(model.kubeconfigPathOverride == nil)
         #expect(model.tableDensity == .comfortable)
         #expect(model.appAppearance == .system)
+        #expect(model.externalTerminalApp == .terminal)
     }
 
     @MainActor
@@ -351,9 +366,33 @@ struct vibekubeTests {
                 podName: "echo-web-abc",
                 containerName: "web",
                 command: ["/bin/sh"],
-                kubeconfigPath: nil
+                kubeconfigPath: nil,
+                terminalApp: .terminal
             )
         ])
+    }
+
+    @MainActor
+    @Test func appModelUsesPreferredTerminalAppForPodExec() async throws {
+        let execLauncher = RecordingExecLauncher()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            execLauncher: execLauncher,
+            userPreferences: InMemoryUserPreferences(externalTerminalApp: .iTerm2),
+            loadedKubeconfig: kubeconfig()
+        )
+        let pod = try podResource(name: "echo-web-abc", namespace: "vibekube-demo")
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.openPodExec(for: pod, containerName: "web")
+        try await waitUntil("exec launch request") {
+            execLauncher.requests.count == 1
+        }
+
+        #expect(execLauncher.requests.first?.terminalApp == .iTerm2)
     }
 
     @Test func terminalExecLauncherBuildsKubectlExecCommand() {
@@ -364,7 +403,8 @@ struct vibekubeTests {
                 podName: "echo-web-abc",
                 containerName: "web",
                 command: ["/bin/sh"],
-                kubeconfigPath: "/Users/art/.kube/config"
+                kubeconfigPath: "/Users/art/.kube/config",
+                terminalApp: .terminal
             )
         )
 

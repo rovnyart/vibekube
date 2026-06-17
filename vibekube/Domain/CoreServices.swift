@@ -54,6 +54,41 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     }
 }
 
+enum ExternalTerminalApp: String, CaseIterable, Identifiable {
+    case terminal
+    case iTerm2
+    case ghostty
+    case warp
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .terminal:
+            "Terminal"
+        case .iTerm2:
+            "iTerm2"
+        case .ghostty:
+            "Ghostty"
+        case .warp:
+            "Warp"
+        }
+    }
+
+    var appName: String {
+        switch self {
+        case .terminal:
+            "Terminal"
+        case .iTerm2:
+            "iTerm"
+        case .ghostty:
+            "Ghostty"
+        case .warp:
+            "Warp"
+        }
+    }
+}
+
 protocol ClusterRegistry {
     var clusters: [ClusterSummary] { get }
 }
@@ -81,5 +116,6 @@ protocol UserPreferencesProviding {
     var kubeconfigPathOverride: String? { get set }
     var tableDensity: TableDensity { get set }
     var appAppearance: AppAppearance { get set }
+    var externalTerminalApp: ExternalTerminalApp { get set }
     mutating func resetLocalPreferences()
 }

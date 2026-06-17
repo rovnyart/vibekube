@@ -36,6 +36,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var kubeconfigPathOverride: String?
     @Published private(set) var tableDensity: TableDensity
     @Published private(set) var appAppearance: AppAppearance
+    @Published private(set) var externalTerminalApp: ExternalTerminalApp
     @Published private(set) var resourceLabelFilter: ResourceLabelFilter?
     @Published private(set) var resourceOwnerFilter: ResourceOwnerFilter?
     @Published private(set) var resourceNameFilter: ResourceNameFilter?
@@ -191,6 +192,7 @@ final class AppModel: ObservableObject {
         self.kubeconfigPathOverride = userPreferences.kubeconfigPathOverride
         self.tableDensity = userPreferences.tableDensity
         self.appAppearance = userPreferences.appAppearance
+        self.externalTerminalApp = userPreferences.externalTerminalApp
         self.resourceLabelFilter = nil
         self.resourceOwnerFilter = nil
         self.resourceNameFilter = nil
@@ -753,6 +755,21 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func setExternalTerminalApp(_ terminalApp: ExternalTerminalApp) {
+        guard externalTerminalApp != terminalApp else {
+            return
+        }
+
+        externalTerminalApp = terminalApp
+        userPreferences.externalTerminalApp = terminalApp
+        recordDiagnostic(
+            .info,
+            category: "settings",
+            message: "External terminal app changed.",
+            metadata: ["terminalApp": terminalApp.rawValue]
+        )
+    }
+
     func resetLocalPreferences() {
         let previousKubeconfigPathOverride = kubeconfigPathOverride
         userPreferences.resetLocalPreferences()
@@ -768,6 +785,7 @@ final class AppModel: ObservableObject {
         kubeconfigPathOverride = userPreferences.kubeconfigPathOverride
         tableDensity = userPreferences.tableDensity
         appAppearance = userPreferences.appAppearance
+        externalTerminalApp = userPreferences.externalTerminalApp
         configureDiagnostics()
 
         cancelResourceWatchTasks()
@@ -919,7 +937,8 @@ final class AppModel: ObservableObject {
             podName: podName,
             containerName: containerName,
             command: command,
-            kubeconfigPath: kubeconfigPath(forContextID: selectedClusterID)
+            kubeconfigPath: kubeconfigPath(forContextID: selectedClusterID),
+            terminalApp: externalTerminalApp
         )
 
         Task { [weak self, execLauncher] in

@@ -15,6 +15,7 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         static let kubeconfigPathOverride = "vibekube.kubeconfig.pathOverride"
         static let tableDensity = "vibekube.table.density"
         static let appAppearance = "vibekube.appearance"
+        static let externalTerminalApp = "vibekube.exec.externalTerminalApp"
 
         static let all = [
             selectedContextID,
@@ -29,7 +30,8 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
             resourceWatchesEnabled,
             kubeconfigPathOverride,
             tableDensity,
-            appAppearance
+            appAppearance,
+            externalTerminalApp
         ]
     }
 
@@ -158,6 +160,19 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Key.appAppearance)
+        }
+    }
+
+    var externalTerminalApp: ExternalTerminalApp {
+        get {
+            guard let rawValue = defaults.string(forKey: Key.externalTerminalApp),
+                  let terminalApp = ExternalTerminalApp(rawValue: rawValue) else {
+                return .terminal
+            }
+            return terminalApp
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Key.externalTerminalApp)
         }
     }
 

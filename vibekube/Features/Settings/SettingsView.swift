@@ -107,6 +107,24 @@ struct SettingsView: View {
                     }
                 }
 
+                SectionSurface(title: "Debugging", systemImage: "ladybug") {
+                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 12) {
+                        GridRow {
+                            Text("External terminal")
+                                .foregroundStyle(.secondary)
+
+                            Picker("External terminal", selection: externalTerminalAppBinding) {
+                                ForEach(ExternalTerminalApp.allCases) { terminalApp in
+                                    Text(terminalApp.title).tag(terminalApp)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(width: 180, alignment: .leading)
+                        }
+                    }
+                }
+
                 SectionSurface(title: "Logs", systemImage: "terminal") {
                     Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 12) {
                         GridRow {
@@ -221,7 +239,7 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Local preferences")
                                 .font(.headline)
-                            Text("Reset saved navigation, namespace choices, kubeconfig path, appearance, logs, Secret, watch, and diagnostics settings.")
+                            Text("Reset saved navigation, namespace choices, kubeconfig path, appearance, debugging, logs, Secret, watch, and diagnostics settings.")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -375,6 +393,17 @@ struct SettingsView: View {
             set: { appearance in
                 DispatchQueue.main.async {
                     appModel.setAppAppearance(appearance)
+                }
+            }
+        )
+    }
+
+    private var externalTerminalAppBinding: Binding<ExternalTerminalApp> {
+        Binding(
+            get: { appModel.externalTerminalApp },
+            set: { terminalApp in
+                DispatchQueue.main.async {
+                    appModel.setExternalTerminalApp(terminalApp)
                 }
             }
         )
