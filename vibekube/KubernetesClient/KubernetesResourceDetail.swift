@@ -517,6 +517,12 @@ struct KubernetesResourceDetailSummary: Equatable {
                         )
                     )
                 case .terminated:
+                    if container.kind == .initContainer,
+                       state.exitCode == 0,
+                       state.reason == "Completed" {
+                        break
+                    }
+
                     let exitText = state.exitCode.map { "exit \($0)" } ?? "terminated"
                     signals.append(
                         KubernetesResourceDebugSignal(

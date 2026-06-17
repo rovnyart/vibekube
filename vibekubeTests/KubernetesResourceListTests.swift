@@ -1393,6 +1393,77 @@ struct KubernetesResourceListTests {
         #expect(debugSummary.signals.isEmpty)
     }
 
+    @Test func ignoresSuccessfulInitContainerCompletionInDebugSummary() throws {
+        let detail = try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "Pod",
+                  "metadata": {
+                    "name": "echo-web",
+                    "namespace": "vibekube-demo"
+                  },
+                  "spec": {
+                    "initContainers": [
+                      {
+                        "name": "prepare-runtime",
+                        "image": "busybox:1.36"
+                      }
+                    ],
+                    "containers": [
+                      {
+                        "name": "nginx",
+                        "image": "nginx:1.27"
+                      }
+                    ]
+                  },
+                  "status": {
+                    "phase": "Running",
+                    "conditions": [
+                      {
+                        "type": "Ready",
+                        "status": "True",
+                        "reason": "ContainersReady"
+                      }
+                    ],
+                    "initContainerStatuses": [
+                      {
+                        "name": "prepare-runtime",
+                        "ready": true,
+                        "restartCount": 0,
+                        "state": {
+                          "terminated": {
+                            "reason": "Completed",
+                            "exitCode": 0
+                          }
+                        }
+                      }
+                    ],
+                    "containerStatuses": [
+                      {
+                        "name": "nginx",
+                        "ready": true,
+                        "restartCount": 0,
+                        "state": {
+                          "running": {
+                            "startedAt": "2026-06-17T16:52:26Z"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+                """.utf8
+            )
+        )
+
+        let debugSummary = try #require(detail.summary.debugSummary)
+        #expect(debugSummary.severity == .healthy)
+        #expect(debugSummary.signals.isEmpty)
+    }
+
     @Test func redactsSecretDetailYAML() throws {
         let detail = try JSONDecoder().decode(
             KubernetesResourceDetail.self,
