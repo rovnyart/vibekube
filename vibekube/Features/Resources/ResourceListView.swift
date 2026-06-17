@@ -143,6 +143,10 @@ struct ResourceListView: View {
 
                     TableColumn("Namespace", value: \.displayNamespace)
                         .width(min: 150, ideal: 180)
+                    TableColumn("Ready", value: \.podReadySortValue) { resource in
+                        ResourcePodReadyCell(resource: resource)
+                    }
+                    .width(min: 72, ideal: 86, max: 110)
                     TableColumn("Status", value: \.displayStatus) { resource in
                         ResourcePodStatusCell(resource: resource)
                     }
@@ -590,6 +594,38 @@ private struct ResourcePodStatusCell: View {
         }
 
         return "Pod status: \(resource.displayStatus)"
+    }
+}
+
+private struct ResourcePodReadyCell: View {
+    let resource: KubernetesUnstructuredResource
+
+    var body: some View {
+        Text(resource.podReadyDescription)
+            .font(.callout.monospacedDigit().weight(isEmphasized ? .semibold : .regular))
+            .foregroundStyle(tint)
+            .help("Ready containers: \(resource.podReadyDescription)")
+    }
+
+    private var isEmphasized: Bool {
+        resource.isPodUnhealthy && resource.podReadyCount < resource.podContainerCount
+    }
+
+    private var tint: Color {
+        if resource.podReadyDescription == "-" {
+            return .secondary
+        }
+
+        let status = resource.displayStatus.lowercased()
+        if status.contains("succeeded") || status.contains("completed") {
+            return .secondary
+        }
+
+        if resource.podReadyCount == resource.podContainerCount {
+            return .green
+        }
+
+        return resource.isPodUnhealthy ? .red : .orange
     }
 }
 

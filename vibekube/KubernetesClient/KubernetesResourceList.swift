@@ -119,6 +119,40 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
         return String(podRestartCount)
     }
 
+    var podReadyCount: Int {
+        guard isPod else {
+            return 0
+        }
+
+        return podRegularContainerStatuses.filter { status in
+            status["ready"]?.boolValue == true
+        }.count
+    }
+
+    var podContainerCount: Int {
+        guard isPod else {
+            return 0
+        }
+
+        if !podRegularContainerStatuses.isEmpty {
+            return podRegularContainerStatuses.count
+        }
+
+        return spec?["containers"]?.arrayValue?.count ?? 0
+    }
+
+    var podReadySortValue: Int {
+        podReadyCount * 1_000 + podContainerCount
+    }
+
+    var podReadyDescription: String {
+        guard isPod, podContainerCount > 0 else {
+            return "-"
+        }
+
+        return "\(podReadyCount)/\(podContainerCount)"
+    }
+
     var isPodUnhealthy: Bool {
         guard isPod else {
             return false
@@ -324,6 +358,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
         .flatMap { statuses in
             statuses.compactMap(\.objectValue)
         }
+    }
+
+    private var podRegularContainerStatuses: [[String: KubernetesJSONValue]] {
+        status?["containerStatuses"]?.arrayValue?.compactMap(\.objectValue) ?? []
     }
 
     private func podContainerStatusText(

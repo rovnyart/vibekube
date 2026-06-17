@@ -169,6 +169,7 @@ struct KubernetesResourceListTests {
                         "containerStatuses": [
                           {
                             "name": "worker",
+                            "ready": false,
                             "restartCount": 3,
                             "state": {
                               "waiting": {
@@ -178,6 +179,7 @@ struct KubernetesResourceListTests {
                           },
                           {
                             "name": "sidecar",
+                            "ready": true,
                             "restartCount": 2,
                             "state": {
                               "running": {}
@@ -198,6 +200,7 @@ struct KubernetesResourceListTests {
                         "containerStatuses": [
                           {
                             "name": "app",
+                            "ready": false,
                             "restartCount": 0,
                             "state": {
                               "waiting": {
@@ -217,9 +220,13 @@ struct KubernetesResourceListTests {
         #expect(list.items[0].displayStatus == "CrashLoopBackOff")
         #expect(list.items[0].podRestartCount == 6)
         #expect(list.items[0].podRestartCountDescription == "6")
+        #expect(list.items[0].podReadyCount == 1)
+        #expect(list.items[0].podContainerCount == 2)
+        #expect(list.items[0].podReadyDescription == "1/2")
         #expect(list.items[0].isPodUnhealthy)
         #expect(list.items[1].displayStatus == "ImagePullBackOff")
         #expect(list.items[1].podRestartCount == 0)
+        #expect(list.items[1].podReadyDescription == "0/1")
         #expect(list.items[1].isPodUnhealthy)
     }
 
