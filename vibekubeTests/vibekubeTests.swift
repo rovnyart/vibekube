@@ -654,6 +654,60 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelAddsPodRollupToWorkloadDetail() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: WatchableWorkloadsConnectionService(),
+            resourceListService: PodRollupResourceListService(),
+            resourceDetailService: DeploymentDetailService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+        try await waitUntil("workload and pod discovery") {
+            ResourceNavigationItem.deployments.discoveredResource(in: model.selectedDiscovery) != nil &&
+                ResourceNavigationItem.pods.discoveredResource(in: model.selectedDiscovery) != nil
+        }
+
+        let row = try JSONDecoder().decode(
+            KubernetesUnstructuredResource.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "apps/v1",
+                  "kind": "Deployment",
+                  "metadata": {
+                    "name": "web",
+                    "namespace": "vibekube-demo"
+                  },
+                  "status": {
+                    "readyReplicas": 1,
+                    "replicas": 2
+                  }
+                }
+                """.utf8
+            )
+        )
+
+        model.loadResourceDetail(for: .deployments, row: row)
+        try await waitForResourceDetail(model, resource: .deployments, row: row)
+
+        guard case .loaded(let detail) = model.resourceDetailState(for: .deployments, row: row) else {
+            Issue.record("Expected loaded deployment detail")
+            return
+        }
+
+        let rollup = try #require(detail.summary.podRollup)
+        #expect(rollup.totalCount == 2)
+        #expect(rollup.readyCount == 1)
+        #expect(rollup.runningCount == 2)
+        #expect(rollup.needsAttentionCount == 1)
+        #expect(rollup.restartCount == 3)
+        #expect(rollup.pods.map(\.name) == ["web-1", "web-0"])
+    }
+
+    @MainActor
     @Test func appModelLoadsResourceEventsForSelectedDetail() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -1814,6 +1868,100 @@ private struct SucceedingResourceListService: KubernetesResourceListServicing {
     }
 }
 
+private struct PodRollupResourceListService: KubernetesResourceListServicing {
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        guard resource.name == "pods", namespace == "vibekube-demo" else {
+            return KubernetesUnstructuredResourceList(
+                apiVersion: resource.groupVersion,
+                kind: "\(resource.kind)List",
+                metadata: nil,
+                items: []
+            )
+        }
+
+        return try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "web-0",
+                        "namespace": "vibekube-demo",
+                        "labels": {
+                          "app": "web",
+                          "tier": "frontend"
+                        }
+                      },
+                      "status": {
+                        "phase": "Running",
+                        "containerStatuses": [
+                          {
+                            "name": "app",
+                            "ready": true,
+                            "restartCount": 0
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "web-1",
+                        "namespace": "vibekube-demo",
+                        "labels": {
+                          "app": "web",
+                          "tier": "frontend"
+                        }
+                      },
+                      "status": {
+                        "phase": "Running",
+                        "containerStatuses": [
+                          {
+                            "name": "app",
+                            "ready": false,
+                            "restartCount": 3,
+                            "state": {
+                              "waiting": {
+                                "reason": "CrashLoopBackOff"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "api-0",
+                        "namespace": "vibekube-demo",
+                        "labels": {
+                          "app": "api",
+                          "tier": "backend"
+                        }
+                      },
+                      "status": {
+                        "phase": "Running"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+    }
+}
+
 private struct WatchingPodResourceListService: KubernetesResourceListServicing {
     func listResources(
         contextName: String,
@@ -2841,6 +2989,66 @@ private struct SucceedingResourceDetailService: KubernetesResourceDetailServicin
                     "phase": "Running"
                   }
                   \(specLine)
+                }
+                """.utf8
+            )
+        )
+    }
+}
+
+private struct DeploymentDetailService: KubernetesResourceDetailServicing {
+    func resourceDetail(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String
+    ) async throws -> KubernetesResourceDetail {
+        if resource.name != "deployments" {
+            return try JSONDecoder().decode(
+                KubernetesResourceDetail.self,
+                from: Data(
+                    """
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "\(name)",
+                        "namespace": "\(namespace ?? "vibekube-demo")"
+                      }
+                    }
+                    """.utf8
+                )
+            )
+        }
+
+        return try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "apps/v1",
+                  "kind": "Deployment",
+                  "metadata": {
+                    "name": "web",
+                    "namespace": "vibekube-demo",
+                    "uid": "deployment-web"
+                  },
+                  "spec": {
+                    "replicas": 2,
+                    "selector": {
+                      "matchLabels": {
+                        "app": "web",
+                        "tier": "frontend"
+                      }
+                    }
+                  },
+                  "status": {
+                    "replicas": 2,
+                    "readyReplicas": 1,
+                    "availableReplicas": 1,
+                    "updatedReplicas": 2
+                  }
                 }
                 """.utf8
             )

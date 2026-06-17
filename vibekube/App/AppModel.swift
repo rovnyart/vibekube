@@ -67,6 +67,13 @@ final class AppModel: ObservableObject {
         2_000_000_000
     ]
     private static let resourceWatchFlushDelayNanoseconds: UInt64 = 150_000_000
+    nonisolated private static let podRollupSupportedKinds: Set<String> = [
+        "Deployment",
+        "ReplicaSet",
+        "StatefulSet",
+        "DaemonSet",
+        "Job"
+    ]
 
     static let allNamespacesSelection = DashboardMetricsQuery.allNamespacesSelection
     static let dashboardResourceItems: [ResourceNavigationItem] = [
@@ -1480,7 +1487,8 @@ final class AppModel: ObservableObject {
         let kubeconfig = loadedKubeconfig
         let configMapResource = ResourceNavigationItem.configMaps.discoveredResource(in: selectedDiscovery)
         let secretResource = ResourceNavigationItem.secrets.discoveredResource(in: selectedDiscovery)
-        resourceDetailTask = Task.detached(priority: .utility) { [weak self, resourceDetailService, kubeconfig, query, configMapResource, secretResource] in
+        let podResource = ResourceNavigationItem.pods.discoveredResource(in: selectedDiscovery)
+        resourceDetailTask = Task.detached(priority: .utility) { [weak self, resourceDetailService, resourceListService, kubeconfig, query, configMapResource, secretResource, podResource] in
             do {
                 let detail = try await resourceDetailService.resourceDetail(
                     contextName: query.contextID,
@@ -1497,9 +1505,16 @@ final class AppModel: ObservableObject {
                     configMapResource: configMapResource,
                     secretResource: secretResource
                 )
+                let enrichedSummary = await Self.summaryWithPodRollup(
+                    summary,
+                    query: query,
+                    kubeconfig: kubeconfig,
+                    resourceListService: resourceListService,
+                    podResource: podResource
+                )
 
                 try Task.checkCancellation()
-                await self?.finishResourceDetail(query: query, detail: detail, summary: summary)
+                await self?.finishResourceDetail(query: query, detail: detail, summary: enrichedSummary)
             } catch is CancellationError {
                 await self?.cancelResourceDetail(query: query)
             } catch {
@@ -2847,6 +2862,43 @@ final class AppModel: ObservableObject {
         )
     }
 
+    nonisolated private static func summaryWithPodRollup(
+        _ summary: KubernetesResourceDetailSummary,
+        query: ResourceDetailQuery,
+        kubeconfig: Kubeconfig,
+        resourceListService: KubernetesResourceListServicing?,
+        podResource: KubernetesDiscoveredResource?
+    ) async -> KubernetesResourceDetailSummary {
+        guard let resourceListService,
+              let podResource,
+              podResource.verbs.contains("list"),
+              podRollupSupportedKinds.contains(summary.kind ?? query.resource.kind),
+              let selector = summary.labelSelector,
+              let namespace = summary.namespace ?? query.namespace,
+              !namespace.isEmpty else {
+            return summary
+        }
+
+        do {
+            let podList = try await resourceListService.listResources(
+                contextName: query.contextID,
+                kubeconfig: kubeconfig,
+                resource: podResource,
+                namespace: namespace
+            )
+            try Task.checkCancellation()
+
+            let matchingPods = podList.items.filter { selector.matches(labels: $0.metadata.labels) }
+            var enrichedSummary = summary
+            enrichedSummary.podRollup = KubernetesPodRollupSummary(pods: matchingPods)
+            return enrichedSummary
+        } catch is CancellationError {
+            return summary
+        } catch {
+            return summary
+        }
+    }
+
     nonisolated private static func isValidEnvironmentVariableName(_ value: String) -> Bool {
         guard let first = value.unicodeScalars.first,
               first == "_" || (first >= "A" && first <= "Z") || (first >= "a" && first <= "z") else {
@@ -2878,7 +2930,8 @@ final class AppModel: ObservableObject {
             contextID: query.contextID,
             metadata: resourceDetailDiagnosticsMetadata(query).merging([
                 "kind": summary.kind ?? query.resource.kind,
-                "hasEnvironment": summary.environment.isEmpty ? "false" : "true"
+                "hasEnvironment": summary.environment.isEmpty ? "false" : "true",
+                "hasPodRollup": summary.podRollup == nil ? "false" : "true"
             ]) { _, new in new }
         )
         startResourceDetailWatchIfNeeded(query: query, resourceVersion: summary.resourceVersion)

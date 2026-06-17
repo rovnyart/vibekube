@@ -2257,6 +2257,12 @@ private struct ResourceDetailOverviewView: View {
                     }
                 }
 
+                if let podRollup = summary.podRollup {
+                    SectionSurface(title: "Pod Rollup", systemImage: "square.stack.3d.up") {
+                        ResourcePodRollupView(rollup: podRollup)
+                    }
+                }
+
                 if !summary.containers.isEmpty {
                     SectionSurface(title: "Containers", systemImage: "cube") {
                         VStack(spacing: 0) {
@@ -5287,6 +5293,88 @@ private struct ResourceKeyValueList: View {
                 }
             }
         }
+    }
+}
+
+private struct ResourcePodRollupView: View {
+    let rollup: KubernetesPodRollupSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ResourceKeyValueList(rows: rollup.rows)
+
+            if !rollup.pods.isEmpty {
+                Divider()
+
+                VStack(spacing: 0) {
+                    ForEach(rollup.pods) { pod in
+                        ResourcePodRollupRow(pod: pod)
+
+                        if pod.id != rollup.pods.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+            }
+
+            if hiddenPodCount > 0 {
+                Text("\(hiddenPodCount) more matching pods")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var hiddenPodCount: Int {
+        max(0, rollup.totalCount - rollup.pods.count)
+    }
+}
+
+private struct ResourcePodRollupRow: View {
+    let pod: KubernetesPodRollupItem
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: pod.needsAttention ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(pod.needsAttention ? .orange : .green)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(pod.name)
+                    .font(.callout.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+
+                Text(pod.status)
+                    .font(.caption)
+                    .foregroundStyle(pod.needsAttention ? .orange : .secondary)
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+            }
+
+            Spacer(minLength: 12)
+
+            HStack(spacing: 14) {
+                podMetric(title: "Ready", value: pod.ready, tint: pod.ready == "-" ? .secondary : .primary)
+                podMetric(title: "Restarts", value: "\(pod.restarts)", tint: pod.restarts > 0 ? .orange : .secondary)
+                podMetric(title: "Age", value: pod.age, tint: .secondary)
+            }
+        }
+        .padding(.vertical, 7)
+    }
+
+    private func podMetric(title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(value)
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(minWidth: 52, alignment: .trailing)
     }
 }
 
