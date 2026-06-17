@@ -2,6 +2,38 @@
 
 All notable user-facing changes are tracked here.
 
+## 0.4.0 - 2026-06-17
+
+Changes since 0.3.0:
+
+### Added
+
+- Workload debug summaries with warning Event context, scheduling signals, QoS, container state, restart/termination details, probes, volume mounts, and resource requests/limits.
+- `kubectl`-backed port-forward sessions for Pods, Services, and Deployments, including visible session state and stop controls.
+- External-terminal Pod exec from the Pods table context menu and from per-container detail actions.
+- External terminal preference for exec shells, with hardcoded choices for Terminal, iTerm2, Ghostty, and Warp.
+- Container detail inspector for Pod manifests.
+- Related-resource navigation for owner references, workload and Service selectors, Ingress backends, PVC/PV bindings, CronJob Jobs, and Pod ConfigMap/Secret references.
+- Environment inspector support for `env`, `envFrom`, ConfigMap refs, Secret refs, field refs, resource refs, and volume-sourced environment context.
+- Save/export action for rendered resource YAML.
+- Demo cluster fixtures for debugging unhealthy Pods, failed Jobs, image pull failures, restarts, previous logs, port-forwarding, exec, Ingresses, and storage relationships.
+
+### Changed
+
+- Pods table now emphasizes operational signals with a wider Name column, readiness and restart columns, and clearer unhealthy status styling.
+- Large `envFrom` ConfigMap and Secret groups are collapsed so very large environment surfaces remain usable.
+- Resource relationship jumps now use scoped filters instead of leaking through the global search box.
+- Standalone hidden Logs navigation was removed; logs now live in the relevant resource detail flow.
+- Phase docs were realigned with the current product state after the debugging and relationship work.
+
+### Fixed
+
+- Stopping a port-forward no longer reports a normal user stop as a failed session.
+- Completed init containers no longer incorrectly make otherwise healthy Pods look unhealthy.
+- Workload debug summaries show clearer context when related warning Events are absent.
+- `kubectl` launch paths include common Homebrew and system locations for port-forward and exec helpers.
+- Reverted an early workload Pod rollup that was noisy and unreliable in the detail overview.
+
 ## 0.3.0 - 2026-06-16
 
 Changes since 0.2.0:

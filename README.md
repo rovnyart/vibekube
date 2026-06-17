@@ -14,8 +14,11 @@ Download the latest notarized macOS build from [vibekube.tech](https://vibekube.
 - Kubeconfig discovery with support for standard Kubernetes auth, client certificates, bearer tokens, and exec credential plugins such as Teleport `tsh`.
 - Fast resource browsing for common Kubernetes resources and CRDs.
 - Resource inspector with Overview, Events, Logs, Env, searchable/copyable/saveable YAML, Metadata, and Conditions tabs.
-- Workload debug summaries that call out common unhealthy signals and jump to the relevant detail tabs.
+- Workload debug summaries that call out unhealthy signals, warning Events, scheduling context, container state, probes, mounts, and resource requests/limits.
+- Practical debug actions, including `kubectl`-backed port-forwarding and external-terminal Pod exec from Pod context menus or per-container detail.
+- Related-resource navigation for common Kubernetes paths such as owner references, workload/service selectors, Ingress backends, PVC/PV bindings, and Pod ConfigMap/Secret references.
 - Rich pod logs: live streaming, timestamps, search, grep-style filtering, JSONL formatting, previous container logs, fullscreen mode, copy, save, and download-all.
+- Large Env views stay navigable by grouping and collapsing `envFrom` ConfigMap and Secret values.
 - Real-time watches for active resource lists and selected resource details, with reconnect handling after idle/background timeouts.
 - Safe Secret handling: Secret manifest payloads are redacted by default, Secret-backed env values are masked until explicitly revealed, and diagnostics redact sensitive data.
 - Optional local diagnostics logging to `~/Library/Logs/Vibekube`, disabled by default.
