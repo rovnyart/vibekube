@@ -81,4 +81,5 @@ protocol UserPreferencesProviding {
     var kubeconfigPathOverride: String? { get set }
     var tableDensity: TableDensity { get set }
     var appAppearance: AppAppearance { get set }
+    mutating func resetLocalPreferences()
 }

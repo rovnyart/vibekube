@@ -554,6 +554,45 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func resetLocalPreferences() {
+        let previousKubeconfigPathOverride = kubeconfigPathOverride
+        userPreferences.resetLocalPreferences()
+
+        selectedNamespaceByContextID = userPreferences.selectedNamespaceByContextID
+        diagnosticsFileLoggingEnabled = userPreferences.diagnosticsFileLoggingEnabled
+        diagnosticsIncludeClusterNames = userPreferences.diagnosticsIncludeClusterNames
+        diagnosticsRetentionDays = userPreferences.diagnosticsRetentionDays
+        podLogLineLimit = Self.clampedPodLogLineLimit(userPreferences.podLogLineLimit)
+        secretRevealRequiresConfirmation = userPreferences.secretRevealRequiresConfirmation
+        defaultNamespaceBehavior = userPreferences.defaultNamespaceBehavior
+        resourceWatchesEnabled = userPreferences.resourceWatchesEnabled
+        kubeconfigPathOverride = userPreferences.kubeconfigPathOverride
+        tableDensity = userPreferences.tableDensity
+        appAppearance = userPreferences.appAppearance
+        configureDiagnostics()
+
+        cancelResourceWatchTasks()
+        cancelResourceDetailWatchTasks()
+
+        if previousKubeconfigPathOverride != kubeconfigPathOverride,
+           kubeconfigLoader != nil {
+            kubeconfigLoader = kubeconfigLoader?.withPathOverride(kubeconfigPathOverride)
+            reloadKubeconfig()
+        } else {
+            navigate(
+                clusterID: Self.initialClusterID(in: clusters, preferredClusterID: nil),
+                resource: .dashboard
+            )
+            refreshSelectedNamespaceScope()
+        }
+
+        recordDiagnostic(
+            .info,
+            category: "settings",
+            message: "Local preferences reset."
+        )
+    }
+
     func clearRecentDiagnostics() {
         Task { [diagnosticsLogger] in
             await diagnosticsLogger.clearRecentEvents()

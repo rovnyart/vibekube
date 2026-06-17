@@ -15,6 +15,22 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         static let kubeconfigPathOverride = "vibekube.kubeconfig.pathOverride"
         static let tableDensity = "vibekube.table.density"
         static let appAppearance = "vibekube.appearance"
+
+        static let all = [
+            selectedContextID,
+            selectedResourceID,
+            selectedNamespaceByContextID,
+            diagnosticsFileLoggingEnabled,
+            diagnosticsIncludeClusterNames,
+            diagnosticsRetentionDays,
+            podLogLineLimit,
+            secretRevealRequiresConfirmation,
+            defaultNamespaceBehavior,
+            resourceWatchesEnabled,
+            kubeconfigPathOverride,
+            tableDensity,
+            appAppearance
+        ]
     }
 
     var defaults: UserDefaults = .standard
@@ -142,6 +158,12 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Key.appAppearance)
+        }
+    }
+
+    func resetLocalPreferences() {
+        for key in Key.all {
+            defaults.removeObject(forKey: key)
         }
     }
 }

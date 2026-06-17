@@ -110,6 +110,44 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelResetsLocalPreferences() {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            userPreferences: InMemoryUserPreferences(
+                selectedContextID: "staging",
+                selectedResourceID: ResourceNavigationItem.services.rawValue,
+                selectedNamespaceByContextID: ["staging": "payments"],
+                diagnosticsFileLoggingEnabled: true,
+                diagnosticsIncludeClusterNames: true,
+                diagnosticsRetentionDays: 14,
+                podLogLineLimit: 20_000,
+                secretRevealRequiresConfirmation: false,
+                defaultNamespaceBehavior: .contextNamespace,
+                resourceWatchesEnabled: false,
+                kubeconfigPathOverride: "/tmp/custom-kubeconfig",
+                tableDensity: .compact,
+                appAppearance: .dark
+            )
+        )
+
+        model.resetLocalPreferences()
+
+        #expect(model.selectedClusterID == "kind-vibekube-dev")
+        #expect(model.selectedResource == .dashboard)
+        #expect(model.selectedNamespaceSelection == AppModel.allNamespacesSelection)
+        #expect(model.diagnosticsFileLoggingEnabled == false)
+        #expect(model.diagnosticsIncludeClusterNames == false)
+        #expect(model.diagnosticsRetentionDays == 7)
+        #expect(model.podLogLineLimit == AppModel.defaultPodLogLineLimit)
+        #expect(model.secretRevealRequiresConfirmation == true)
+        #expect(model.defaultNamespaceBehavior == .allNamespaces)
+        #expect(model.resourceWatchesEnabled == true)
+        #expect(model.kubeconfigPathOverride == nil)
+        #expect(model.tableDensity == .comfortable)
+        #expect(model.appAppearance == .system)
+    }
+
+    @MainActor
     @Test func appModelReloadsKubeconfigWhenPathOverrideChanges() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

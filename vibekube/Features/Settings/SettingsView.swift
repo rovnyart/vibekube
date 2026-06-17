@@ -5,6 +5,7 @@ struct SettingsView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var exportStatus: String?
     @State private var kubeconfigPathDraft = ""
+    @State private var showsResetLocalPreferencesConfirmation = false
 
     private let logLineLimitOptions = [1_000, 5_000, 10_000, 20_000, 50_000]
 
@@ -214,6 +215,27 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                SectionSurface(title: "Maintenance", systemImage: "wrench.and.screwdriver") {
+                    HStack(alignment: .firstTextBaseline, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Local preferences")
+                                .font(.headline)
+                            Text("Reset saved navigation, namespace choices, kubeconfig path, appearance, logs, Secret, watch, and diagnostics settings.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        Spacer()
+
+                        Button(role: .destructive) {
+                            showsResetLocalPreferencesConfirmation = true
+                        } label: {
+                            Label("Reset", systemImage: "arrow.counterclockwise")
+                        }
+                    }
+                }
             }
             .padding(20)
             .frame(maxWidth: 820, alignment: .leading)
@@ -226,6 +248,17 @@ struct SettingsView: View {
         }
         .onChange(of: appModel.kubeconfigPathOverride) { _, newValue in
             kubeconfigPathDraft = newValue ?? ""
+        }
+        .alert("Reset Local Preferences?", isPresented: $showsResetLocalPreferencesConfirmation) {
+            Button("Reset", role: .destructive) {
+                appModel.resetLocalPreferences()
+                kubeconfigPathDraft = appModel.kubeconfigPathOverride ?? ""
+                exportStatus = "Local preferences reset"
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This resets Vibekube settings and saved navigation on this Mac. It does not delete diagnostics files, kubeconfig files, or cluster data.")
         }
     }
 
