@@ -36,6 +36,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var appAppearance: AppAppearance
     @Published private(set) var resourceLabelFilter: ResourceLabelFilter?
     @Published private(set) var resourceOwnerFilter: ResourceOwnerFilter?
+    @Published private(set) var resourceNameFilter: ResourceNameFilter?
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
     private var kubeconfigLoader: KubeconfigLoader?
@@ -177,6 +178,7 @@ final class AppModel: ObservableObject {
         self.appAppearance = userPreferences.appAppearance
         self.resourceLabelFilter = nil
         self.resourceOwnerFilter = nil
+        self.resourceNameFilter = nil
         self.selectedNamespaceByContextID = selectedNamespaceByContextID.isEmpty
             ? userPreferences.selectedNamespaceByContextID
             : selectedNamespaceByContextID
@@ -339,6 +341,9 @@ final class AppModel: ObservableObject {
         if resourceOwnerFilter?.targetResource != resource {
             resourceOwnerFilter = nil
         }
+        if resourceNameFilter?.targetResource != resource {
+            resourceNameFilter = nil
+        }
         navigate(clusterID: selectedClusterID, resource: resource)
         cancelResourceWatchTasks()
         cancelResourceDetailWatchTasks()
@@ -373,6 +378,7 @@ final class AppModel: ObservableObject {
 
         searchText = ""
         resourceLabelFilter = nil
+        resourceNameFilter = nil
         resourceOwnerFilter = ResourceOwnerFilter(
             sourceTitle: sourceTitle,
             owner: owner,
@@ -412,6 +418,7 @@ final class AppModel: ObservableObject {
 
         searchText = ""
         resourceOwnerFilter = nil
+        resourceNameFilter = nil
         resourceLabelFilter = ResourceLabelFilter(sourceTitle: sourceTitle, selector: selector)
 
         if previousResource == .pods {
@@ -425,13 +432,24 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func navigateToResource(_ targetResource: ResourceNavigationItem, name: String, namespace: String?) {
+    func navigateToResource(
+        _ targetResource: ResourceNavigationItem,
+        name: String,
+        namespace: String?,
+        sourceTitle: String
+    ) {
         guard let selectedClusterID else {
             return
         }
 
+        searchText = ""
         resourceLabelFilter = nil
         resourceOwnerFilter = nil
+        resourceNameFilter = ResourceNameFilter(
+            sourceTitle: sourceTitle,
+            targetResource: targetResource,
+            name: name
+        )
         let previousResource = selectedResource
         let previousNamespaceSelection = selectedNamespaceSelection
         if let targetDiscovery = targetResource.discoveredResource(in: selectedDiscovery),
@@ -442,9 +460,6 @@ final class AppModel: ObservableObject {
             selectedNamespaceByContextID[selectedClusterID] = namespace
             userPreferences.selectedNamespaceByContextID = selectedNamespaceByContextID
         }
-
-        searchText = name
-        focusSearchField()
 
         if previousResource == targetResource {
             if previousNamespaceSelection != selectedNamespaceSelection {
@@ -463,8 +478,14 @@ final class AppModel: ObservableObject {
             return
         }
 
+        searchText = ""
         resourceLabelFilter = nil
         resourceOwnerFilter = nil
+        resourceNameFilter = ResourceNameFilter(
+            sourceTitle: "\(owner.kind)/\(owner.name)",
+            targetResource: targetResource,
+            name: owner.name
+        )
         let previousResource = selectedResource
         let previousNamespaceSelection = selectedNamespaceSelection
         if let targetDiscovery = targetResource.discoveredResource(in: selectedDiscovery),
@@ -475,9 +496,6 @@ final class AppModel: ObservableObject {
             selectedNamespaceByContextID[selectedClusterID] = namespace
             userPreferences.selectedNamespaceByContextID = selectedNamespaceByContextID
         }
-
-        searchText = owner.name
-        focusSearchField()
 
         if previousResource == targetResource {
             if previousNamespaceSelection != selectedNamespaceSelection {
@@ -539,6 +557,7 @@ final class AppModel: ObservableObject {
         searchText = ""
         resourceLabelFilter = nil
         resourceOwnerFilter = nil
+        resourceNameFilter = nil
     }
 
     func clearResourceLabelFilter() {
@@ -547,6 +566,10 @@ final class AppModel: ObservableObject {
 
     func clearResourceOwnerFilter() {
         resourceOwnerFilter = nil
+    }
+
+    func clearResourceNameFilter() {
+        resourceNameFilter = nil
     }
 
     func setDiagnosticsFileLoggingEnabled(_ enabled: Bool) {

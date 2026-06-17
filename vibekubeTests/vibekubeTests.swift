@@ -239,8 +239,11 @@ struct vibekubeTests {
         #expect(ResourceNavigationItem.navigationItem(forOwnerKind: "Widget") == nil)
         #expect(model.selectedResource == .deployments)
         #expect(model.selectedNamespaceSelection == "vibekube-demo")
-        #expect(model.searchText == "echo-web")
-        #expect(model.searchFocusRequestID == 1)
+        #expect(model.searchText == "")
+        #expect(model.resourceNameFilter?.title == "Deployments for Deployment/echo-web")
+        #expect(model.resourceNameFilter?.detail == "echo-web")
+        #expect(model.resourceNameFilter?.targetResource == .deployments)
+        #expect(model.searchFocusRequestID == 0)
 
         guard case .loaded(let snapshot) = model.resourceListState(for: .deployments) else {
             Issue.record("Expected loaded deployment list")
@@ -264,16 +267,24 @@ struct vibekubeTests {
         try await waitForConnectionState(model, .connected)
         model.searchText = "old search"
 
-        model.navigateToResource(.services, name: "echo-web", namespace: "vibekube-demo")
+        model.navigateToResource(
+            .services,
+            name: "echo-web",
+            namespace: "vibekube-demo",
+            sourceTitle: "Ingress/echo-web"
+        )
 
         try await waitForResourceList(model, .services)
 
         #expect(model.selectedResource == .services)
         #expect(model.selectedNamespaceSelection == "vibekube-demo")
-        #expect(model.searchText == "echo-web")
+        #expect(model.searchText == "")
         #expect(model.resourceLabelFilter == nil)
         #expect(model.resourceOwnerFilter == nil)
-        #expect(model.searchFocusRequestID == 1)
+        #expect(model.resourceNameFilter?.title == "Services for Ingress/echo-web")
+        #expect(model.resourceNameFilter?.detail == "echo-web")
+        #expect(model.resourceNameFilter?.targetResource == .services)
+        #expect(model.searchFocusRequestID == 0)
 
         guard case .loaded(let snapshot) = model.resourceListState(for: .services) else {
             Issue.record("Expected loaded service list")
@@ -282,6 +293,10 @@ struct vibekubeTests {
 
         #expect(snapshot.query.resource.name == "services")
         #expect(snapshot.query.namespaceSelection == "vibekube-demo")
+
+        model.selectResource(.pods)
+        #expect(model.searchText == "")
+        #expect(model.resourceNameFilter == nil)
     }
 
     @MainActor

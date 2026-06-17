@@ -524,6 +524,13 @@ struct ResourceListView: View {
                 }
             }
 
+            if let nameFilter = appModel.resourceNameFilter,
+               nameFilter.targetResource == item {
+                ResourceNameFilterBadge(filter: nameFilter) {
+                    appModel.clearResourceNameFilter()
+                }
+            }
+
             Button {
                 appModel.loadResourceList(for: item, force: true)
             } label: {
@@ -587,6 +594,11 @@ struct ResourceListView: View {
             return "No \(item.title.lowercased()) are owned by \(ownerFilter.detail)."
         }
 
+        if let nameFilter = appModel.resourceNameFilter,
+           nameFilter.targetResource == item {
+            return "No \(item.title.lowercased()) match \(nameFilter.detail)."
+        }
+
         let searchText = appModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !searchText.isEmpty {
             return "No rows match the current search."
@@ -616,9 +628,17 @@ struct ResourceListView: View {
             relationshipFilteredRows = labelFilteredRows
         }
 
+        let nameFilteredRows: [KubernetesUnstructuredResource]
+        if let nameFilter = appModel.resourceNameFilter,
+           nameFilter.targetResource == item {
+            nameFilteredRows = relationshipFilteredRows.filter { nameFilter.matches($0) }
+        } else {
+            nameFilteredRows = relationshipFilteredRows
+        }
+
         let rows = searchText.isEmpty
-            ? relationshipFilteredRows
-            : relationshipFilteredRows.filter { $0.searchBlob.contains(searchText) }
+            ? nameFilteredRows
+            : nameFilteredRows.filter { $0.searchBlob.contains(searchText) }
 
         return ResourceListRowOrdering.orderedRows(
             rows,
@@ -1544,6 +1564,42 @@ private struct ResourceOwnerFilterBadge: View {
     }
 }
 
+private struct ResourceNameFilterBadge: View {
+    let filter: ResourceNameFilter
+    let clear: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrowshape.turn.up.right.circle")
+                .imageScale(.small)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(filter.title)
+                    .lineLimit(1)
+                Text(filter.detail)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Button(action: clear) {
+                Label("Clear Resource Filter", systemImage: "xmark.circle.fill")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Clear resource filter")
+        }
+        .font(.caption.weight(.medium))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .foregroundStyle(.blue)
+        .background(Color.blue.opacity(0.12), in: Capsule())
+        .help("\(filter.title): \(filter.detail)")
+        .accessibilityIdentifier("resource.list.nameFilter")
+    }
+}
+
 private struct ResourceDetailTabsView: View {
     let item: ResourceNavigationItem
     let rows: [KubernetesUnstructuredResource]
@@ -1803,8 +1859,13 @@ private struct ResourceDetailView: View {
                         namespace: namespace
                     )
                 },
-                openNamedResource: { targetResource, name, namespace in
-                    appModel.navigateToResource(targetResource, name: name, namespace: namespace)
+                openNamedResource: { targetResource, name, namespace, sourceTitle in
+                    appModel.navigateToResource(
+                        targetResource,
+                        name: name,
+                        namespace: namespace,
+                        sourceTitle: sourceTitle
+                    )
                 }
             )
         case .events:
@@ -2049,7 +2110,7 @@ private struct ResourceDetailOverviewView: View {
     let openOwner: (KubernetesOwnerReferenceSummary, String?) -> Void
     let openPods: (KubernetesLabelSelectorSummary, String?, String) -> Void
     let openOwnedResources: (KubernetesOwnerReferenceSummary, ResourceNavigationItem, String?, String) -> Void
-    let openNamedResource: (ResourceNavigationItem, String, String?) -> Void
+    let openNamedResource: (ResourceNavigationItem, String, String?, String) -> Void
 
     private let columns = [
         GridItem(.adaptive(minimum: 170), spacing: 12)
@@ -2160,6 +2221,7 @@ private struct ResourceDetailOverviewView: View {
                                     name: backend.name,
                                     detail: backend.route,
                                     namespace: namespaceTextForOwner,
+                                    sourceTitle: sourceTitle,
                                     openNamedResource: openNamedResource
                                 )
                             }
@@ -2175,6 +2237,7 @@ private struct ResourceDetailOverviewView: View {
                             name: persistentVolumeName,
                             detail: "Bound volume",
                             namespace: nil,
+                            sourceTitle: sourceTitle,
                             openNamedResource: openNamedResource
                         )
                     }
@@ -4641,11 +4704,12 @@ private struct ResourceRelatedNamedResourceRow: View {
     let name: String
     let detail: String
     let namespace: String?
-    let openNamedResource: (ResourceNavigationItem, String, String?) -> Void
+    let sourceTitle: String
+    let openNamedResource: (ResourceNavigationItem, String, String?, String) -> Void
 
     var body: some View {
         Button {
-            openNamedResource(resource, name, namespace)
+            openNamedResource(resource, name, namespace, sourceTitle)
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "arrowshape.turn.up.right")

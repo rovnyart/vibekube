@@ -85,6 +85,24 @@ struct ResourceOwnerFilter: Equatable {
     }
 }
 
+struct ResourceNameFilter: Equatable {
+    var sourceTitle: String
+    var targetResource: ResourceNavigationItem
+    var name: String
+
+    var title: String {
+        "\(targetResource.title) for \(sourceTitle)"
+    }
+
+    var detail: String {
+        name
+    }
+
+    func matches(_ resource: KubernetesUnstructuredResource) -> Bool {
+        resource.metadata.name == name
+    }
+}
+
 struct ResourceListLoadingProgress: Equatable {
     var query: ResourceListQuery
     var startedAt: Date
