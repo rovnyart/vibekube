@@ -782,6 +782,102 @@ struct KubernetesResourceListTests {
         #expect(list.items[2].isStatefulSetUnhealthy)
     }
 
+    @Test func daemonSetRowsExposeScheduleSignal() throws {
+        let list = try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "apps/v1",
+                  "kind": "DaemonSetList",
+                  "items": [
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "DaemonSet",
+                      "metadata": {
+                        "name": "node-agent",
+                        "namespace": "vibekube-demo"
+                      },
+                      "status": {
+                        "desiredNumberScheduled": 1,
+                        "currentNumberScheduled": 1,
+                        "numberReady": 1,
+                        "numberAvailable": 1,
+                        "updatedNumberScheduled": 1,
+                        "numberMisscheduled": 0
+                      }
+                    },
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "DaemonSet",
+                      "metadata": {
+                        "name": "node-agent-rollout",
+                        "namespace": "vibekube-demo"
+                      },
+                      "status": {
+                        "desiredNumberScheduled": 2,
+                        "currentNumberScheduled": 2,
+                        "numberReady": 1,
+                        "numberAvailable": 1,
+                        "numberUnavailable": 1,
+                        "updatedNumberScheduled": 1,
+                        "numberMisscheduled": 0
+                      }
+                    },
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "DaemonSet",
+                      "metadata": {
+                        "name": "node-agent-broken",
+                        "namespace": "vibekube-demo"
+                      },
+                      "status": {
+                        "desiredNumberScheduled": 1,
+                        "currentNumberScheduled": 1,
+                        "numberReady": 0,
+                        "numberAvailable": 0,
+                        "numberUnavailable": 1,
+                        "updatedNumberScheduled": 1,
+                        "numberMisscheduled": 0
+                      }
+                    },
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "DaemonSet",
+                      "metadata": {
+                        "name": "node-agent-misscheduled",
+                        "namespace": "vibekube-demo"
+                      },
+                      "status": {
+                        "desiredNumberScheduled": 1,
+                        "currentNumberScheduled": 1,
+                        "numberReady": 1,
+                        "numberAvailable": 1,
+                        "updatedNumberScheduled": 1,
+                        "numberMisscheduled": 1
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        #expect(list.items[0].displayStatus == "Ready")
+        #expect(list.items[0].daemonSetDesiredDescription == "1")
+        #expect(list.items[0].daemonSetCurrentDescription == "1")
+        #expect(list.items[0].daemonSetReadyDescription == "1")
+        #expect(list.items[0].daemonSetAvailableDescription == "1")
+        #expect(list.items[0].daemonSetMisscheduledDescription == "0")
+        #expect(!list.items[0].isDaemonSetUnhealthy)
+        #expect(list.items[1].displayStatus == "Updating")
+        #expect(!list.items[1].isDaemonSetUnhealthy)
+        #expect(list.items[2].displayStatus == "Unavailable")
+        #expect(list.items[2].isDaemonSetUnhealthy)
+        #expect(list.items[3].displayStatus == "Misscheduled")
+        #expect(list.items[3].isDaemonSetUnhealthy)
+    }
+
     @Test func rendersResourceDetailYAML() throws {
         let detail = try JSONDecoder().decode(
             KubernetesResourceDetail.self,

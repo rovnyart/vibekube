@@ -102,6 +102,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             return statefulSetStatus
         }
 
+        if let daemonSetStatus = daemonSetDisplayStatus {
+            return daemonSetStatus
+        }
+
         if let phase = status?["phase"]?.stringValue, !phase.isEmpty {
             return phase
         }
@@ -469,6 +473,115 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             statefulSetReadyReplicas < statefulSetDesiredReplicas
     }
 
+    var daemonSetDesiredNumberScheduled: Int {
+        guard isDaemonSet else {
+            return 0
+        }
+
+        return status?["desiredNumberScheduled"]?.intValue ?? 0
+    }
+
+    var daemonSetCurrentNumberScheduled: Int {
+        guard isDaemonSet else {
+            return 0
+        }
+
+        return status?["currentNumberScheduled"]?.intValue ?? 0
+    }
+
+    var daemonSetNumberReady: Int {
+        guard isDaemonSet else {
+            return 0
+        }
+
+        return status?["numberReady"]?.intValue ?? 0
+    }
+
+    var daemonSetNumberAvailable: Int {
+        guard isDaemonSet else {
+            return 0
+        }
+
+        return status?["numberAvailable"]?.intValue ?? 0
+    }
+
+    var daemonSetNumberUnavailable: Int {
+        guard isDaemonSet else {
+            return 0
+        }
+
+        return status?["numberUnavailable"]?.intValue ??
+            max(0, daemonSetDesiredNumberScheduled - daemonSetNumberAvailable)
+    }
+
+    var daemonSetUpdatedNumberScheduled: Int {
+        guard isDaemonSet else {
+            return 0
+        }
+
+        return status?["updatedNumberScheduled"]?.intValue ?? 0
+    }
+
+    var daemonSetNumberMisscheduled: Int {
+        guard isDaemonSet else {
+            return 0
+        }
+
+        return status?["numberMisscheduled"]?.intValue ?? 0
+    }
+
+    var daemonSetDesiredDescription: String {
+        guard isDaemonSet else {
+            return "-"
+        }
+
+        return String(daemonSetDesiredNumberScheduled)
+    }
+
+    var daemonSetCurrentDescription: String {
+        guard isDaemonSet else {
+            return "-"
+        }
+
+        return String(daemonSetCurrentNumberScheduled)
+    }
+
+    var daemonSetReadyDescription: String {
+        guard isDaemonSet else {
+            return "-"
+        }
+
+        return String(daemonSetNumberReady)
+    }
+
+    var daemonSetAvailableDescription: String {
+        guard isDaemonSet else {
+            return "-"
+        }
+
+        return String(daemonSetNumberAvailable)
+    }
+
+    var daemonSetMisscheduledDescription: String {
+        guard isDaemonSet else {
+            return "-"
+        }
+
+        return String(daemonSetNumberMisscheduled)
+    }
+
+    var isDaemonSetUnhealthy: Bool {
+        guard isDaemonSet else {
+            return false
+        }
+
+        let status = displayStatus.lowercased()
+        return status.contains("unavailable") ||
+            status.contains("misscheduled") ||
+            daemonSetNumberMisscheduled > 0 ||
+            daemonSetNumberUnavailable > 0 && daemonSetUpdatedNumberScheduled >= daemonSetDesiredNumberScheduled
+    }
+
     var labelsSummary: String {
         guard let labels = metadata.labels, !labels.isEmpty else {
             return "-"
@@ -640,6 +753,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
 
     private var isStatefulSet: Bool {
         displayKind == "StatefulSet"
+    }
+
+    private var isDaemonSet: Bool {
+        displayKind == "DaemonSet"
     }
 
     private var podDisplayStatus: String? {
@@ -852,6 +969,46 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
         }
 
         return currentRevision != updateRevision
+    }
+
+    private var daemonSetDisplayStatus: String? {
+        guard isDaemonSet, hasDaemonSetScheduleStatus else {
+            return nil
+        }
+
+        if daemonSetDesiredNumberScheduled == 0 {
+            return "No nodes"
+        }
+
+        if daemonSetNumberMisscheduled > 0 {
+            return "Misscheduled"
+        }
+
+        if daemonSetCurrentNumberScheduled < daemonSetDesiredNumberScheduled {
+            return "Scheduling"
+        }
+
+        if daemonSetUpdatedNumberScheduled < daemonSetDesiredNumberScheduled {
+            return "Updating"
+        }
+
+        if daemonSetNumberReady < daemonSetDesiredNumberScheduled ||
+            daemonSetNumberAvailable < daemonSetDesiredNumberScheduled ||
+            daemonSetNumberUnavailable > 0 {
+            return "Unavailable"
+        }
+
+        return "Ready"
+    }
+
+    private var hasDaemonSetScheduleStatus: Bool {
+        status?["desiredNumberScheduled"] != nil ||
+            status?["currentNumberScheduled"] != nil ||
+            status?["numberReady"] != nil ||
+            status?["numberAvailable"] != nil ||
+            status?["numberUnavailable"] != nil ||
+            status?["updatedNumberScheduled"] != nil ||
+            status?["numberMisscheduled"] != nil
     }
 
     private var podContainerStatuses: [[String: KubernetesJSONValue]] {

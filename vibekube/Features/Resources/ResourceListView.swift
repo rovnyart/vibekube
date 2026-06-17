@@ -302,6 +302,71 @@ struct ResourceListView: View {
                         Text(resource.ageDescription())
                     }
                     .width(min: 72, ideal: 90, max: 120)
+                } else if item == .daemonSets {
+                    TableColumn("Name", value: \.displayName) { resource in
+                        ResourceNameCell(
+                            resource: resource,
+                            isRecentlyUpdated: recentlyUpdatedRowIDs.contains(resource.id),
+                            density: appModel.tableDensity
+                        )
+                    }
+                    .width(min: 280, ideal: 340)
+
+                    TableColumn("Namespace", value: \.displayNamespace)
+                        .width(min: 150, ideal: 180)
+                    TableColumn("Desired", value: \.daemonSetDesiredNumberScheduled) { resource in
+                        ResourceReplicaCountCell(
+                            value: resource.daemonSetDesiredDescription,
+                            isHealthy: true,
+                            isUnhealthy: false,
+                            help: "Desired scheduled pods: \(resource.daemonSetDesiredDescription)"
+                        )
+                    }
+                    .width(min: 78, ideal: 96, max: 118)
+                    TableColumn("Current", value: \.daemonSetCurrentNumberScheduled) { resource in
+                        ResourceReplicaCountCell(
+                            value: resource.daemonSetCurrentDescription,
+                            isHealthy: resource.daemonSetCurrentNumberScheduled >= resource.daemonSetDesiredNumberScheduled,
+                            isUnhealthy: false,
+                            help: "Current scheduled pods: \(resource.daemonSetCurrentDescription)"
+                        )
+                    }
+                    .width(min: 78, ideal: 96, max: 118)
+                    TableColumn("Ready", value: \.daemonSetNumberReady) { resource in
+                        ResourceReplicaCountCell(
+                            value: resource.daemonSetReadyDescription,
+                            isHealthy: resource.daemonSetNumberReady >= resource.daemonSetDesiredNumberScheduled,
+                            isUnhealthy: resource.isDaemonSetUnhealthy,
+                            help: "Ready pods: \(resource.daemonSetReadyDescription)"
+                        )
+                    }
+                    .width(min: 78, ideal: 96, max: 118)
+                    TableColumn("Available", value: \.daemonSetNumberAvailable) { resource in
+                        ResourceReplicaCountCell(
+                            value: resource.daemonSetAvailableDescription,
+                            isHealthy: resource.daemonSetNumberAvailable >= resource.daemonSetDesiredNumberScheduled,
+                            isUnhealthy: resource.isDaemonSetUnhealthy,
+                            help: "Available pods: \(resource.daemonSetAvailableDescription)"
+                        )
+                    }
+                    .width(min: 86, ideal: 106, max: 130)
+                    TableColumn("Misscheduled", value: \.daemonSetNumberMisscheduled) { resource in
+                        ResourceReplicaCountCell(
+                            value: resource.daemonSetMisscheduledDescription,
+                            isHealthy: resource.daemonSetNumberMisscheduled == 0,
+                            isUnhealthy: resource.daemonSetNumberMisscheduled > 0,
+                            help: "Misscheduled pods: \(resource.daemonSetMisscheduledDescription)"
+                        )
+                    }
+                    .width(min: 104, ideal: 124, max: 148)
+                    TableColumn("Status", value: \.displayStatus) { resource in
+                        ResourceDaemonSetStatusCell(resource: resource)
+                    }
+                    .width(min: 150, ideal: 190)
+                    TableColumn("Age") { resource in
+                        Text(resource.ageDescription())
+                    }
+                    .width(min: 72, ideal: 90, max: 120)
                 } else if item == .jobs {
                     TableColumn("Name", value: \.displayName) { resource in
                         ResourceNameCell(
@@ -882,6 +947,69 @@ private struct ResourceReplicaSetStatusCell: View {
         }
 
         return "ReplicaSet status: \(resource.displayStatus)"
+    }
+}
+
+private struct ResourceDaemonSetStatusCell: View {
+    let resource: KubernetesUnstructuredResource
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .imageScale(.small)
+                .foregroundStyle(tint)
+
+            Text(resource.displayStatus)
+                .lineLimit(1)
+                .foregroundStyle(titleColor)
+        }
+        .font(.callout.weight(resource.isDaemonSetUnhealthy ? .semibold : .regular))
+        .padding(.horizontal, resource.isDaemonSetUnhealthy ? 7 : 0)
+        .padding(.vertical, resource.isDaemonSetUnhealthy ? 3 : 0)
+        .background {
+            if resource.isDaemonSetUnhealthy {
+                Capsule().fill(tint.opacity(0.14))
+            }
+        }
+        .help(statusHelp)
+    }
+
+    private var titleColor: Color {
+        resource.isDaemonSetUnhealthy ? tint : .primary
+    }
+
+    private var tint: Color {
+        let status = resource.displayStatus.lowercased()
+        if resource.isDaemonSetUnhealthy {
+            return .red
+        }
+
+        if status.contains("scheduling") || status.contains("updating") || status.contains("no nodes") {
+            return .orange
+        }
+
+        return .green
+    }
+
+    private var systemImage: String {
+        let status = resource.displayStatus.lowercased()
+        if resource.isDaemonSetUnhealthy {
+            return "exclamationmark.triangle.fill"
+        }
+
+        if status.contains("scheduling") || status.contains("updating") || status.contains("no nodes") {
+            return "clock"
+        }
+
+        return "checkmark.circle.fill"
+    }
+
+    private var statusHelp: String {
+        if resource.isDaemonSetUnhealthy {
+            return "DaemonSet status needs attention: \(resource.displayStatus)"
+        }
+
+        return "DaemonSet status: \(resource.displayStatus)"
     }
 }
 
