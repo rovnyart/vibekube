@@ -230,6 +230,90 @@ struct KubernetesResourceListTests {
         #expect(list.items[1].isPodUnhealthy)
     }
 
+    @Test func jobRowsExposeCompletionStatusAndFailures() throws {
+        let list = try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "batch/v1",
+                  "kind": "JobList",
+                  "items": [
+                    {
+                      "apiVersion": "batch/v1",
+                      "kind": "Job",
+                      "metadata": {
+                        "name": "complete-once",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "completions": 1
+                      },
+                      "status": {
+                        "succeeded": 1,
+                        "conditions": [
+                          {
+                            "type": "Complete",
+                            "status": "True"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "apiVersion": "batch/v1",
+                      "kind": "Job",
+                      "metadata": {
+                        "name": "failed-once",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "completions": 1
+                      },
+                      "status": {
+                        "failed": 2,
+                        "conditions": [
+                          {
+                            "type": "Failed",
+                            "status": "True",
+                            "reason": "BackoffLimitExceeded"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "apiVersion": "batch/v1",
+                      "kind": "Job",
+                      "metadata": {
+                        "name": "running",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "completions": 3
+                      },
+                      "status": {
+                        "active": 1,
+                        "succeeded": 1
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        #expect(list.items[0].displayStatus == "Complete")
+        #expect(list.items[0].jobCompletionDescription == "1/1")
+        #expect(list.items[0].jobFailedCount == 0)
+        #expect(!list.items[0].isJobUnhealthy)
+        #expect(list.items[1].displayStatus == "BackoffLimitExceeded")
+        #expect(list.items[1].jobCompletionDescription == "0/1")
+        #expect(list.items[1].jobFailedDescription == "2")
+        #expect(list.items[1].isJobUnhealthy)
+        #expect(list.items[2].displayStatus == "Running")
+        #expect(list.items[2].jobCompletionDescription == "1/3")
+        #expect(!list.items[2].isJobUnhealthy)
+    }
+
     @Test func mergesResourceListPagesInOrder() throws {
         let first = try JSONDecoder().decode(
             KubernetesUnstructuredResourceList.self,

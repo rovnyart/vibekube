@@ -161,6 +161,36 @@ struct ResourceListView: View {
                         Text(resource.ageDescription())
                     }
                     .width(min: 72, ideal: 90, max: 120)
+                } else if item == .jobs {
+                    TableColumn("Name", value: \.displayName) { resource in
+                        ResourceNameCell(
+                            resource: resource,
+                            isRecentlyUpdated: recentlyUpdatedRowIDs.contains(resource.id),
+                            density: appModel.tableDensity
+                        )
+                    }
+                    .width(min: 260, ideal: 320)
+
+                    TableColumn("Namespace", value: \.displayNamespace)
+                        .width(min: 150, ideal: 180)
+                    TableColumn("Complete", value: \.jobCompletionSortValue) { resource in
+                        ResourceJobCompletionCell(resource: resource)
+                    }
+                    .width(min: 86, ideal: 104, max: 130)
+                    TableColumn("Status", value: \.displayStatus) { resource in
+                        ResourceJobStatusCell(resource: resource)
+                    }
+                    .width(min: 140, ideal: 170)
+                    TableColumn("Failures", value: \.jobFailedCount) { resource in
+                        Text(resource.jobFailedDescription)
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(resource.jobFailedCount > 0 ? .red : .secondary)
+                    }
+                    .width(min: 82, ideal: 100, max: 124)
+                    TableColumn("Age") { resource in
+                        Text(resource.ageDescription())
+                    }
+                    .width(min: 72, ideal: 90, max: 120)
                 } else {
                     TableColumn("Name", value: \.displayName) { resource in
                         ResourceNameCell(
@@ -626,6 +656,92 @@ private struct ResourcePodReadyCell: View {
         }
 
         return resource.isPodUnhealthy ? .red : .orange
+    }
+}
+
+private struct ResourceJobCompletionCell: View {
+    let resource: KubernetesUnstructuredResource
+
+    var body: some View {
+        Text(resource.jobCompletionDescription)
+            .font(.callout.monospacedDigit().weight(isComplete ? .regular : .semibold))
+            .foregroundStyle(tint)
+            .help("Job completions: \(resource.jobCompletionDescription)")
+    }
+
+    private var isComplete: Bool {
+        resource.jobSucceededCount >= resource.jobCompletionTarget
+    }
+
+    private var tint: Color {
+        if resource.isJobUnhealthy {
+            return .red
+        }
+
+        return isComplete ? .green : .orange
+    }
+}
+
+private struct ResourceJobStatusCell: View {
+    let resource: KubernetesUnstructuredResource
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .imageScale(.small)
+                .foregroundStyle(tint)
+
+            Text(resource.displayStatus)
+                .lineLimit(1)
+                .foregroundStyle(titleColor)
+        }
+        .font(.callout.weight(resource.isJobUnhealthy ? .semibold : .regular))
+        .padding(.horizontal, resource.isJobUnhealthy ? 7 : 0)
+        .padding(.vertical, resource.isJobUnhealthy ? 3 : 0)
+        .background {
+            if resource.isJobUnhealthy {
+                Capsule().fill(tint.opacity(0.14))
+            }
+        }
+        .help(statusHelp)
+    }
+
+    private var titleColor: Color {
+        resource.isJobUnhealthy ? tint : .primary
+    }
+
+    private var tint: Color {
+        let status = resource.displayStatus.lowercased()
+        if resource.isJobUnhealthy {
+            return .red
+        }
+
+        if status.contains("running") || status.contains("pending") {
+            return .orange
+        }
+
+        return .green
+    }
+
+    private var systemImage: String {
+        if resource.isJobUnhealthy {
+            return "exclamationmark.triangle.fill"
+        }
+
+        let status = resource.displayStatus.lowercased()
+        if status.contains("running") || status.contains("pending") {
+            return "clock"
+        }
+
+        return "checkmark.circle.fill"
+    }
+
+    private var statusHelp: String {
+        if resource.isJobUnhealthy {
+            return "Job status needs attention: \(resource.displayStatus)"
+        }
+
+        return "Job status: \(resource.displayStatus)"
     }
 }
 

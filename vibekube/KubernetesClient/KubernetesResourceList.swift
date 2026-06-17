@@ -86,6 +86,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             return podStatus
         }
 
+        if let jobStatus = jobDisplayStatus {
+            return jobStatus
+        }
+
         if let phase = status?["phase"]?.stringValue, !phase.isEmpty {
             return phase
         }
@@ -170,6 +174,59 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
         }
 
         return false
+    }
+
+    var jobSucceededCount: Int {
+        guard isJob else {
+            return 0
+        }
+
+        return status?["succeeded"]?.intValue ?? 0
+    }
+
+    var jobCompletionTarget: Int {
+        guard isJob else {
+            return 0
+        }
+
+        return spec?["completions"]?.intValue ?? 1
+    }
+
+    var jobCompletionSortValue: Int {
+        jobSucceededCount * 1_000 + jobCompletionTarget
+    }
+
+    var jobCompletionDescription: String {
+        guard isJob else {
+            return "-"
+        }
+
+        return "\(jobSucceededCount)/\(jobCompletionTarget)"
+    }
+
+    var jobFailedCount: Int {
+        guard isJob else {
+            return 0
+        }
+
+        return status?["failed"]?.intValue ?? 0
+    }
+
+    var jobFailedDescription: String {
+        guard isJob else {
+            return "-"
+        }
+
+        return String(jobFailedCount)
+    }
+
+    var isJobUnhealthy: Bool {
+        guard isJob else {
+            return false
+        }
+
+        let status = displayStatus.lowercased()
+        return status.contains("failed") || status.contains("failing") || jobFailedCount > 0 && jobSucceededCount < jobCompletionTarget
     }
 
     var labelsSummary: String {
@@ -329,6 +386,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
         displayKind == "Pod"
     }
 
+    private var isJob: Bool {
+        displayKind == "Job"
+    }
+
     private var podDisplayStatus: String? {
         guard isPod else {
             return nil
@@ -346,6 +407,55 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
         }
 
         return nil
+    }
+
+    private var jobDisplayStatus: String? {
+        guard isJob else {
+            return nil
+        }
+
+        if jobConditionIsTrue("Failed") {
+            return jobConditionReason("Failed") ?? "Failed"
+        }
+
+        if jobConditionIsTrue("Complete") {
+            return "Complete"
+        }
+
+        if let active = status?["active"]?.intValue, active > 0 {
+            return "Running"
+        }
+
+        if jobFailedCount > 0 {
+            return "Failing"
+        }
+
+        if jobSucceededCount >= jobCompletionTarget, jobCompletionTarget > 0 {
+            return "Complete"
+        }
+
+        return "Pending"
+    }
+
+    private func jobConditionIsTrue(_ type: String) -> Bool {
+        jobCondition(type)?["status"]?.stringValue == "True"
+    }
+
+    private func jobConditionReason(_ type: String) -> String? {
+        guard let reason = jobCondition(type)?["reason"]?.stringValue,
+              !reason.isEmpty else {
+            return nil
+        }
+
+        return reason
+    }
+
+    private func jobCondition(_ type: String) -> [String: KubernetesJSONValue]? {
+        status?["conditions"]?.arrayValue?
+            .compactMap(\.objectValue)
+            .first { condition in
+                condition["type"]?.stringValue == type
+            }
     }
 
     private var podContainerStatuses: [[String: KubernetesJSONValue]] {
