@@ -36,10 +36,24 @@ kubectl apply -f "${ROOT_DIR}/manifests/demo.yaml"
 kubectl -n vibekube-demo rollout status deployment/echo-web --timeout=180s
 kubectl -n vibekube-demo rollout status deployment/log-counter --timeout=180s
 
+echo "Waiting for crashloop demo pod to produce previous logs..."
+for _ in {1..90}; do
+  restart_count="$(kubectl -n vibekube-demo get pod crashloop-previous-logs -o jsonpath='{.status.containerStatuses[0].restartCount}' 2>/dev/null || true)"
+  if [[ "${restart_count:-0}" =~ ^[0-9]+$ ]] && (( restart_count > 0 )); then
+    echo "crashloop-previous-logs has restarted ${restart_count} time(s)."
+    break
+  fi
+  sleep 1
+done
+
+if ! [[ "${restart_count:-0}" =~ ^[0-9]+$ ]] || (( restart_count == 0 )); then
+  echo "Warning: crashloop-previous-logs has not restarted yet; previous logs may appear shortly."
+fi
+
 echo
 echo "Vibekube dev cluster is ready."
 echo "Context: ${CONTEXT_NAME}"
 echo "Namespace: vibekube-demo"
 echo "Web demo: http://localhost:18080"
 echo
-kubectl -n vibekube-demo get pods,svc,deploy,cronjob
+kubectl -n vibekube-demo get pods,svc,deploy,cronjob,jobs

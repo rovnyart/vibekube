@@ -6,6 +6,15 @@ metadata:
     app.kubernetes.io/part-of: vibekube
 ---
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: demo-runner
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/part-of: vibekube
+    app.kubernetes.io/name: demo-runner
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: demo-runtime-config
@@ -118,6 +127,19 @@ spec:
       labels:
         app.kubernetes.io/name: echo-web
     spec:
+      serviceAccountName: demo-runner
+      initContainers:
+        - name: prepare-runtime
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "prepared-at=$(date -Iseconds)" > /work/runtime.txt
+              echo "echo-web init container completed"
+          volumeMounts:
+            - name: runtime-work
+              mountPath: /work
       containers:
         - name: nginx
           image: nginx:1.27-alpine
@@ -130,6 +152,9 @@ spec:
             - name: http
               containerPort: 80
           volumeMounts:
+            - name: runtime-work
+              mountPath: /var/run/vibekube-demo
+              readOnly: true
             - name: nginx-config
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
@@ -189,6 +214,8 @@ spec:
               cpu: 100m
               memory: 64Mi
       volumes:
+        - name: runtime-work
+          emptyDir: {}
         - name: nginx-config
           configMap:
             name: echo-web-nginx-config
@@ -227,6 +254,7 @@ spec:
       labels:
         app.kubernetes.io/name: log-counter
     spec:
+      serviceAccountName: demo-runner
       containers:
         - name: counter
           image: busybox:1.36
@@ -275,6 +303,174 @@ spec:
               cpu: 50m
               memory: 32Mi
 ---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: crashloop-previous-logs
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/part-of: vibekube
+    app.kubernetes.io/name: crashloop-previous-logs
+    app.kubernetes.io/component: debugging-fixture
+spec:
+  serviceAccountName: demo-runner
+  restartPolicy: Always
+  containers:
+    - name: crashing-worker
+      image: busybox:1.36
+      imagePullPolicy: IfNotPresent
+      env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: APP_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: demo-runtime-config
+              key: APP_MODE
+        - name: API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: demo-credentials
+              key: API_TOKEN
+      command:
+        - /bin/sh
+        - -c
+        - |
+          pod="${POD_NAME:-$(hostname)}"
+          echo "{\"ts\":\"$(date -Iseconds)\",\"level\":\"info\",\"component\":\"crashloop-fixture\",\"pod\":\"${pod}\",\"message\":\"starting controlled failure run\"}"
+          i=0
+          while [ "$i" -lt 3 ]; do
+            echo "{\"ts\":\"$(date -Iseconds)\",\"level\":\"warn\",\"component\":\"crashloop-fixture\",\"pod\":\"${pod}\",\"message\":\"about to exit\",\"count\":${i}}"
+            i=$((i + 1))
+            sleep 1
+          done
+          echo "{\"ts\":\"$(date -Iseconds)\",\"level\":\"error\",\"component\":\"crashloop-fixture\",\"pod\":\"${pod}\",\"message\":\"intentional exit for previous-log testing\",\"exitCode\":42}"
+          exit 42
+      livenessProbe:
+        exec:
+          command:
+            - /bin/sh
+            - -c
+            - test -f /etc/demo/APP_MODE || true
+        periodSeconds: 5
+        timeoutSeconds: 1
+        failureThreshold: 3
+      volumeMounts:
+        - name: runtime-config
+          mountPath: /etc/demo
+          readOnly: true
+      resources:
+        requests:
+          cpu: 5m
+          memory: 8Mi
+        limits:
+          cpu: 50m
+          memory: 32Mi
+  volumes:
+    - name: runtime-config
+      configMap:
+        name: demo-runtime-config
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: image-pull-backoff
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/part-of: vibekube
+    app.kubernetes.io/name: image-pull-backoff
+    app.kubernetes.io/component: debugging-fixture
+spec:
+  serviceAccountName: demo-runner
+  restartPolicy: Never
+  containers:
+    - name: missing-image
+      image: ghcr.io/vibekube/definitely-missing-demo-image:never
+      imagePullPolicy: Always
+      command:
+        - /bin/sh
+        - -c
+        - echo "this container should never start"
+      resources:
+        requests:
+          cpu: 5m
+          memory: 8Mi
+        limits:
+          cpu: 50m
+          memory: 32Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: demo-complete-once
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/part-of: vibekube
+    app.kubernetes.io/name: demo-complete-once
+    app.kubernetes.io/component: debugging-fixture
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demo-complete-once
+    spec:
+      serviceAccountName: demo-runner
+      restartPolicy: Never
+      containers:
+        - name: complete
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - echo "$(date -Iseconds) completed demo job successfully"
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: demo-failing-job
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/part-of: vibekube
+    app.kubernetes.io/name: demo-failing-job
+    app.kubernetes.io/component: debugging-fixture
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demo-failing-job
+    spec:
+      serviceAccountName: demo-runner
+      restartPolicy: Never
+      containers:
+        - name: fail
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "$(date -Iseconds) failing demo job on purpose"
+              exit 23
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -291,6 +487,7 @@ spec:
       ttlSecondsAfterFinished: 600
       template:
         spec:
+          serviceAccountName: demo-runner
           restartPolicy: Never
           containers:
             - name: heartbeat
