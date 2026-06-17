@@ -567,7 +567,7 @@ struct KubernetesResourceDetailSummary: Equatable {
     }
 }
 
-struct KubernetesOwnerReferenceSummary: Equatable, Identifiable {
+struct KubernetesOwnerReferenceSummary: Decodable, Equatable, Hashable, Identifiable {
     var kind: String
     var name: String
     var controller: Bool

@@ -517,6 +517,13 @@ struct ResourceListView: View {
                 }
             }
 
+            if let ownerFilter = appModel.resourceOwnerFilter,
+               ownerFilter.targetResource == item {
+                ResourceOwnerFilterBadge(filter: ownerFilter) {
+                    appModel.clearResourceOwnerFilter()
+                }
+            }
+
             Button {
                 appModel.loadResourceList(for: item, force: true)
             } label: {
@@ -575,6 +582,11 @@ struct ResourceListView: View {
             return "No pods match \(labelFilter.detail)."
         }
 
+        if let ownerFilter = appModel.resourceOwnerFilter,
+           ownerFilter.targetResource == item {
+            return "No \(item.title.lowercased()) are owned by \(ownerFilter.detail)."
+        }
+
         let searchText = appModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !searchText.isEmpty {
             return "No rows match the current search."
@@ -596,9 +608,17 @@ struct ResourceListView: View {
             labelFilteredRows = snapshot.items
         }
 
+        let relationshipFilteredRows: [KubernetesUnstructuredResource]
+        if let ownerFilter = appModel.resourceOwnerFilter,
+           ownerFilter.targetResource == item {
+            relationshipFilteredRows = labelFilteredRows.filter { ownerFilter.matches($0) }
+        } else {
+            relationshipFilteredRows = labelFilteredRows
+        }
+
         let rows = searchText.isEmpty
-            ? labelFilteredRows
-            : labelFilteredRows.filter { $0.searchBlob.contains(searchText) }
+            ? relationshipFilteredRows
+            : relationshipFilteredRows.filter { $0.searchBlob.contains(searchText) }
 
         return ResourceListRowOrdering.orderedRows(
             rows,
@@ -1488,6 +1508,42 @@ private struct ResourceLabelFilterBadge: View {
     }
 }
 
+private struct ResourceOwnerFilterBadge: View {
+    let filter: ResourceOwnerFilter
+    let clear: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "point.3.connected.trianglepath.dotted")
+                .imageScale(.small)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(filter.title)
+                    .lineLimit(1)
+                Text(filter.detail)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Button(action: clear) {
+                Label("Clear Owner Filter", systemImage: "xmark.circle.fill")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Clear owner filter")
+        }
+        .font(.caption.weight(.medium))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .foregroundStyle(.blue)
+        .background(Color.blue.opacity(0.12), in: Capsule())
+        .help("\(filter.title): \(filter.detail)")
+        .accessibilityIdentifier("resource.list.ownerFilter")
+    }
+}
+
 private struct ResourceDetailTabsView: View {
     let item: ResourceNavigationItem
     let rows: [KubernetesUnstructuredResource]
@@ -1738,6 +1794,14 @@ private struct ResourceDetailView: View {
                         sourceTitle: sourceTitle,
                         namespace: namespace
                     )
+                },
+                openOwnedResources: { owner, targetResource, namespace, sourceTitle in
+                    appModel.navigateToOwnedResources(
+                        owner: owner,
+                        targetResource: targetResource,
+                        sourceTitle: sourceTitle,
+                        namespace: namespace
+                    )
                 }
             )
         case .events:
@@ -1981,6 +2045,7 @@ private struct ResourceDetailOverviewView: View {
     let loadedAt: Date
     let openOwner: (KubernetesOwnerReferenceSummary, String?) -> Void
     let openPods: (KubernetesLabelSelectorSummary, String?, String) -> Void
+    let openOwnedResources: (KubernetesOwnerReferenceSummary, ResourceNavigationItem, String?, String) -> Void
 
     private let columns = [
         GridItem(.adaptive(minimum: 170), spacing: 12)
@@ -2066,6 +2131,19 @@ private struct ResourceDetailOverviewView: View {
                     }
                 }
 
+                if let relatedJobsOwner {
+                    SectionSurface(title: "Related Jobs", systemImage: "clock.badge.checkmark") {
+                        ResourceRelatedOwnedResourcesRow(
+                            title: "Show owned Jobs",
+                            owner: relatedJobsOwner,
+                            targetResource: .jobs,
+                            namespace: namespaceTextForOwner,
+                            sourceTitle: sourceTitle,
+                            openOwnedResources: openOwnedResources
+                        )
+                    }
+                }
+
                 if !summary.conditions.isEmpty {
                     SectionSurface(title: "Conditions", systemImage: "checklist") {
                         VStack(spacing: 10) {
@@ -2101,6 +2179,16 @@ private struct ResourceDetailOverviewView: View {
 
     private var sourceTitle: String {
         "\(summary.kind ?? row.displayKind)/\(summary.name ?? row.displayName)"
+    }
+
+    private var relatedJobsOwner: KubernetesOwnerReferenceSummary? {
+        let name = summary.name ?? row.displayName
+        guard (summary.kind ?? row.displayKind) == "CronJob",
+              !name.isEmpty else {
+            return nil
+        }
+
+        return KubernetesOwnerReferenceSummary(kind: "CronJob", name: name, controller: true)
     }
 
     private var statusTint: Color {
@@ -4433,6 +4521,55 @@ private struct ResourceRelatedPodsRow: View {
         .buttonStyle(.plain)
         .help("Open Pods matching \(selector.displayText)")
         .accessibilityIdentifier("resource.detail.relatedPods.open")
+    }
+}
+
+private struct ResourceRelatedOwnedResourcesRow: View {
+    let title: String
+    let owner: KubernetesOwnerReferenceSummary
+    let targetResource: ResourceNavigationItem
+    let namespace: String?
+    let sourceTitle: String
+    let openOwnedResources: (KubernetesOwnerReferenceSummary, ResourceNavigationItem, String?, String) -> Void
+
+    var body: some View {
+        Button {
+            openOwnedResources(owner, targetResource, namespace, sourceTitle)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .foregroundStyle(.blue)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.callout.weight(.semibold))
+
+                    Text("\(owner.kind)/\(owner.name)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+
+                Spacer()
+
+                if let namespace {
+                    Text(namespace)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Open \(targetResource.title) owned by \(owner.kind) \(owner.name)")
+        .accessibilityIdentifier("resource.detail.relatedOwnedResources.open.\(targetResource.id)")
     }
 }
 

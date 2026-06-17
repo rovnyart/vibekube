@@ -65,6 +65,26 @@ struct ResourceLabelFilter: Equatable {
     }
 }
 
+struct ResourceOwnerFilter: Equatable {
+    var sourceTitle: String
+    var owner: KubernetesOwnerReferenceSummary
+    var targetResource: ResourceNavigationItem
+
+    var title: String {
+        "\(targetResource.title) for \(sourceTitle)"
+    }
+
+    var detail: String {
+        "\(owner.kind)/\(owner.name)"
+    }
+
+    func matches(_ resource: KubernetesUnstructuredResource) -> Bool {
+        resource.metadata.ownerReferences?.contains { reference in
+            reference.kind == owner.kind && reference.name == owner.name
+        } == true
+    }
+}
+
 struct ResourceListLoadingProgress: Equatable {
     var query: ResourceListQuery
     var startedAt: Date

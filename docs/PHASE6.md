@@ -27,6 +27,7 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - The overview tab extracts status, identity, owner references, conditions, and pod-like container summaries.
 - Owner references for known Kubernetes kinds are clickable and navigate to the matching resource list.
 - Workloads and Services with concrete label selectors expose a Related Pods action that opens Pods with a clearable selector filter.
+- CronJobs expose a Related Jobs action that opens Jobs with a clearable owner-reference filter.
 - Pod details now include an Environment tab for `env`, `envFrom`, ConfigMap refs, field refs, resource refs, and Secret key refs.
 - Pod `envFrom` ConfigMaps and Secrets are resolved into the env vars Kubernetes actually injects when the user has `get` access to the referenced object.
 - Literal and ConfigMap-backed values render directly; only Secret-backed values are masked and revealable.
@@ -78,7 +79,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] StatefulSet to Pod.
 - [x] DaemonSet to Pod.
 - [x] Job to Pod.
-- [ ] CronJob to Job.
+- [x] CronJob to Job.
 - [x] Service to selected Pods.
 - [ ] Ingress to Service.
 - [ ] PVC to PV.

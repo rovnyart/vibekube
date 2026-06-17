@@ -294,6 +294,53 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelNavigatesToOwnedJobsWithOwnerFilter() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: WatchableWorkloadsConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+        model.searchText = "old search"
+
+        let owner = KubernetesOwnerReferenceSummary(
+            kind: "CronJob",
+            name: "tiny-heartbeat",
+            controller: true
+        )
+        model.navigateToOwnedResources(
+            owner: owner,
+            targetResource: .jobs,
+            sourceTitle: "CronJob/tiny-heartbeat",
+            namespace: "vibekube-demo"
+        )
+
+        try await waitForResourceList(model, .jobs)
+
+        #expect(model.selectedResource == .jobs)
+        #expect(model.selectedNamespaceSelection == "vibekube-demo")
+        #expect(model.searchText == "")
+        #expect(model.resourceLabelFilter == nil)
+        #expect(model.resourceOwnerFilter?.title == "Jobs for CronJob/tiny-heartbeat")
+        #expect(model.resourceOwnerFilter?.detail == "CronJob/tiny-heartbeat")
+        #expect(model.resourceOwnerFilter?.targetResource == .jobs)
+
+        guard case .loaded(let snapshot) = model.resourceListState(for: .jobs) else {
+            Issue.record("Expected loaded job list")
+            return
+        }
+
+        #expect(snapshot.query.resource.name == "jobs")
+        #expect(snapshot.query.namespaceSelection == "vibekube-demo")
+
+        model.clearResourceOwnerFilter()
+        #expect(model.resourceOwnerFilter == nil)
+    }
+
+    @MainActor
     @Test func appModelBuildsCopyableRouteIdentity() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -1505,6 +1552,13 @@ private struct WatchableWorkloadsConnectionService: KubernetesConnectionServicin
                             KubernetesGroupVersion(groupVersion: "apps/v1", version: "v1")
                         ],
                         preferredVersion: KubernetesGroupVersion(groupVersion: "apps/v1", version: "v1")
+                    ),
+                    KubernetesAPIGroup(
+                        name: "batch",
+                        versions: [
+                            KubernetesGroupVersion(groupVersion: "batch/v1", version: "v1")
+                        ],
+                        preferredVersion: KubernetesGroupVersion(groupVersion: "batch/v1", version: "v1")
                     )
                 ],
                 resourceLists: [
@@ -1518,6 +1572,13 @@ private struct WatchableWorkloadsConnectionService: KubernetesConnectionServicin
                         groupVersion: "apps/v1",
                         resources: [
                             KubernetesAPIResource(name: "deployments", singularName: "", namespaced: true, kind: "Deployment", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil)
+                        ]
+                    ),
+                    KubernetesAPIResourceList(
+                        groupVersion: "batch/v1",
+                        resources: [
+                            KubernetesAPIResource(name: "jobs", singularName: "", namespaced: true, kind: "Job", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil),
+                            KubernetesAPIResource(name: "cronjobs", singularName: "", namespaced: true, kind: "CronJob", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil)
                         ]
                     )
                 ],

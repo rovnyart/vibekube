@@ -289,6 +289,7 @@ struct KubernetesObjectMetadata: Decodable, Equatable, Hashable {
     var creationTimestamp: String?
     var deletionTimestamp: String?
     var labels: [String: String]?
+    var ownerReferences: [KubernetesOwnerReferenceSummary]?
 }
 
 struct KubernetesNamespaceStatus: Decodable, Equatable {

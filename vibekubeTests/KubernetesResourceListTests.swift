@@ -115,7 +115,14 @@ struct KubernetesResourceListTests {
                         "creationTimestamp": "2026-06-15T10:00:00Z",
                         "labels": {
                           "app": "web"
-                        }
+                        },
+                        "ownerReferences": [
+                          {
+                            "kind": "ReplicaSet",
+                            "name": "web-74fbd884",
+                            "controller": true
+                          }
+                        ]
                       },
                       "status": {
                         "phase": "Running"
@@ -134,6 +141,12 @@ struct KubernetesResourceListTests {
         #expect(pod.displayNamespace == "vibekube-demo")
         #expect(pod.displayStatus == "Running")
         #expect(pod.labelsSummary == "app=web")
+        #expect(pod.metadata.ownerReferences?.first?.kind == "ReplicaSet")
+        #expect(ResourceOwnerFilter(
+            sourceTitle: "ReplicaSet/web-74fbd884",
+            owner: KubernetesOwnerReferenceSummary(kind: "ReplicaSet", name: "web-74fbd884", controller: true),
+            targetResource: .pods
+        ).matches(pod))
     }
 
     @Test func podRowsPreferContainerWaitingReasonAndSumRestarts() throws {
