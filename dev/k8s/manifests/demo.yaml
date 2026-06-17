@@ -758,3 +758,78 @@ spec:
                 limits:
                   cpu: 50m
                   memory: 32Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: slow-heartbeat
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/part-of: vibekube
+    app.kubernetes.io/name: slow-heartbeat
+    app.kubernetes.io/component: workload-fixture
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 600
+      template:
+        spec:
+          serviceAccountName: demo-runner
+          restartPolicy: Never
+          containers:
+            - name: heartbeat
+              image: busybox:1.36
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  echo "$(date -Iseconds) slow heartbeat started"
+                  sleep 90
+                  echo "$(date -Iseconds) slow heartbeat completed"
+              resources:
+                requests:
+                  cpu: 5m
+                  memory: 8Mi
+                limits:
+                  cpu: 50m
+                  memory: 32Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: suspended-heartbeat
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/part-of: vibekube
+    app.kubernetes.io/name: suspended-heartbeat
+    app.kubernetes.io/component: workload-fixture
+spec:
+  schedule: "15 * * * *"
+  suspend: true
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 600
+      template:
+        spec:
+          serviceAccountName: demo-runner
+          restartPolicy: Never
+          containers:
+            - name: heartbeat
+              image: busybox:1.36
+              command:
+                - /bin/sh
+                - -c
+                - echo "$(date -Iseconds) this suspended demo cronjob should not run"
+              resources:
+                requests:
+                  cpu: 5m
+                  memory: 8Mi
+                limits:
+                  cpu: 50m
+                  memory: 32Mi

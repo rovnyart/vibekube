@@ -878,6 +878,118 @@ struct KubernetesResourceListTests {
         #expect(list.items[3].isDaemonSetUnhealthy)
     }
 
+    @Test func cronJobRowsExposeScheduleSignal() throws {
+        let list = try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "batch/v1",
+                  "kind": "CronJobList",
+                  "items": [
+                    {
+                      "apiVersion": "batch/v1",
+                      "kind": "CronJob",
+                      "metadata": {
+                        "name": "heartbeat",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "schedule": "*/2 * * * *",
+                        "concurrencyPolicy": "Allow",
+                        "suspend": false
+                      },
+                      "status": {
+                        "lastScheduleTime": "2026-06-17T17:30:00Z",
+                        "lastSuccessfulTime": "2026-06-17T17:30:04Z"
+                      }
+                    },
+                    {
+                      "apiVersion": "batch/v1",
+                      "kind": "CronJob",
+                      "metadata": {
+                        "name": "paused",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "schedule": "15 * * * *",
+                        "suspend": true
+                      }
+                    },
+                    {
+                      "apiVersion": "batch/v1",
+                      "kind": "CronJob",
+                      "metadata": {
+                        "name": "active",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "schedule": "* * * * *"
+                      },
+                      "status": {
+                        "active": [
+                          {
+                            "kind": "Job",
+                            "name": "active-1"
+                          }
+                        ],
+                        "lastScheduleTime": "2026-06-17T17:31:00Z"
+                      }
+                    },
+                    {
+                      "apiVersion": "batch/v1",
+                      "kind": "CronJob",
+                      "metadata": {
+                        "name": "failing",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "schedule": "* * * * *"
+                      },
+                      "status": {
+                        "lastScheduleTime": "2026-06-17T17:30:00Z"
+                      }
+                    },
+                    {
+                      "apiVersion": "batch/v1",
+                      "kind": "CronJob",
+                      "metadata": {
+                        "name": "waiting",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "schedule": "0 0 * * *"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+        let formatter = ISO8601DateFormatter()
+        let now = try #require(formatter.date(from: "2026-06-17T17:32:00Z"))
+
+        #expect(list.items[0].displayStatus == "Scheduled")
+        #expect(list.items[0].cronJobScheduleDescription == "*/2 * * * *")
+        #expect(list.items[0].cronJobConcurrencyPolicyDescription == "Allow")
+        #expect(list.items[0].cronJobSuspendDescription == "No")
+        #expect(list.items[0].cronJobActiveDescription == "0")
+        #expect(list.items[0].cronJobLastScheduleDescription(now: now) == "2m ago")
+        #expect(list.items[0].cronJobLastSuccessfulDescription(now: now) == "1m ago")
+        #expect(!list.items[0].isCronJobUnhealthy)
+        #expect(list.items[1].displayStatus == "Suspended")
+        #expect(list.items[1].cronJobSuspendDescription == "Yes")
+        #expect(!list.items[1].isCronJobUnhealthy)
+        #expect(list.items[2].displayStatus == "Active")
+        #expect(list.items[2].cronJobActiveDescription == "1")
+        #expect(!list.items[2].isCronJobUnhealthy)
+        #expect(list.items[3].displayStatus == "Failing")
+        #expect(list.items[3].isCronJobUnhealthy)
+        #expect(list.items[4].displayStatus == "Waiting")
+        #expect(list.items[4].cronJobLastScheduleDescription(now: now) == "-")
+        #expect(!list.items[4].isCronJobUnhealthy)
+    }
+
     @Test func rendersResourceDetailYAML() throws {
         let detail = try JSONDecoder().decode(
             KubernetesResourceDetail.self,

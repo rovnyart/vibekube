@@ -12,7 +12,7 @@ It uses [kind](https://kind.sigs.k8s.io/) on top of Docker and creates:
 - `vibekube-demo/crashloop-previous-logs`: an intentionally restarting pod with JSONL logs and previous-container logs.
 - `vibekube-demo/image-pull-backoff`: an intentionally broken image pull for waiting-state and event testing.
 - `vibekube-demo/demo-complete-once` and `vibekube-demo/demo-failing-job`: completed and failed Jobs for workload/status testing.
-- `vibekube-demo/tiny-heartbeat`: a CronJob that creates short-lived job pods every two minutes.
+- `vibekube-demo/tiny-heartbeat`, `slow-heartbeat`, and `suspended-heartbeat`: CronJobs for recent schedule, active job, and suspended schedule testing.
 - Demo ConfigMaps and Secrets referenced through pod `env`, `envFrom`, `configMapKeyRef`, and `secretKeyRef` so the resource inspector has real data to render.
 
 ## Start
@@ -44,6 +44,7 @@ kubectl -n vibekube-demo describe pod crashloop-previous-logs
 kubectl -n vibekube-demo describe pod image-pull-backoff
 kubectl -n vibekube-demo get statefulsets
 kubectl -n vibekube-demo get daemonsets
+kubectl -n vibekube-demo get cronjobs
 kubectl -n vibekube-demo describe svc echo-web
 kubectl -n vibekube-demo describe pod -l app.kubernetes.io/name=echo-web
 kubectl -n vibekube-demo get configmap,secret

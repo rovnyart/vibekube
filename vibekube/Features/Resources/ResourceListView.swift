@@ -397,6 +397,61 @@ struct ResourceListView: View {
                         Text(resource.ageDescription())
                     }
                     .width(min: 72, ideal: 90, max: 120)
+                } else if item == .cronJobs {
+                    TableColumn("Name", value: \.displayName) { resource in
+                        ResourceNameCell(
+                            resource: resource,
+                            isRecentlyUpdated: recentlyUpdatedRowIDs.contains(resource.id),
+                            density: appModel.tableDensity
+                        )
+                    }
+                    .width(min: 260, ideal: 320)
+
+                    TableColumn("Namespace", value: \.displayNamespace)
+                        .width(min: 150, ideal: 180)
+                    TableColumn("Schedule", value: \.cronJobScheduleDescription) { resource in
+                        Text(resource.cronJobScheduleDescription)
+                            .font(.callout.monospaced())
+                            .lineLimit(1)
+                            .help("Schedule: \(resource.cronJobScheduleDescription)")
+                    }
+                    .width(min: 118, ideal: 150)
+                    TableColumn("Suspend", value: \.cronJobSuspendDescription) { resource in
+                        Text(resource.cronJobSuspendDescription)
+                            .font(.callout.weight(resource.isCronJobSuspended ? .semibold : .regular))
+                            .foregroundStyle(resource.isCronJobSuspended ? .orange : .secondary)
+                            .help(resource.isCronJobSuspended ? "CronJob is suspended" : "CronJob is not suspended")
+                    }
+                    .width(min: 78, ideal: 96, max: 118)
+                    TableColumn("Active", value: \.cronJobActiveCount) { resource in
+                        ResourceReplicaCountCell(
+                            value: resource.cronJobActiveDescription,
+                            isHealthy: resource.cronJobActiveCount == 0,
+                            isUnhealthy: false,
+                            help: "Active jobs: \(resource.cronJobActiveDescription)"
+                        )
+                    }
+                    .width(min: 72, ideal: 88, max: 110)
+                    TableColumn("Last Schedule", value: \.cronJobLastScheduleSortValue) { resource in
+                        Text(resource.cronJobLastScheduleDescription())
+                            .foregroundStyle(resource.cronJobLastScheduleDate == nil ? .secondary : .primary)
+                            .help("Last schedule: \(resource.cronJobLastScheduleDescription())")
+                    }
+                    .width(min: 112, ideal: 140, max: 170)
+                    TableColumn("Last Success", value: \.cronJobLastSuccessfulSortValue) { resource in
+                        Text(resource.cronJobLastSuccessfulDescription())
+                            .foregroundStyle(resource.cronJobLastSuccessfulDate == nil ? .secondary : .primary)
+                            .help("Last successful run: \(resource.cronJobLastSuccessfulDescription())")
+                    }
+                    .width(min: 108, ideal: 136, max: 166)
+                    TableColumn("Status", value: \.displayStatus) { resource in
+                        ResourceCronJobStatusCell(resource: resource)
+                    }
+                    .width(min: 140, ideal: 170)
+                    TableColumn("Age") { resource in
+                        Text(resource.ageDescription())
+                    }
+                    .width(min: 72, ideal: 90, max: 120)
                 } else {
                     TableColumn("Name", value: \.displayName) { resource in
                         ResourceNameCell(
@@ -1136,6 +1191,73 @@ private struct ResourceDeploymentStatusCell: View {
         }
 
         return "Deployment status: \(resource.displayStatus)"
+    }
+}
+
+private struct ResourceCronJobStatusCell: View {
+    let resource: KubernetesUnstructuredResource
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .imageScale(.small)
+                .foregroundStyle(tint)
+
+            Text(resource.displayStatus)
+                .lineLimit(1)
+                .foregroundStyle(titleColor)
+        }
+        .font(.callout.weight(resource.isCronJobUnhealthy ? .semibold : .regular))
+        .padding(.horizontal, resource.isCronJobUnhealthy ? 7 : 0)
+        .padding(.vertical, resource.isCronJobUnhealthy ? 3 : 0)
+        .background {
+            if resource.isCronJobUnhealthy {
+                Capsule().fill(tint.opacity(0.14))
+            }
+        }
+        .help(statusHelp)
+    }
+
+    private var titleColor: Color {
+        resource.isCronJobUnhealthy ? tint : .primary
+    }
+
+    private var tint: Color {
+        let status = resource.displayStatus.lowercased()
+        if resource.isCronJobUnhealthy {
+            return .red
+        }
+
+        if status.contains("active") || status.contains("waiting") || status.contains("suspended") {
+            return .orange
+        }
+
+        return .green
+    }
+
+    private var systemImage: String {
+        let status = resource.displayStatus.lowercased()
+        if resource.isCronJobUnhealthy {
+            return "exclamationmark.triangle.fill"
+        }
+
+        if status.contains("active") {
+            return "play.circle.fill"
+        }
+
+        if status.contains("waiting") || status.contains("suspended") {
+            return "clock"
+        }
+
+        return "checkmark.circle.fill"
+    }
+
+    private var statusHelp: String {
+        if resource.isCronJobUnhealthy {
+            return "CronJob status needs attention: \(resource.displayStatus)"
+        }
+
+        return "CronJob status: \(resource.displayStatus)"
     }
 }
 

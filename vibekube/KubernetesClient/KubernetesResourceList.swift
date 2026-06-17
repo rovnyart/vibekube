@@ -106,6 +106,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             return daemonSetStatus
         }
 
+        if let cronJobStatus = cronJobDisplayStatus {
+            return cronJobStatus
+        }
+
         if let phase = status?["phase"]?.stringValue, !phase.isEmpty {
             return phase
         }
@@ -582,6 +586,111 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             daemonSetNumberUnavailable > 0 && daemonSetUpdatedNumberScheduled >= daemonSetDesiredNumberScheduled
     }
 
+    var cronJobScheduleDescription: String {
+        guard isCronJob else {
+            return "-"
+        }
+
+        return spec?["schedule"]?.stringValue ?? "-"
+    }
+
+    var cronJobConcurrencyPolicyDescription: String {
+        guard isCronJob else {
+            return "-"
+        }
+
+        return spec?["concurrencyPolicy"]?.stringValue ?? "Allow"
+    }
+
+    var isCronJobSuspended: Bool {
+        guard isCronJob else {
+            return false
+        }
+
+        return spec?["suspend"]?.boolValue ?? false
+    }
+
+    var cronJobSuspendDescription: String {
+        guard isCronJob else {
+            return "-"
+        }
+
+        return isCronJobSuspended ? "Yes" : "No"
+    }
+
+    var cronJobActiveCount: Int {
+        guard isCronJob else {
+            return 0
+        }
+
+        return status?["active"]?.arrayValue?.count ?? 0
+    }
+
+    var cronJobActiveDescription: String {
+        guard isCronJob else {
+            return "-"
+        }
+
+        return String(cronJobActiveCount)
+    }
+
+    var cronJobLastScheduleDate: Date? {
+        guard isCronJob,
+              let lastScheduleTime = status?["lastScheduleTime"]?.stringValue else {
+            return nil
+        }
+
+        return Self.iso8601Date(from: lastScheduleTime)
+    }
+
+    var cronJobLastSuccessfulDate: Date? {
+        guard isCronJob,
+              let lastSuccessfulTime = status?["lastSuccessfulTime"]?.stringValue else {
+            return nil
+        }
+
+        return Self.iso8601Date(from: lastSuccessfulTime)
+    }
+
+    var cronJobLastScheduleSortValue: Date {
+        cronJobLastScheduleDate ?? .distantPast
+    }
+
+    var cronJobLastSuccessfulSortValue: Date {
+        cronJobLastSuccessfulDate ?? .distantPast
+    }
+
+    func cronJobLastScheduleDescription(now: Date = Date()) -> String {
+        guard isCronJob else {
+            return "-"
+        }
+
+        return relativeDescription(since: cronJobLastScheduleDate, now: now)
+    }
+
+    func cronJobLastSuccessfulDescription(now: Date = Date()) -> String {
+        guard isCronJob else {
+            return "-"
+        }
+
+        return relativeDescription(since: cronJobLastSuccessfulDate, now: now)
+    }
+
+    var isCronJobUnhealthy: Bool {
+        guard isCronJob else {
+            return false
+        }
+
+        let status = displayStatus.lowercased()
+        return status.contains("missing") ||
+            status.contains("failing") ||
+            status.contains("stale") ||
+            cronJobActiveCount == 0 &&
+            cronJobLastScheduleDate != nil &&
+            cronJobLastSuccessfulDate == nil &&
+            !isCronJobSuspended
+    }
+
     var labelsSummary: String {
         guard let labels = metadata.labels, !labels.isEmpty else {
             return "-"
@@ -703,11 +812,15 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
     }
 
     func eventAgeDescription(now: Date = Date()) -> String {
-        guard let eventLastObservedDate else {
+        relativeDescription(since: eventLastObservedDate, now: now)
+    }
+
+    private func relativeDescription(since date: Date?, now: Date = Date()) -> String {
+        guard let date else {
             return "-"
         }
 
-        let seconds = max(0, Int(now.timeIntervalSince(eventLastObservedDate)))
+        let seconds = max(0, Int(now.timeIntervalSince(date)))
         switch seconds {
         case ..<60:
             return "\(seconds)s ago"
@@ -757,6 +870,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
 
     private var isDaemonSet: Bool {
         displayKind == "DaemonSet"
+    }
+
+    private var isCronJob: Bool {
+        displayKind == "CronJob"
     }
 
     private var podDisplayStatus: String? {
@@ -1009,6 +1126,35 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             status?["numberUnavailable"] != nil ||
             status?["updatedNumberScheduled"] != nil ||
             status?["numberMisscheduled"] != nil
+    }
+
+    private var cronJobDisplayStatus: String? {
+        guard isCronJob else {
+            return nil
+        }
+
+        if cronJobScheduleDescription == "-" {
+            return "Missing schedule"
+        }
+
+        if isCronJobSuspended {
+            return "Suspended"
+        }
+
+        if cronJobActiveCount > 0 {
+            return "Active"
+        }
+
+        if let lastSchedule = cronJobLastScheduleDate,
+           let lastSuccessful = cronJobLastSuccessfulDate {
+            return lastSuccessful >= lastSchedule ? "Scheduled" : "Failing"
+        }
+
+        if cronJobLastScheduleDate != nil {
+            return "Failing"
+        }
+
+        return "Waiting"
     }
 
     private var podContainerStatuses: [[String: KubernetesJSONValue]] {
