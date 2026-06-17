@@ -698,6 +698,90 @@ struct KubernetesResourceListTests {
         #expect(list.items[2].isReplicaSetUnhealthy)
     }
 
+    @Test func statefulSetRowsExposeRolloutSignal() throws {
+        let list = try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "apps/v1",
+                  "kind": "StatefulSetList",
+                  "items": [
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "StatefulSet",
+                      "metadata": {
+                        "name": "cache",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "replicas": 2
+                      },
+                      "status": {
+                        "replicas": 2,
+                        "readyReplicas": 2,
+                        "currentReplicas": 2,
+                        "updatedReplicas": 2,
+                        "currentRevision": "cache-a",
+                        "updateRevision": "cache-a"
+                      }
+                    },
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "StatefulSet",
+                      "metadata": {
+                        "name": "cache-rollout",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "replicas": 3
+                      },
+                      "status": {
+                        "replicas": 3,
+                        "readyReplicas": 2,
+                        "currentReplicas": 2,
+                        "updatedReplicas": 1,
+                        "currentRevision": "cache-old",
+                        "updateRevision": "cache-new"
+                      }
+                    },
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "StatefulSet",
+                      "metadata": {
+                        "name": "cache-broken",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "replicas": 1
+                      },
+                      "status": {
+                        "replicas": 1,
+                        "readyReplicas": 0,
+                        "currentReplicas": 1,
+                        "updatedReplicas": 1
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        #expect(list.items[0].displayStatus == "Ready")
+        #expect(list.items[0].statefulSetReadyDescription == "2/2")
+        #expect(list.items[0].statefulSetCurrentDescription == "2")
+        #expect(list.items[0].statefulSetUpdatedDescription == "2")
+        #expect(!list.items[0].isStatefulSetUnhealthy)
+        #expect(list.items[1].displayStatus == "Updating")
+        #expect(list.items[1].statefulSetReadyDescription == "2/3")
+        #expect(list.items[1].statefulSetCurrentDescription == "2")
+        #expect(list.items[1].statefulSetUpdatedDescription == "1")
+        #expect(!list.items[1].isStatefulSetUnhealthy)
+        #expect(list.items[2].displayStatus == "Unavailable")
+        #expect(list.items[2].isStatefulSetUnhealthy)
+    }
+
     @Test func rendersResourceDetailYAML() throws {
         let detail = try JSONDecoder().decode(
             KubernetesResourceDetail.self,

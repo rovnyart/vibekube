@@ -98,6 +98,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             return replicaSetStatus
         }
 
+        if let statefulSetStatus = statefulSetDisplayStatus {
+            return statefulSetStatus
+        }
+
         if let phase = status?["phase"]?.stringValue, !phase.isEmpty {
             return phase
         }
@@ -385,6 +389,86 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             replicaSetReadyReplicas < replicaSetDesiredReplicas
     }
 
+    var statefulSetDesiredReplicas: Int {
+        guard isStatefulSet else {
+            return 0
+        }
+
+        return spec?["replicas"]?.intValue ?? 1
+    }
+
+    var statefulSetReadyReplicas: Int {
+        guard isStatefulSet else {
+            return 0
+        }
+
+        return status?["readyReplicas"]?.intValue ?? 0
+    }
+
+    var statefulSetCurrentReplicas: Int {
+        guard isStatefulSet else {
+            return 0
+        }
+
+        return status?["currentReplicas"]?.intValue ?? status?["replicas"]?.intValue ?? 0
+    }
+
+    var statefulSetUpdatedReplicas: Int {
+        guard isStatefulSet else {
+            return 0
+        }
+
+        return status?["updatedReplicas"]?.intValue ?? 0
+    }
+
+    var statefulSetReadySortValue: Int {
+        statefulSetReadyReplicas * 1_000 + statefulSetDesiredReplicas
+    }
+
+    var statefulSetCurrentSortValue: Int {
+        statefulSetCurrentReplicas * 1_000 + statefulSetDesiredReplicas
+    }
+
+    var statefulSetUpdatedSortValue: Int {
+        statefulSetUpdatedReplicas * 1_000 + statefulSetDesiredReplicas
+    }
+
+    var statefulSetReadyDescription: String {
+        guard isStatefulSet else {
+            return "-"
+        }
+
+        return "\(statefulSetReadyReplicas)/\(statefulSetDesiredReplicas)"
+    }
+
+    var statefulSetCurrentDescription: String {
+        guard isStatefulSet else {
+            return "-"
+        }
+
+        return String(statefulSetCurrentReplicas)
+    }
+
+    var statefulSetUpdatedDescription: String {
+        guard isStatefulSet else {
+            return "-"
+        }
+
+        return String(statefulSetUpdatedReplicas)
+    }
+
+    var isStatefulSetUnhealthy: Bool {
+        guard isStatefulSet else {
+            return false
+        }
+
+        let status = displayStatus.lowercased()
+        return status.contains("unavailable") ||
+            statefulSetDesiredReplicas > 0 &&
+            statefulSetCurrentReplicas >= statefulSetDesiredReplicas &&
+            statefulSetReadyReplicas < statefulSetDesiredReplicas
+    }
+
     var labelsSummary: String {
         guard let labels = metadata.labels, !labels.isEmpty else {
             return "-"
@@ -554,6 +638,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
         displayKind == "ReplicaSet"
     }
 
+    private var isStatefulSet: Bool {
+        displayKind == "StatefulSet"
+    }
+
     private var podDisplayStatus: String? {
         guard isPod else {
             return nil
@@ -709,6 +797,61 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
         status?["replicas"] != nil ||
             status?["readyReplicas"] != nil ||
             spec?["replicas"] != nil
+    }
+
+    private var statefulSetDisplayStatus: String? {
+        guard isStatefulSet, hasStatefulSetRolloutStatus else {
+            return nil
+        }
+
+        if statefulSetDesiredReplicas == 0 {
+            return "Scaled to 0"
+        }
+
+        if statefulSetReadyReplicas >= statefulSetDesiredReplicas,
+           (!hasStatefulSetUpdatedReplicas || statefulSetUpdatedReplicas >= statefulSetDesiredReplicas) {
+            return "Ready"
+        }
+
+        if hasStatefulSetUpdatedReplicas && statefulSetUpdatedReplicas < statefulSetDesiredReplicas ||
+            statefulSetRevisionsDiffer {
+            return "Updating"
+        }
+
+        if statefulSetCurrentReplicas < statefulSetDesiredReplicas {
+            return "Scaling"
+        }
+
+        if statefulSetReadyReplicas < statefulSetDesiredReplicas {
+            return "Unavailable"
+        }
+
+        return nil
+    }
+
+    private var hasStatefulSetRolloutStatus: Bool {
+        status?["replicas"] != nil ||
+            status?["readyReplicas"] != nil ||
+            status?["currentReplicas"] != nil ||
+            status?["updatedReplicas"] != nil ||
+            status?["currentRevision"] != nil ||
+            status?["updateRevision"] != nil ||
+            spec?["replicas"] != nil
+    }
+
+    private var hasStatefulSetUpdatedReplicas: Bool {
+        status?["updatedReplicas"] != nil
+    }
+
+    private var statefulSetRevisionsDiffer: Bool {
+        guard let currentRevision = status?["currentRevision"]?.stringValue,
+              let updateRevision = status?["updateRevision"]?.stringValue,
+              !currentRevision.isEmpty,
+              !updateRevision.isEmpty else {
+            return false
+        }
+
+        return currentRevision != updateRevision
     }
 
     private var podContainerStatuses: [[String: KubernetesJSONValue]] {

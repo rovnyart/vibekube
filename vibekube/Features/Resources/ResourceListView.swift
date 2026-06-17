@@ -255,6 +255,53 @@ struct ResourceListView: View {
                         Text(resource.ageDescription())
                     }
                     .width(min: 72, ideal: 90, max: 120)
+                } else if item == .statefulSets {
+                    TableColumn("Name", value: \.displayName) { resource in
+                        ResourceNameCell(
+                            resource: resource,
+                            isRecentlyUpdated: recentlyUpdatedRowIDs.contains(resource.id),
+                            density: appModel.tableDensity
+                        )
+                    }
+                    .width(min: 280, ideal: 340)
+
+                    TableColumn("Namespace", value: \.displayNamespace)
+                        .width(min: 150, ideal: 180)
+                    TableColumn("Ready", value: \.statefulSetReadySortValue) { resource in
+                        ResourceReplicaCountCell(
+                            value: resource.statefulSetReadyDescription,
+                            isHealthy: resource.statefulSetReadyReplicas >= resource.statefulSetDesiredReplicas,
+                            isUnhealthy: resource.isStatefulSetUnhealthy,
+                            help: "Ready replicas: \(resource.statefulSetReadyDescription)"
+                        )
+                    }
+                    .width(min: 78, ideal: 96, max: 118)
+                    TableColumn("Current", value: \.statefulSetCurrentSortValue) { resource in
+                        ResourceReplicaCountCell(
+                            value: resource.statefulSetCurrentDescription,
+                            isHealthy: resource.statefulSetCurrentReplicas >= resource.statefulSetDesiredReplicas,
+                            isUnhealthy: false,
+                            help: "Current replicas: \(resource.statefulSetCurrentDescription)"
+                        )
+                    }
+                    .width(min: 78, ideal: 96, max: 118)
+                    TableColumn("Updated", value: \.statefulSetUpdatedSortValue) { resource in
+                        ResourceReplicaCountCell(
+                            value: resource.statefulSetUpdatedDescription,
+                            isHealthy: resource.statefulSetUpdatedReplicas >= resource.statefulSetDesiredReplicas,
+                            isUnhealthy: false,
+                            help: "Updated replicas: \(resource.statefulSetUpdatedDescription)"
+                        )
+                    }
+                    .width(min: 78, ideal: 96, max: 118)
+                    TableColumn("Status", value: \.displayStatus) { resource in
+                        ResourceStatefulSetStatusCell(resource: resource)
+                    }
+                    .width(min: 150, ideal: 190)
+                    TableColumn("Age") { resource in
+                        Text(resource.ageDescription())
+                    }
+                    .width(min: 72, ideal: 90, max: 120)
                 } else if item == .jobs {
                     TableColumn("Name", value: \.displayName) { resource in
                         ResourceNameCell(
@@ -835,6 +882,69 @@ private struct ResourceReplicaSetStatusCell: View {
         }
 
         return "ReplicaSet status: \(resource.displayStatus)"
+    }
+}
+
+private struct ResourceStatefulSetStatusCell: View {
+    let resource: KubernetesUnstructuredResource
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .imageScale(.small)
+                .foregroundStyle(tint)
+
+            Text(resource.displayStatus)
+                .lineLimit(1)
+                .foregroundStyle(titleColor)
+        }
+        .font(.callout.weight(resource.isStatefulSetUnhealthy ? .semibold : .regular))
+        .padding(.horizontal, resource.isStatefulSetUnhealthy ? 7 : 0)
+        .padding(.vertical, resource.isStatefulSetUnhealthy ? 3 : 0)
+        .background {
+            if resource.isStatefulSetUnhealthy {
+                Capsule().fill(tint.opacity(0.14))
+            }
+        }
+        .help(statusHelp)
+    }
+
+    private var titleColor: Color {
+        resource.isStatefulSetUnhealthy ? tint : .primary
+    }
+
+    private var tint: Color {
+        let status = resource.displayStatus.lowercased()
+        if resource.isStatefulSetUnhealthy {
+            return .red
+        }
+
+        if status.contains("updating") || status.contains("scaling") || status.contains("scaled") {
+            return .orange
+        }
+
+        return .green
+    }
+
+    private var systemImage: String {
+        let status = resource.displayStatus.lowercased()
+        if resource.isStatefulSetUnhealthy {
+            return "exclamationmark.triangle.fill"
+        }
+
+        if status.contains("updating") || status.contains("scaling") || status.contains("scaled") {
+            return "clock"
+        }
+
+        return "checkmark.circle.fill"
+    }
+
+    private var statusHelp: String {
+        if resource.isStatefulSetUnhealthy {
+            return "StatefulSet status needs attention: \(resource.displayStatus)"
+        }
+
+        return "StatefulSet status: \(resource.displayStatus)"
     }
 }
 
