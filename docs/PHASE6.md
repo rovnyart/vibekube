@@ -26,6 +26,7 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - Resource detail now has Overview, Events, Logs, Env, YAML, Metadata, and Conditions tabs.
 - The overview tab extracts status, identity, owner references, conditions, and pod-like container summaries.
 - Owner references for known Kubernetes kinds are clickable and navigate to the matching resource list.
+- Deployments expose a Related ReplicaSets action that opens ReplicaSets with a clearable owner-reference filter.
 - Workloads and Services with concrete label selectors expose a Related Pods action that opens Pods with a clearable selector filter.
 - CronJobs expose a Related Jobs action that opens Jobs with a clearable owner-reference filter.
 - Pod details now include an Environment tab for `env`, `envFrom`, ConfigMap refs, field refs, resource refs, and Secret key refs.
@@ -74,7 +75,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 
 ### 6.4 Relationships
 
-- [ ] Deployment to ReplicaSet to Pod.
+- [x] Deployment to ReplicaSet to Pod.
 - [x] Deployment to selected Pods.
 - [x] StatefulSet to Pod.
 - [x] DaemonSet to Pod.

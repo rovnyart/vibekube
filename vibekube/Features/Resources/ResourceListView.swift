@@ -2131,16 +2131,18 @@ private struct ResourceDetailOverviewView: View {
                     }
                 }
 
-                if let relatedJobsOwner {
-                    SectionSurface(title: "Related Jobs", systemImage: "clock.badge.checkmark") {
-                        ResourceRelatedOwnedResourcesRow(
-                            title: "Show owned Jobs",
-                            owner: relatedJobsOwner,
-                            targetResource: .jobs,
-                            namespace: namespaceTextForOwner,
-                            sourceTitle: sourceTitle,
-                            openOwnedResources: openOwnedResources
-                        )
+                if !relatedOwnedResourceActions.isEmpty {
+                    SectionSurface(title: "Related Resources", systemImage: "point.3.connected.trianglepath.dotted") {
+                        VStack(spacing: 0) {
+                            ForEach(relatedOwnedResourceActions) { action in
+                                ResourceRelatedOwnedResourcesRow(
+                                    action: action,
+                                    namespace: namespaceTextForOwner,
+                                    sourceTitle: sourceTitle,
+                                    openOwnedResources: openOwnedResources
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -2181,14 +2183,32 @@ private struct ResourceDetailOverviewView: View {
         "\(summary.kind ?? row.displayKind)/\(summary.name ?? row.displayName)"
     }
 
-    private var relatedJobsOwner: KubernetesOwnerReferenceSummary? {
+    private var relatedOwnedResourceActions: [ResourceOwnedRelationshipAction] {
         let name = summary.name ?? row.displayName
-        guard (summary.kind ?? row.displayKind) == "CronJob",
-              !name.isEmpty else {
-            return nil
+        guard !name.isEmpty else {
+            return []
         }
 
-        return KubernetesOwnerReferenceSummary(kind: "CronJob", name: name, controller: true)
+        switch summary.kind ?? row.displayKind {
+        case "Deployment":
+            return [
+                ResourceOwnedRelationshipAction(
+                    title: "Show owned ReplicaSets",
+                    owner: KubernetesOwnerReferenceSummary(kind: "Deployment", name: name, controller: true),
+                    targetResource: .replicaSets
+                )
+            ]
+        case "CronJob":
+            return [
+                ResourceOwnedRelationshipAction(
+                    title: "Show owned Jobs",
+                    owner: KubernetesOwnerReferenceSummary(kind: "CronJob", name: name, controller: true),
+                    targetResource: .jobs
+                )
+            ]
+        default:
+            return []
+        }
     }
 
     private var statusTint: Color {
@@ -4524,27 +4544,35 @@ private struct ResourceRelatedPodsRow: View {
     }
 }
 
+private struct ResourceOwnedRelationshipAction: Identifiable {
+    var title: String
+    var owner: KubernetesOwnerReferenceSummary
+    var targetResource: ResourceNavigationItem
+
+    var id: String {
+        "\(targetResource.id)/\(owner.id)"
+    }
+}
+
 private struct ResourceRelatedOwnedResourcesRow: View {
-    let title: String
-    let owner: KubernetesOwnerReferenceSummary
-    let targetResource: ResourceNavigationItem
+    let action: ResourceOwnedRelationshipAction
     let namespace: String?
     let sourceTitle: String
     let openOwnedResources: (KubernetesOwnerReferenceSummary, ResourceNavigationItem, String?, String) -> Void
 
     var body: some View {
         Button {
-            openOwnedResources(owner, targetResource, namespace, sourceTitle)
+            openOwnedResources(action.owner, action.targetResource, namespace, sourceTitle)
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "point.3.connected.trianglepath.dotted")
                     .foregroundStyle(.blue)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
+                    Text(action.title)
                         .font(.callout.weight(.semibold))
 
-                    Text("\(owner.kind)/\(owner.name)")
+                    Text("\(action.owner.kind)/\(action.owner.name)")
                         .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -4568,8 +4596,8 @@ private struct ResourceRelatedOwnedResourcesRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Open \(targetResource.title) owned by \(owner.kind) \(owner.name)")
-        .accessibilityIdentifier("resource.detail.relatedOwnedResources.open.\(targetResource.id)")
+        .help("Open \(action.targetResource.title) owned by \(action.owner.kind) \(action.owner.name)")
+        .accessibilityIdentifier("resource.detail.relatedOwnedResources.open.\(action.targetResource.id)")
     }
 }
 

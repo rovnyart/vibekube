@@ -341,6 +341,48 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelNavigatesToOwnedReplicaSetsWithOwnerFilter() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: WatchableWorkloadsConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        let owner = KubernetesOwnerReferenceSummary(
+            kind: "Deployment",
+            name: "echo-web",
+            controller: true
+        )
+        model.navigateToOwnedResources(
+            owner: owner,
+            targetResource: .replicaSets,
+            sourceTitle: "Deployment/echo-web",
+            namespace: "vibekube-demo"
+        )
+
+        try await waitForResourceList(model, .replicaSets)
+
+        #expect(model.selectedResource == .replicaSets)
+        #expect(model.selectedNamespaceSelection == "vibekube-demo")
+        #expect(model.searchText == "")
+        #expect(model.resourceOwnerFilter?.title == "ReplicaSets for Deployment/echo-web")
+        #expect(model.resourceOwnerFilter?.detail == "Deployment/echo-web")
+        #expect(model.resourceOwnerFilter?.targetResource == .replicaSets)
+
+        guard case .loaded(let snapshot) = model.resourceListState(for: .replicaSets) else {
+            Issue.record("Expected loaded ReplicaSet list")
+            return
+        }
+
+        #expect(snapshot.query.resource.name == "replicasets")
+        #expect(snapshot.query.namespaceSelection == "vibekube-demo")
+    }
+
+    @MainActor
     @Test func appModelBuildsCopyableRouteIdentity() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -1571,7 +1613,8 @@ private struct WatchableWorkloadsConnectionService: KubernetesConnectionServicin
                     KubernetesAPIResourceList(
                         groupVersion: "apps/v1",
                         resources: [
-                            KubernetesAPIResource(name: "deployments", singularName: "", namespaced: true, kind: "Deployment", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil)
+                            KubernetesAPIResource(name: "deployments", singularName: "", namespaced: true, kind: "Deployment", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil),
+                            KubernetesAPIResource(name: "replicasets", singularName: "", namespaced: true, kind: "ReplicaSet", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil)
                         ]
                     ),
                     KubernetesAPIResourceList(
