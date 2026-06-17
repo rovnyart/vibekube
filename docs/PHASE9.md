@@ -19,6 +19,7 @@ Goal: add practical debugging workflows: describe-style views, container details
 
 - [x] Pod/workload problem summary.
 - [x] Quick actions from debug summary to Events, Logs, Containers, Env, and YAML.
+- [x] Event-aware debug summary with warning and empty-event context.
 - [ ] Pod scheduling summary.
 - [x] Container state summary for Pod detail manifests.
 - [x] Restart/termination reason details for Pod detail manifests.
@@ -69,7 +70,7 @@ Checkpoint: stop before choosing `kubectl` fallback vs native implementation if 
 
 ## Acceptance Criteria
 
-- [x] User can understand common unhealthy Pod/workload signals from one detail screen.
+- [x] User can understand common unhealthy Pod/workload signals and related warning Events from one detail screen.
 - [ ] User can port-forward a demo service or pod.
 - [ ] User can start and stop a basic exec session.
 - [ ] Active sessions never become hidden or orphaned.

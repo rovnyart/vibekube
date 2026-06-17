@@ -1851,6 +1851,7 @@ private struct ResourceDetailView: View {
         switch selectedPanel {
         case .overview:
             ResourceDetailOverviewView(
+                detail: snapshot,
                 row: row,
                 summary: snapshot.summary,
                 loadedAt: snapshot.loadedAt,
@@ -2178,6 +2179,9 @@ private struct ResourceDetailPanelTabButton: View {
 }
 
 private struct ResourceDetailOverviewView: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let detail: ResourceDetailSnapshot
     let row: KubernetesUnstructuredResource
     let summary: KubernetesResourceDetailSummary
     let loadedAt: Date
@@ -2197,6 +2201,7 @@ private struct ResourceDetailOverviewView: View {
                 if let debugSummary = summary.debugSummary {
                     ResourceDebugSummaryView(
                         summary: debugSummary,
+                        eventState: appModel.resourceEventsState(for: detail),
                         hasContainers: !summary.containers.isEmpty,
                         hasEnvironment: !summary.environment.isEmpty,
                         hasLogs: (summary.kind ?? row.displayKind) == "Pod",
@@ -2379,6 +2384,19 @@ private struct ResourceDetailOverviewView: View {
         }
         .background(Color(nsColor: .textBackgroundColor))
         .accessibilityIdentifier("resource.detail.overview")
+        .task(id: debugEventsTaskID) {
+            if summary.debugSummary != nil {
+                appModel.loadResourceEvents(for: detail)
+            }
+        }
+    }
+
+    private var debugEventsTaskID: String {
+        guard summary.debugSummary != nil else {
+            return "\(detail.query.id)|debugEvents|none"
+        }
+
+        return appModel.resourceEventsTaskID(for: detail)
     }
 
     private var namespaceText: String {
@@ -2446,6 +2464,7 @@ private struct ResourceDetailOverviewView: View {
 
 private struct ResourceDebugSummaryView: View {
     let summary: KubernetesResourceDebugSummary
+    let eventState: ResourceEventsLoadState
     let hasContainers: Bool
     let hasEnvironment: Bool
     let hasLogs: Bool
@@ -2487,6 +2506,8 @@ private struct ResourceDebugSummaryView: View {
                     }
                 }
 
+                eventContext
+
                 HStack(spacing: 8) {
                     ResourceDebugActionButton(title: "Events", systemImage: "calendar.badge.exclamationmark") {
                         selectPanel(.events)
@@ -2518,8 +2539,53 @@ private struct ResourceDebugSummaryView: View {
         }
     }
 
+    @ViewBuilder
+    private var eventContext: some View {
+        switch eventState {
+        case .idle:
+            EmptyView()
+        case .loading:
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Checking related Kubernetes Events...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        case .failed(let message):
+            ResourceDebugEventStatusRow(
+                title: "Could Not Load Events",
+                detail: message,
+                systemImage: "exclamationmark.triangle",
+                tint: .orange
+            )
+        case .loaded(let snapshot):
+            let warningEvents = snapshot.events.filter(\.isWarning)
+            if warningEvents.isEmpty {
+                ResourceDebugEventStatusRow(
+                    title: "No Warning Events",
+                    detail: snapshot.events.isEmpty
+                        ? "Kubernetes has not reported events for this resource."
+                        : "Loaded \(snapshot.events.count) related events; none are warnings.",
+                    systemImage: "checkmark.circle",
+                    tint: .secondary
+                )
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Warning Events")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+
+                    ForEach(warningEvents.prefix(3)) { event in
+                        ResourceDebugEventRow(event: event)
+                    }
+                }
+            }
+        }
+    }
+
     private var tint: Color {
-        switch summary.severity {
+        switch displaySeverity {
         case .healthy:
             .green
         case .warning:
@@ -2530,7 +2596,7 @@ private struct ResourceDebugSummaryView: View {
     }
 
     private var summaryIcon: String {
-        switch summary.severity {
+        switch displaySeverity {
         case .healthy:
             "checkmark.seal"
         case .warning:
@@ -2541,13 +2607,22 @@ private struct ResourceDebugSummaryView: View {
     }
 
     private var severityLabel: String {
-        switch summary.severity {
+        switch displaySeverity {
         case .healthy:
             "Healthy"
         case .warning:
             "Warning"
         case .critical:
             "Critical"
+        }
+    }
+
+    private var displaySeverity: KubernetesResourceDebugSeverity {
+        switch eventState {
+        case .loaded(let snapshot) where snapshot.events.contains(where: \.isWarning):
+            max(summary.severity, .warning)
+        default:
+            summary.severity
         }
     }
 }
@@ -2604,6 +2679,83 @@ private struct ResourceDebugSignalRow: View {
         case .critical:
             "xmark.circle.fill"
         }
+    }
+}
+
+private struct ResourceDebugEventRow: View {
+    let event: KubernetesResourceEventSummary
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "calendar.badge.exclamationmark")
+                .foregroundStyle(.orange)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(event.reason)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+
+                    if let count = event.count, count > 1 {
+                        Text("\(count)x")
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(.orange)
+                    }
+
+                    Spacer()
+
+                    Text(event.ageDescription())
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(event.message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.65), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.18))
+        }
+    }
+}
+
+private struct ResourceDebugEventStatusRow: View {
+    let title: String
+    let detail: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .foregroundStyle(tint)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.callout.weight(.semibold))
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.48), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
@@ -3945,6 +4097,12 @@ private struct SelectableLogTextView: NSViewRepresentable {
 private extension [String] {
     func displayLines(formatsJSONLines: Bool) -> [String] {
         formatsJSONLines ? LogJSONLFormatter.formattedLines(from: self) : self
+    }
+}
+
+private extension KubernetesResourceEventSummary {
+    var isWarning: Bool {
+        type.localizedCaseInsensitiveContains("warning")
     }
 }
 
