@@ -2251,6 +2251,12 @@ private struct ResourceDetailOverviewView: View {
                     )
                 }
 
+                if let podScheduling = summary.podScheduling {
+                    SectionSurface(title: "Scheduling", systemImage: "point.topleft.down.curvedto.point.bottomright.up") {
+                        ResourceKeyValueList(rows: podScheduling.rows)
+                    }
+                }
+
                 if !summary.containers.isEmpty {
                     SectionSurface(title: "Containers", systemImage: "cube") {
                         VStack(spacing: 0) {

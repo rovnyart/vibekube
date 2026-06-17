@@ -113,6 +113,7 @@ struct KubernetesResourceDetailSummary: Equatable {
     var conditions: [KubernetesConditionSummary]
     var containers: [KubernetesContainerSummary]
     var environment: [KubernetesContainerEnvironmentSummary]
+    var podScheduling: KubernetesPodSchedulingSummary?
     var debugSummary: KubernetesResourceDebugSummary?
 
     init(value: KubernetesJSONValue) {
@@ -146,6 +147,7 @@ struct KubernetesResourceDetailSummary: Equatable {
         self.conditions = conditions
         self.containers = containers
         self.environment = Self.environment(in: spec)
+        self.podScheduling = Self.podScheduling(in: value, kind: kind)
         self.debugSummary = Self.debugSummary(
             value: value,
             kind: kind,
@@ -421,6 +423,21 @@ struct KubernetesResourceDetailSummary: Equatable {
         return initContainers + containers + ephemeralContainers
     }
 
+    nonisolated private static func podScheduling(
+        in value: KubernetesJSONValue,
+        kind: String?
+    ) -> KubernetesPodSchedulingSummary? {
+        guard kind == "Pod" else {
+            return nil
+        }
+
+        return KubernetesPodSchedulingSummary(
+            nodeName: value["spec"]?["nodeName"]?.stringValue,
+            nominatedNodeName: value["status"]?["nominatedNodeName"]?.stringValue,
+            qosClass: value["status"]?["qosClass"]?.stringValue
+        )
+    }
+
     nonisolated private static func debugSummary(
         value: KubernetesJSONValue,
         kind: String?,
@@ -447,6 +464,7 @@ struct KubernetesResourceDetailSummary: Equatable {
         }
 
         appendStatusSignals(status: status, kind: kind, signals: &signals)
+        appendSchedulingSignals(value: value, kind: kind, status: status, containers: containers, signals: &signals)
         appendContainerSignals(containers, signals: &signals)
         appendConditionSignals(conditions, signals: &signals)
         appendReplicaSignals(kind: kind, spec: spec, status: statusObject, signals: &signals)
@@ -496,6 +514,61 @@ struct KubernetesResourceDetailSummary: Equatable {
                     severity: .warning,
                     title: "\(kind) status is Pending",
                     detail: "Scheduling, image pull, volume mount, or init container work may still be blocking startup."
+                )
+            )
+        }
+    }
+
+    nonisolated private static func appendSchedulingSignals(
+        value: KubernetesJSONValue,
+        kind: String,
+        status: String?,
+        containers: [KubernetesContainerSummary],
+        signals: inout [KubernetesResourceDebugSignal]
+    ) {
+        guard kind == "Pod" else {
+            return
+        }
+
+        let spec = value["spec"]
+        let statusObject = value["status"]
+        let nodeName = spec?["nodeName"]?.stringValue
+        let nominatedNodeName = statusObject?["nominatedNodeName"]?.stringValue
+        let qosClass = statusObject?["qosClass"]?.stringValue
+
+        if status?.localizedCaseInsensitiveCompare("Pending") == .orderedSame,
+           nodeName?.isEmpty != false {
+            signals.append(
+                KubernetesResourceDebugSignal(
+                    severity: .warning,
+                    title: "Pod has not been scheduled",
+                    detail: nominatedNodeName?.isEmpty == false
+                        ? "Kubernetes nominated node \(nominatedNodeName ?? "-"), but the pod is not bound yet."
+                        : "No nodeName is assigned yet. Check PodScheduled condition and scheduler Events."
+                )
+            )
+        }
+
+        if qosClass == "BestEffort" {
+            signals.append(
+                KubernetesResourceDebugSignal(
+                    severity: .warning,
+                    title: "Pod QoS is BestEffort",
+                    detail: "No effective CPU or memory requests are set. This pod is first in line for eviction under node pressure."
+                )
+            )
+        }
+
+        let appContainersWithoutRequests = containers.filter { container in
+            container.kind == .container && container.resources.requests.isEmpty
+        }
+        if !appContainersWithoutRequests.isEmpty {
+            let names = appContainersWithoutRequests.map(\.name).joined(separator: ", ")
+            signals.append(
+                KubernetesResourceDebugSignal(
+                    severity: .warning,
+                    title: "Missing resource requests",
+                    detail: "Container\(appContainersWithoutRequests.count == 1 ? "" : "s") \(names) do not set CPU or memory requests, which can affect scheduling and eviction behavior."
                 )
             )
         }
@@ -1061,6 +1134,20 @@ struct KubernetesConditionSummary: Equatable, Identifiable {
 
     var id: String {
         "\(type)/\(status)/\(reason ?? "")/\(lastTransitionTime ?? "")"
+    }
+}
+
+struct KubernetesPodSchedulingSummary: Equatable {
+    var nodeName: String?
+    var nominatedNodeName: String?
+    var qosClass: String?
+
+    var rows: [(String, String)] {
+        [
+            ("Node", nodeName?.isEmpty == false ? nodeName ?? "-" : "Not assigned"),
+            ("Nominated Node", nominatedNodeName?.isEmpty == false ? nominatedNodeName ?? "-" : "-"),
+            ("QoS Class", qosClass?.isEmpty == false ? qosClass ?? "-" : "-")
+        ]
     }
 }
 

@@ -1079,6 +1079,7 @@ struct KubernetesResourceListTests {
                     ]
                   },
                   "spec": {
+                    "nodeName": "worker-a",
                     "initContainers": [
                       {
                         "name": "migrate",
@@ -1177,6 +1178,7 @@ struct KubernetesResourceListTests {
                   },
                   "status": {
                     "phase": "Running",
+                    "qosClass": "Burstable",
                     "conditions": [
                       {
                         "type": "Ready",
@@ -1239,6 +1241,8 @@ struct KubernetesResourceListTests {
         #expect(summary.labels["app"] == "web")
         #expect(summary.annotations["vibekube.io/demo"] == "true")
         #expect(summary.annotations["kubectl.kubernetes.io/last-applied-configuration"] == "<redacted>")
+        #expect(summary.podScheduling?.nodeName == "worker-a")
+        #expect(summary.podScheduling?.qosClass == "Burstable")
         #expect(summary.ownerReferences.first?.kind == "ReplicaSet")
         #expect(summary.ownerReferences.first?.controller == true)
         #expect(summary.conditions.first?.type == "Ready")
@@ -1356,6 +1360,57 @@ struct KubernetesResourceListTests {
         #expect(debugSummary.signals.contains { $0.title == "Ready is False: ContainersNotReady" })
     }
 
+    @Test func summarizesPendingPodSchedulingSignals() throws {
+        let detail = try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "Pod",
+                  "metadata": {
+                    "name": "pending-web",
+                    "namespace": "vibekube-demo"
+                  },
+                  "spec": {
+                    "containers": [
+                      {
+                        "name": "app",
+                        "image": "nginx:1.27"
+                      }
+                    ]
+                  },
+                  "status": {
+                    "phase": "Pending",
+                    "qosClass": "BestEffort",
+                    "nominatedNodeName": "worker-candidate",
+                    "conditions": [
+                      {
+                        "type": "PodScheduled",
+                        "status": "False",
+                        "reason": "Unschedulable",
+                        "message": "0/3 nodes are available: insufficient memory."
+                      }
+                    ]
+                  }
+                }
+                """.utf8
+            )
+        )
+
+        let scheduling = try #require(detail.summary.podScheduling)
+        #expect(scheduling.nodeName == nil)
+        #expect(scheduling.nominatedNodeName == "worker-candidate")
+        #expect(scheduling.qosClass == "BestEffort")
+
+        let debugSummary = try #require(detail.summary.debugSummary)
+        #expect(debugSummary.severity == .warning)
+        #expect(debugSummary.signals.contains { $0.title == "Pod has not been scheduled" })
+        #expect(debugSummary.signals.contains { $0.title == "Pod QoS is BestEffort" })
+        #expect(debugSummary.signals.contains { $0.title == "Missing resource requests" })
+        #expect(debugSummary.signals.contains { $0.title == "PodScheduled is False: Unschedulable" })
+    }
+
     @Test func summarizesHealthyDeploymentDebugState() throws {
         let detail = try JSONDecoder().decode(
             KubernetesResourceDetail.self,
@@ -1406,6 +1461,7 @@ struct KubernetesResourceListTests {
                     "namespace": "vibekube-demo"
                   },
                   "spec": {
+                    "nodeName": "worker-a",
                     "initContainers": [
                       {
                         "name": "prepare-runtime",
@@ -1415,12 +1471,19 @@ struct KubernetesResourceListTests {
                     "containers": [
                       {
                         "name": "nginx",
-                        "image": "nginx:1.27"
+                        "image": "nginx:1.27",
+                        "resources": {
+                          "requests": {
+                            "cpu": "10m",
+                            "memory": "16Mi"
+                          }
+                        }
                       }
                     ]
                   },
                   "status": {
                     "phase": "Running",
+                    "qosClass": "Burstable",
                     "conditions": [
                       {
                         "type": "Ready",

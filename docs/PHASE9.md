@@ -20,15 +20,16 @@ Goal: add practical debugging workflows: describe-style views, container details
 - [x] Pod/workload problem summary.
 - [x] Quick actions from debug summary to Events, Logs, Containers, Env, and YAML.
 - [x] Event-aware debug summary with warning and empty-event context.
-- [ ] Pod scheduling summary.
+- [x] Pod scheduling summary.
 - [x] Container state summary for Pod detail manifests.
 - [x] Restart/termination reason details for Pod detail manifests.
 - [x] Image pull status from container waiting reasons.
 - [x] Environment variables with secret-aware redaction.
 - [x] Volume mounts.
 - [x] Probes.
-- [ ] QoS class summary.
+- [x] QoS class summary.
 - [x] Resource requests/limits.
+- [x] Scheduling and resource request debug signals.
 
 ### 9.2 Port Forward
 
