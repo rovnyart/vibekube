@@ -340,6 +340,37 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func navigateToOwner(_ owner: KubernetesOwnerReferenceSummary, namespace: String?) {
+        guard let targetResource = ResourceNavigationItem.navigationItem(forOwnerKind: owner.kind),
+              let selectedClusterID else {
+            return
+        }
+
+        let previousResource = selectedResource
+        let previousNamespaceSelection = selectedNamespaceSelection
+        if let targetDiscovery = targetResource.discoveredResource(in: selectedDiscovery),
+           targetDiscovery.namespaced,
+           let namespace,
+           !namespace.isEmpty,
+           namespace != selectedNamespaceSelection {
+            selectedNamespaceByContextID[selectedClusterID] = namespace
+            userPreferences.selectedNamespaceByContextID = selectedNamespaceByContextID
+        }
+
+        searchText = owner.name
+        focusSearchField()
+
+        if previousResource == targetResource {
+            if previousNamespaceSelection != selectedNamespaceSelection {
+                refreshSelectedNamespaceScope()
+            } else {
+                loadResourceList(for: targetResource, force: true)
+            }
+        } else {
+            selectResource(targetResource)
+        }
+    }
+
     func selectNamespace(_ namespace: String) {
         guard let selectedClusterID else {
             return

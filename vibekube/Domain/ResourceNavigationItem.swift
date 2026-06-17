@@ -214,6 +214,55 @@ enum ResourceNavigationItem: String, CaseIterable, Identifiable, Hashable {
 }
 
 extension ResourceNavigationItem {
+    static func navigationItem(forOwnerKind kind: String) -> ResourceNavigationItem? {
+        switch kind {
+        case "Pod":
+            .pods
+        case "Deployment":
+            .deployments
+        case "ReplicaSet":
+            .replicaSets
+        case "StatefulSet":
+            .statefulSets
+        case "DaemonSet":
+            .daemonSets
+        case "Job":
+            .jobs
+        case "CronJob":
+            .cronJobs
+        case "Service":
+            .services
+        case "Ingress":
+            .ingresses
+        case "ConfigMap":
+            .configMaps
+        case "Secret":
+            .secrets
+        case "PersistentVolume":
+            .persistentVolumes
+        case "PersistentVolumeClaim":
+            .persistentVolumeClaims
+        case "StorageClass":
+            .storageClasses
+        case "ServiceAccount":
+            .serviceAccounts
+        case "Role":
+            .roles
+        case "RoleBinding":
+            .roleBindings
+        case "ClusterRole":
+            .clusterRoles
+        case "ClusterRoleBinding":
+            .clusterRoleBindings
+        case "Node":
+            .nodes
+        case "Namespace":
+            .namespaces
+        default:
+            nil
+        }
+    }
+
     func discoveredResource(in snapshot: KubernetesDiscoverySnapshot?) -> KubernetesDiscoveredResource? {
         guard let snapshot else {
             return nil

@@ -1675,7 +1675,10 @@ private struct ResourceDetailView: View {
             ResourceDetailOverviewView(
                 row: row,
                 summary: snapshot.summary,
-                loadedAt: snapshot.loadedAt
+                loadedAt: snapshot.loadedAt,
+                openOwner: { owner, namespace in
+                    appModel.navigateToOwner(owner, namespace: namespace)
+                }
             )
         case .events:
             ResourceDetailEventsView(detail: snapshot)
@@ -1916,6 +1919,7 @@ private struct ResourceDetailOverviewView: View {
     let row: KubernetesUnstructuredResource
     let summary: KubernetesResourceDetailSummary
     let loadedAt: Date
+    let openOwner: (KubernetesOwnerReferenceSummary, String?) -> Void
 
     private let columns = [
         GridItem(.adaptive(minimum: 170), spacing: 12)
@@ -1980,7 +1984,11 @@ private struct ResourceDetailOverviewView: View {
                     SectionSurface(title: "Owners", systemImage: "point.3.connected.trianglepath.dotted") {
                         VStack(spacing: 0) {
                             ForEach(summary.ownerReferences) { owner in
-                                ResourceOwnerSummaryRow(owner: owner)
+                                ResourceOwnerSummaryRow(
+                                    owner: owner,
+                                    namespace: namespaceTextForOwner,
+                                    openOwner: openOwner
+                                )
                             }
                         }
                     }
@@ -2009,6 +2017,14 @@ private struct ResourceDetailOverviewView: View {
         }
 
         return row.displayNamespace == "-" ? "Cluster scoped" : row.displayNamespace
+    }
+
+    private var namespaceTextForOwner: String? {
+        if let namespace = summary.namespace, !namespace.isEmpty {
+            return namespace
+        }
+
+        return row.displayNamespace == "-" ? nil : row.displayNamespace
     }
 
     private var statusTint: Color {
@@ -4245,8 +4261,26 @@ private struct ResourceContainerSummaryRow: View {
 
 private struct ResourceOwnerSummaryRow: View {
     let owner: KubernetesOwnerReferenceSummary
+    let namespace: String?
+    let openOwner: (KubernetesOwnerReferenceSummary, String?) -> Void
 
     var body: some View {
+        if ResourceNavigationItem.navigationItem(forOwnerKind: owner.kind) != nil {
+            Button {
+                openOwner(owner, namespace)
+            } label: {
+                rowContent(showsDisclosure: true)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Open \(owner.kind) \(owner.name)")
+            .accessibilityIdentifier("resource.detail.owner.open.\(owner.kind).\(owner.name)")
+        } else {
+            rowContent(showsDisclosure: false)
+        }
+    }
+
+    private func rowContent(showsDisclosure: Bool) -> some View {
         HStack(spacing: 10) {
             Image(systemName: owner.controller ? "link.circle.fill" : "link.circle")
                 .foregroundStyle(owner.controller ? .blue : .secondary)
@@ -4267,6 +4301,12 @@ private struct ResourceOwnerSummaryRow: View {
                 Text("Controller")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            if showsDisclosure {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
         }
         .padding(.vertical, 7)

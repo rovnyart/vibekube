@@ -215,6 +215,43 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelNavigatesToKnownOwnerResource() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: WatchableWorkloadsConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        let owner = KubernetesOwnerReferenceSummary(
+            kind: "Deployment",
+            name: "echo-web",
+            controller: true
+        )
+        model.navigateToOwner(owner, namespace: "vibekube-demo")
+
+        try await waitForResourceList(model, .deployments)
+
+        #expect(ResourceNavigationItem.navigationItem(forOwnerKind: "ReplicaSet") == .replicaSets)
+        #expect(ResourceNavigationItem.navigationItem(forOwnerKind: "Widget") == nil)
+        #expect(model.selectedResource == .deployments)
+        #expect(model.selectedNamespaceSelection == "vibekube-demo")
+        #expect(model.searchText == "echo-web")
+        #expect(model.searchFocusRequestID == 1)
+
+        guard case .loaded(let snapshot) = model.resourceListState(for: .deployments) else {
+            Issue.record("Expected loaded deployment list")
+            return
+        }
+
+        #expect(snapshot.query.resource.name == "deployments")
+        #expect(snapshot.query.namespaceSelection == "vibekube-demo")
+    }
+
+    @MainActor
     @Test func appModelBuildsCopyableRouteIdentity() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
