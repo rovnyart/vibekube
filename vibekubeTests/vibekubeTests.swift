@@ -257,6 +257,16 @@ struct vibekubeTests {
 
         #expect(portForwardService.handles.first?.stopped == true)
         #expect(model.portForwardSessions.first?.status == .stopped)
+
+        portForwardService.terminateFirst(
+            KubernetesPortForwardTermination(
+                exitCode: 15,
+                userStopped: false,
+                message: nil
+            )
+        )
+        try await waitForPortForwardSession(model, status: .stopped)
+        #expect(model.portForwardSessions.first?.status == .stopped)
     }
 
     @MainActor
@@ -1737,6 +1747,7 @@ private struct SucceedingConnectionService: KubernetesConnectionServicing {
 private final class RecordingPortForwardService: KubernetesPortForwardServicing {
     var requests: [KubernetesPortForwardRequest] = []
     var handles: [RecordingPortForwardHandle] = []
+    var terminations: [@Sendable (KubernetesPortForwardTermination) -> Void] = []
 
     func startPortForward(
         request: KubernetesPortForwardRequest,
@@ -1745,7 +1756,12 @@ private final class RecordingPortForwardService: KubernetesPortForwardServicing 
         let handle = RecordingPortForwardHandle(processIdentifier: 4242)
         requests.append(request)
         handles.append(handle)
+        terminations.append(onTermination)
         return handle
+    }
+
+    func terminateFirst(_ termination: KubernetesPortForwardTermination) {
+        terminations.first?(termination)
     }
 }
 

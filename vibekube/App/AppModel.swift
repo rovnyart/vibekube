@@ -872,7 +872,6 @@ final class AppModel: ObservableObject {
 
     func stopPortForward(sessionID: PortForwardSession.ID) {
         portForwardHandlesBySessionID[sessionID]?.stop()
-        portForwardHandlesBySessionID[sessionID] = nil
         updatePortForwardSession(sessionID) { session in
             session.status = .stopped
         }
@@ -3123,7 +3122,6 @@ final class AppModel: ObservableObject {
     private func stopPortForwardSessions(where shouldStop: (PortForwardSession) -> Bool) {
         for session in portForwardSessions where session.isActive && shouldStop(session) {
             portForwardHandlesBySessionID[session.id]?.stop()
-            portForwardHandlesBySessionID[session.id] = nil
             updatePortForwardSession(session.id) { session in
                 session.status = .stopped
             }
@@ -3136,6 +3134,9 @@ final class AppModel: ObservableObject {
     ) {
         portForwardHandlesBySessionID[sessionID] = nil
         updatePortForwardSession(sessionID) { session in
+            if session.status == .stopped {
+                return
+            }
             if termination.userStopped || termination.exitCode == 0 {
                 session.status = .stopped
             } else {
