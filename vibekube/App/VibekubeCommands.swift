@@ -158,6 +158,12 @@ struct VibekubeCommands: Commands {
             .keyboardShortcut("c", modifiers: [.command, .option])
             .disabled(!canUseDetailCommands)
 
+            Button("Save YAML...") {
+                resourceDetailCommandContext?.saveYAML()
+            }
+            .keyboardShortcut("s", modifiers: [.command, .option])
+            .disabled(!canUseDetailCommands)
+
             Divider()
 
             Button("Open Logs For Current Resource") {

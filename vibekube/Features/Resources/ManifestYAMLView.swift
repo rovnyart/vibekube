@@ -7,6 +7,7 @@ struct ManifestYAMLView: View {
     @State private var copiedToClipboard = false
 
     let yaml: String
+    var saveYAML: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -87,6 +88,17 @@ struct ManifestYAMLView: View {
             .buttonStyle(.bordered)
             .help(copiedToClipboard ? "Copied" : "Copy YAML")
             .accessibilityIdentifier("resource.detail.yaml.copy")
+
+            Button {
+                saveYAML?()
+            } label: {
+                Label("Save YAML", systemImage: "square.and.arrow.down")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.bordered)
+            .disabled(saveYAML == nil)
+            .help("Save YAML")
+            .accessibilityIdentifier("resource.detail.yaml.save")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)

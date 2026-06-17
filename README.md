@@ -13,7 +13,7 @@ Download the latest notarized macOS build from [vibekube.tech](https://vibekube.
 - Native macOS interface with sidebar contexts, resource navigation, toolbar search, and namespace selection.
 - Kubeconfig discovery with support for standard Kubernetes auth, client certificates, bearer tokens, and exec credential plugins such as Teleport `tsh`.
 - Fast resource browsing for common Kubernetes resources and CRDs.
-- Resource inspector with Overview, Events, Logs, Env, YAML, Metadata, and Conditions tabs.
+- Resource inspector with Overview, Events, Logs, Env, searchable/copyable/saveable YAML, Metadata, and Conditions tabs.
 - Rich pod logs: live streaming, timestamps, search, grep-style filtering, JSONL formatting, previous container logs, fullscreen mode, copy, save, and download-all.
 - Real-time watches for active resource lists and selected resource details, with reconnect handling after idle/background timeouts.
 - Safe Secret handling: Secret manifest payloads are redacted by default, Secret-backed env values are masked until explicitly revealed, and diagnostics redact sensitive data.
@@ -65,4 +65,3 @@ See [docs/RELEASE.md](docs/RELEASE.md) for signing, notarization, and DMG verifi
 ## Privacy
 
 Vibekube is local-first and currently has no telemetry, crash reporting, automatic update checks, or AI network requests. See [docs/PRIVACY.md](docs/PRIVACY.md).
-

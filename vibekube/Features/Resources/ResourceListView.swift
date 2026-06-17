@@ -1729,6 +1729,7 @@ private struct ResourceDetailTabButton: View {
 private struct ResourceDetailView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var selectedPanel: ResourceDetailPanel = .overview
+    @State private var yamlSaveErrorMessage: String?
 
     let item: ResourceNavigationItem
     let row: KubernetesUnstructuredResource
@@ -1747,8 +1748,20 @@ private struct ResourceDetailView: View {
         }
         .onChange(of: row.id) {
             selectedPanel = .overview
+            yamlSaveErrorMessage = nil
         }
         .focusedSceneValue(\.resourceDetailCommandContext, detailCommandContext)
+        .alert(
+            "Could Not Save YAML",
+            isPresented: Binding(
+                get: { yamlSaveErrorMessage != nil },
+                set: { if !$0 { yamlSaveErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(yamlSaveErrorMessage ?? "Unknown error")
+        }
         .accessibilityIdentifier("resource.detail.\(item.id)")
     }
 
@@ -1877,7 +1890,12 @@ private struct ResourceDetailView: View {
         case .environment:
             ResourceDetailEnvironmentView(summary: snapshot.summary)
         case .yaml:
-            ManifestYAMLView(yaml: snapshot.yaml)
+            ManifestYAMLView(
+                yaml: snapshot.yaml,
+                saveYAML: {
+                    saveYAML(snapshot.yaml)
+                }
+            )
         case .metadata:
             ResourceDetailMetadataView(summary: snapshot.summary)
         case .conditions:
@@ -1960,6 +1978,11 @@ private struct ResourceDetailView: View {
                 if case .loaded(let snapshot) = appModel.resourceDetailState(for: item, row: row) {
                     copyToPasteboard(snapshot.yaml)
                 }
+            },
+            saveYAML: {
+                if case .loaded(let snapshot) = appModel.resourceDetailState(for: item, row: row) {
+                    saveYAML(snapshot.yaml)
+                }
             }
         )
     }
@@ -1985,6 +2008,54 @@ private struct ResourceDetailView: View {
     private func copyToPasteboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func saveYAML(_ yaml: String) {
+        guard let url = chooseYAMLSaveURL() else {
+            return
+        }
+
+        do {
+            try writeYAML(yaml, to: url)
+        } catch {
+            yamlSaveErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func chooseYAMLSaveURL() -> URL? {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = defaultYAMLFilename
+
+        guard panel.runModal() == .OK else {
+            return nil
+        }
+
+        return panel.url
+    }
+
+    private func writeYAML(_ yaml: String, to url: URL) throws {
+        let normalizedYAML = yaml.hasSuffix("\n") ? yaml : yaml + "\n"
+        try normalizedYAML.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private var defaultYAMLFilename: String {
+        let namespace = row.displayNamespace == "-" ? nil : row.displayNamespace
+        let components = [row.displayKind.lowercased(), namespace, row.displayName].compactMap(\.self)
+        return components
+            .map(sanitizedYAMLFilenameComponent)
+            .joined(separator: "-") + ".yaml"
+    }
+
+    private func sanitizedYAMLFilenameComponent(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
+        let scalars = value.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? scalar : UnicodeScalar("-")
+        }
+        let result = String(String.UnicodeScalarView(scalars))
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-_."))
+        return result.isEmpty ? "resource" : result
     }
 }
 

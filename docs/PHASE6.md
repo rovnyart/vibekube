@@ -21,7 +21,7 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - The bottom inspector supports multiple open resource tabs with close controls.
 - The inspector fetches the full object through generic discovery-derived `get` endpoints.
 - Open detail tabs refresh their manifest when the backing list row reports a newer Kubernetes `resourceVersion`.
-- The manifest view is read-only, selectable, line-numbered, searchable, copyable, and lightly syntax-highlighted.
+- The manifest view is read-only, selectable, line-numbered, searchable, copyable, saveable, and lightly syntax-highlighted.
 - Secret manifests redact top-level `data`, `stringData`, and `binaryData`.
 - Resource detail now has Overview, Events, Logs, Env, YAML, Metadata, and Conditions tabs.
 - The overview tab extracts status, identity, owner references, conditions, and pod-like container summaries.
@@ -39,7 +39,7 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - Invalid `envFrom` keys are skipped using Kubernetes-style env var name rules instead of being shown as fake variables.
 - Secret-backed env values are masked by default and fetched/decoded on demand through an eye reveal button.
 - Resource details now include an Events tab that reads Kubernetes Events for the selected object using `events.k8s.io/v1` or core `v1/Event`.
-- The richer Phase 6 detail experience still needs save/export YAML tools, relationships, and custom metadata sections.
+- The richer Phase 6 detail experience still needs custom metadata sections and a dedicated Related tab.
 
 ## Implementation Slices
 
@@ -64,7 +64,7 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - [x] Add basic syntax highlighting.
 - [x] Add find-in-YAML.
 - [x] Add copy YAML.
-- [ ] Add save YAML.
+- [x] Add save YAML.
 - [x] Keep YAML read-only in this phase.
 - [x] Redact secret data by default or require explicit reveal.
 
@@ -134,7 +134,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 ## Acceptance Criteria
 
 - [x] User can open any listed get-capable resource from a table row.
-- [x] YAML is readable, searchable, copyable, and safe for secrets.
+- [x] YAML is readable, searchable, copyable, saveable, and safe for secrets.
 - [x] Pod env vars and Secret refs are visible without exposing secret values by default.
 - [x] Events and conditions explain resource state.
 - [ ] Related resources are navigable.

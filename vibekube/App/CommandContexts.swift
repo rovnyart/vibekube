@@ -6,6 +6,7 @@ struct ResourceDetailCommandContext {
     var selectPanel: (ResourceDetailPanel) -> Void
     var copyIdentity: () -> Void
     var copyYAML: () -> Void
+    var saveYAML: () -> Void
 }
 
 private struct ResourceDetailCommandContextKey: FocusedValueKey {
