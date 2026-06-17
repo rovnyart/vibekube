@@ -288,10 +288,6 @@ final class AppModel: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
-    var canOpenLogsForSelectedRoute: Bool {
-        selectedConnectionState == .connected && route.resource.supportsLogs
-    }
-
     var selectedDashboardSnapshot: ClusterDashboardSnapshot {
         ClusterDashboardSnapshot.make(states: dashboardResourceStates())
     }
@@ -339,8 +335,6 @@ final class AppModel: ObservableObject {
         if resource == .dashboard {
             loadDashboardResources()
             loadDashboardMetrics()
-        } else if resource == .logs {
-            loadResourceList(for: .pods)
         } else {
             loadResourceList(for: resource)
         }
@@ -365,8 +359,6 @@ final class AppModel: ObservableObject {
         if selectedResource == .dashboard {
             loadDashboardResources(force: true)
             loadDashboardMetrics(force: true)
-        } else if selectedResource == .logs {
-            loadResourceList(for: .pods, force: true)
         } else if let selectedResource {
             loadResourceList(for: selectedResource, force: true)
         }
@@ -580,21 +572,11 @@ final class AppModel: ObservableObject {
         )
     }
 
-    func openLogsForSelectedRoute() {
-        guard canOpenLogsForSelectedRoute else {
-            return
-        }
-
-        selectResource(.logs)
-    }
-
     func refresh() {
         cancelResourceWatchTasks()
         if selectedResource == .dashboard, selectedConnectionState == .connected {
             loadDashboardResources(force: true)
             loadDashboardMetrics(force: true)
-        } else if selectedResource == .logs, selectedConnectionState == .connected {
-            loadResourceList(for: .pods, force: true)
         } else if let selectedResource,
            selectedConnectionState == .connected,
            selectedResource.discoveredResource(in: selectedDiscovery) != nil {
@@ -722,8 +704,6 @@ final class AppModel: ObservableObject {
             if selectedResource == .dashboard {
                 loadDashboardResources()
                 loadDashboardMetrics()
-            } else if selectedResource == .logs {
-                loadResourceList(for: .pods)
             } else if let selectedResource {
                 loadResourceList(for: selectedResource)
             }
@@ -1512,8 +1492,6 @@ final class AppModel: ObservableObject {
         if selectedClusterID == contextID, selectedResource == .dashboard {
             loadDashboardResources()
             loadDashboardMetrics()
-        } else if selectedClusterID == contextID, selectedResource == .logs {
-            loadResourceList(for: .pods)
         } else if selectedClusterID == contextID, let selectedResource {
             loadResourceList(for: selectedResource)
         }
@@ -3216,12 +3194,7 @@ final class AppModel: ObservableObject {
             return nil
         }
 
-        guard let item = ResourceNavigationItem(rawValue: id),
-              item.isPrimaryNavigationVisible else {
-            return nil
-        }
-
-        return item
+        return ResourceNavigationItem(rawValue: id)
     }
 }
 

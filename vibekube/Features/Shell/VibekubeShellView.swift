@@ -57,8 +57,6 @@ struct VibekubeShellView: View {
         switch appModel.selectedResource ?? .dashboard {
         case .dashboard:
             DashboardView()
-        case .logs:
-            LogsView()
         case .settings:
             SettingsView()
         case .customResources:

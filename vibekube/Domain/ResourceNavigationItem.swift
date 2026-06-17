@@ -59,7 +59,6 @@ enum ResourceNavigationItem: String, CaseIterable, Identifiable, Hashable {
     case namespaces
     case events
     case customResources
-    case logs
     case aiAssistant
     case settings
 
@@ -115,8 +114,6 @@ enum ResourceNavigationItem: String, CaseIterable, Identifiable, Hashable {
             "Events"
         case .customResources:
             "Custom Resources"
-        case .logs:
-            "Logs"
         case .aiAssistant:
             "AI"
         case .settings:
@@ -174,8 +171,6 @@ enum ResourceNavigationItem: String, CaseIterable, Identifiable, Hashable {
             "waveform.path.ecg"
         case .customResources:
             "square.grid.3x3"
-        case .logs:
-            "terminal"
         case .aiAssistant:
             "sparkles"
         case .settings:
@@ -185,7 +180,7 @@ enum ResourceNavigationItem: String, CaseIterable, Identifiable, Hashable {
 
     var section: ResourceNavigationSection {
         switch self {
-        case .dashboard, .logs, .aiAssistant, .settings:
+        case .dashboard, .aiAssistant, .settings:
             .overview
         case .pods, .deployments, .replicaSets, .statefulSets, .daemonSets, .jobs, .cronJobs:
             .workloads
@@ -206,25 +201,7 @@ enum ResourceNavigationItem: String, CaseIterable, Identifiable, Hashable {
 
     var requiresDiscoveredResource: Bool {
         switch self {
-        case .dashboard, .logs, .customResources, .aiAssistant, .settings:
-            false
-        default:
-            true
-        }
-    }
-
-    var supportsLogs: Bool {
-        switch self {
-        case .pods, .deployments, .replicaSets, .statefulSets, .daemonSets, .jobs, .cronJobs:
-            true
-        default:
-            false
-        }
-    }
-
-    var isPrimaryNavigationVisible: Bool {
-        switch self {
-        case .logs:
+        case .dashboard, .customResources, .aiAssistant, .settings:
             false
         default:
             true
@@ -232,7 +209,7 @@ enum ResourceNavigationItem: String, CaseIterable, Identifiable, Hashable {
     }
 
     static func items(in section: ResourceNavigationSection) -> [ResourceNavigationItem] {
-        allCases.filter { $0.section == section && $0.isPrimaryNavigationVisible }
+        allCases.filter { $0.section == section }
     }
 }
 
@@ -303,7 +280,7 @@ extension ResourceNavigationItem {
                 ResourceDiscoveryTarget(group: "events.k8s.io", name: "events"),
                 ResourceDiscoveryTarget(group: "", name: "events")
             ]
-        case .dashboard, .customResources, .logs, .aiAssistant, .settings:
+        case .dashboard, .customResources, .aiAssistant, .settings:
             []
         }
     }

@@ -196,23 +196,6 @@ struct vibekubeTests {
     }
 
     @MainActor
-    @Test func appModelOnlyOpensLogsForConnectedWorkloadRoutes() {
-        let model = AppModel(clusters: ClusterSummary.preview)
-
-        model.selectResource(.pods)
-        #expect(model.canOpenLogsForSelectedRoute == false)
-
-        model.connectSelectedCluster()
-        #expect(model.canOpenLogsForSelectedRoute == true)
-
-        model.openLogsForSelectedRoute()
-        #expect(model.selectedResource == .logs)
-
-        model.selectResource(.services)
-        #expect(model.canOpenLogsForSelectedRoute == false)
-    }
-
-    @MainActor
     @Test func appModelConnectsAndDisconnectsSelectedCluster() {
         let model = AppModel(clusters: ClusterSummary.preview)
 
@@ -461,30 +444,6 @@ struct vibekubeTests {
     }
 
     @MainActor
-    @Test func appModelLoadsPodsWhenSelectingLogsRoute() async throws {
-        let model = AppModel(
-            clusters: ClusterSummary.preview,
-            connectionService: SucceedingConnectionService(),
-            resourceListService: SucceedingResourceListService(),
-            loadedKubeconfig: kubeconfig()
-        )
-
-        model.connectSelectedCluster()
-        try await waitForConnectionState(model, .connected)
-
-        model.selectResource(.logs)
-        try await waitForResourceList(model, .pods)
-
-        guard case .loaded(let snapshot) = model.resourceListState(for: .pods) else {
-            Issue.record("Expected pods to be loaded for Logs")
-            return
-        }
-
-        #expect(model.selectedResource == .logs)
-        #expect(snapshot.items.first?.displayName == "web-0")
-    }
-
-    @MainActor
     @Test func appModelLoadsPodLogsForSelectedPod() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -497,7 +456,7 @@ struct vibekubeTests {
         model.connectSelectedCluster()
         try await waitForConnectionState(model, .connected)
 
-        model.selectResource(.logs)
+        model.selectResource(.pods)
         try await waitForResourceList(model, .pods)
 
         guard case .loaded(let listSnapshot) = model.resourceListState(for: .pods),
