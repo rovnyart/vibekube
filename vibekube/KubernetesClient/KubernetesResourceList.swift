@@ -90,6 +90,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             return jobStatus
         }
 
+        if let deploymentStatus = deploymentDisplayStatus {
+            return deploymentStatus
+        }
+
         if let phase = status?["phase"]?.stringValue, !phase.isEmpty {
             return phase
         }
@@ -227,6 +231,94 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
 
         let status = displayStatus.lowercased()
         return status.contains("failed") || status.contains("failing") || jobFailedCount > 0 && jobSucceededCount < jobCompletionTarget
+    }
+
+    var deploymentDesiredReplicas: Int {
+        guard isDeployment else {
+            return 0
+        }
+
+        return spec?["replicas"]?.intValue ?? 1
+    }
+
+    var deploymentReadyReplicas: Int {
+        guard isDeployment else {
+            return 0
+        }
+
+        return status?["readyReplicas"]?.intValue ?? 0
+    }
+
+    var deploymentUpdatedReplicas: Int {
+        guard isDeployment else {
+            return 0
+        }
+
+        return status?["updatedReplicas"]?.intValue ?? 0
+    }
+
+    var deploymentAvailableReplicas: Int {
+        guard isDeployment else {
+            return 0
+        }
+
+        return status?["availableReplicas"]?.intValue ?? 0
+    }
+
+    var deploymentUnavailableReplicas: Int {
+        guard isDeployment else {
+            return 0
+        }
+
+        return status?["unavailableReplicas"]?.intValue ?? max(0, deploymentDesiredReplicas - deploymentAvailableReplicas)
+    }
+
+    var deploymentReadySortValue: Int {
+        deploymentReadyReplicas * 1_000 + deploymentDesiredReplicas
+    }
+
+    var deploymentUpdatedSortValue: Int {
+        deploymentUpdatedReplicas * 1_000 + deploymentDesiredReplicas
+    }
+
+    var deploymentAvailableSortValue: Int {
+        deploymentAvailableReplicas * 1_000 + deploymentDesiredReplicas
+    }
+
+    var deploymentReadyDescription: String {
+        guard isDeployment else {
+            return "-"
+        }
+
+        return "\(deploymentReadyReplicas)/\(deploymentDesiredReplicas)"
+    }
+
+    var deploymentUpdatedDescription: String {
+        guard isDeployment else {
+            return "-"
+        }
+
+        return String(deploymentUpdatedReplicas)
+    }
+
+    var deploymentAvailableDescription: String {
+        guard isDeployment else {
+            return "-"
+        }
+
+        return String(deploymentAvailableReplicas)
+    }
+
+    var isDeploymentUnhealthy: Bool {
+        guard isDeployment else {
+            return false
+        }
+
+        let status = displayStatus.lowercased()
+        return status.contains("failed") ||
+            status.contains("unavailable") ||
+            status.contains("deadline") ||
+            deploymentUnavailableReplicas > 0 && deploymentUpdatedReplicas >= deploymentDesiredReplicas
     }
 
     var labelsSummary: String {
@@ -390,6 +482,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
         displayKind == "Job"
     }
 
+    private var isDeployment: Bool {
+        displayKind == "Deployment"
+    }
+
     private var podDisplayStatus: String? {
         guard isPod else {
             return nil
@@ -451,6 +547,69 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
     }
 
     private func jobCondition(_ type: String) -> [String: KubernetesJSONValue]? {
+        status?["conditions"]?.arrayValue?
+            .compactMap(\.objectValue)
+            .first { condition in
+                condition["type"]?.stringValue == type
+            }
+    }
+
+    private var deploymentDisplayStatus: String? {
+        guard isDeployment, hasDeploymentRolloutStatus else {
+            return nil
+        }
+
+        if deploymentConditionIsFalse("Progressing"),
+           let reason = deploymentConditionReason("Progressing") {
+            return reason
+        }
+
+        if deploymentDesiredReplicas == 0 {
+            return "Scaled to 0"
+        }
+
+        if deploymentReadyReplicas >= deploymentDesiredReplicas,
+           deploymentAvailableReplicas >= deploymentDesiredReplicas,
+           deploymentUpdatedReplicas >= deploymentDesiredReplicas {
+            return "Available"
+        }
+
+        if deploymentUpdatedReplicas < deploymentDesiredReplicas {
+            return "Updating"
+        }
+
+        if deploymentConditionIsFalse("Available") {
+            return deploymentConditionReason("Available") ?? "Unavailable"
+        }
+
+        if deploymentAvailableReplicas < deploymentDesiredReplicas || deploymentUnavailableReplicas > 0 {
+            return "Unavailable"
+        }
+
+        return nil
+    }
+
+    private var hasDeploymentRolloutStatus: Bool {
+        status?["updatedReplicas"] != nil ||
+            status?["availableReplicas"] != nil ||
+            status?["unavailableReplicas"] != nil ||
+            status?["conditions"] != nil
+    }
+
+    private func deploymentConditionIsFalse(_ type: String) -> Bool {
+        deploymentCondition(type)?["status"]?.stringValue == "False"
+    }
+
+    private func deploymentConditionReason(_ type: String) -> String? {
+        guard let reason = deploymentCondition(type)?["reason"]?.stringValue,
+              !reason.isEmpty else {
+            return nil
+        }
+
+        return reason
+    }
+
+    private func deploymentCondition(_ type: String) -> [String: KubernetesJSONValue]? {
         status?["conditions"]?.arrayValue?
             .compactMap(\.objectValue)
             .first { condition in

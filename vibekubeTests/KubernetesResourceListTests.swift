@@ -541,6 +541,92 @@ struct KubernetesResourceListTests {
         #expect(list.items.first?.displayStatus == "2/3 ready")
     }
 
+    @Test func deploymentRowsExposeRolloutSignal() throws {
+        let list = try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "apps/v1",
+                  "kind": "DeploymentList",
+                  "items": [
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "Deployment",
+                      "metadata": {
+                        "name": "web",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "replicas": 2
+                      },
+                      "status": {
+                        "readyReplicas": 2,
+                        "updatedReplicas": 2,
+                        "availableReplicas": 2
+                      }
+                    },
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "Deployment",
+                      "metadata": {
+                        "name": "rollout",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "replicas": 3
+                      },
+                      "status": {
+                        "readyReplicas": 1,
+                        "updatedReplicas": 2,
+                        "availableReplicas": 1,
+                        "unavailableReplicas": 2
+                      }
+                    },
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "Deployment",
+                      "metadata": {
+                        "name": "stalled",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "replicas": 1
+                      },
+                      "status": {
+                        "readyReplicas": 0,
+                        "updatedReplicas": 1,
+                        "availableReplicas": 0,
+                        "unavailableReplicas": 1,
+                        "conditions": [
+                          {
+                            "type": "Progressing",
+                            "status": "False",
+                            "reason": "ProgressDeadlineExceeded"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        #expect(list.items[0].displayStatus == "Available")
+        #expect(list.items[0].deploymentReadyDescription == "2/2")
+        #expect(list.items[0].deploymentUpdatedDescription == "2")
+        #expect(list.items[0].deploymentAvailableDescription == "2")
+        #expect(!list.items[0].isDeploymentUnhealthy)
+        #expect(list.items[1].displayStatus == "Updating")
+        #expect(list.items[1].deploymentReadyDescription == "1/3")
+        #expect(list.items[1].deploymentUpdatedDescription == "2")
+        #expect(list.items[1].deploymentAvailableDescription == "1")
+        #expect(!list.items[1].isDeploymentUnhealthy)
+        #expect(list.items[2].displayStatus == "ProgressDeadlineExceeded")
+        #expect(list.items[2].isDeploymentUnhealthy)
+    }
+
     @Test func rendersResourceDetailYAML() throws {
         let detail = try JSONDecoder().decode(
             KubernetesResourceDetail.self,

@@ -161,6 +161,53 @@ struct ResourceListView: View {
                         Text(resource.ageDescription())
                     }
                     .width(min: 72, ideal: 90, max: 120)
+                } else if item == .deployments {
+                    TableColumn("Name", value: \.displayName) { resource in
+                        ResourceNameCell(
+                            resource: resource,
+                            isRecentlyUpdated: recentlyUpdatedRowIDs.contains(resource.id),
+                            density: appModel.tableDensity
+                        )
+                    }
+                    .width(min: 260, ideal: 320)
+
+                    TableColumn("Namespace", value: \.displayNamespace)
+                        .width(min: 150, ideal: 180)
+                    TableColumn("Ready", value: \.deploymentReadySortValue) { resource in
+                        ResourceDeploymentCountCell(
+                            value: resource.deploymentReadyDescription,
+                            isHealthy: resource.deploymentReadyReplicas >= resource.deploymentDesiredReplicas,
+                            isUnhealthy: resource.isDeploymentUnhealthy,
+                            help: "Ready replicas: \(resource.deploymentReadyDescription)"
+                        )
+                    }
+                    .width(min: 78, ideal: 96, max: 118)
+                    TableColumn("Up-to-date", value: \.deploymentUpdatedSortValue) { resource in
+                        ResourceDeploymentCountCell(
+                            value: resource.deploymentUpdatedDescription,
+                            isHealthy: resource.deploymentUpdatedReplicas >= resource.deploymentDesiredReplicas,
+                            isUnhealthy: false,
+                            help: "Updated replicas: \(resource.deploymentUpdatedDescription)"
+                        )
+                    }
+                    .width(min: 92, ideal: 112, max: 136)
+                    TableColumn("Available", value: \.deploymentAvailableSortValue) { resource in
+                        ResourceDeploymentCountCell(
+                            value: resource.deploymentAvailableDescription,
+                            isHealthy: resource.deploymentAvailableReplicas >= resource.deploymentDesiredReplicas,
+                            isUnhealthy: resource.isDeploymentUnhealthy,
+                            help: "Available replicas: \(resource.deploymentAvailableDescription)"
+                        )
+                    }
+                    .width(min: 86, ideal: 106, max: 130)
+                    TableColumn("Status", value: \.displayStatus) { resource in
+                        ResourceDeploymentStatusCell(resource: resource)
+                    }
+                    .width(min: 150, ideal: 190)
+                    TableColumn("Age") { resource in
+                        Text(resource.ageDescription())
+                    }
+                    .width(min: 72, ideal: 90, max: 120)
                 } else if item == .jobs {
                     TableColumn("Name", value: \.displayName) { resource in
                         ResourceNameCell(
@@ -656,6 +703,91 @@ private struct ResourcePodReadyCell: View {
         }
 
         return resource.isPodUnhealthy ? .red : .orange
+    }
+}
+
+private struct ResourceDeploymentCountCell: View {
+    let value: String
+    let isHealthy: Bool
+    let isUnhealthy: Bool
+    let help: String
+
+    var body: some View {
+        Text(value)
+            .font(.callout.monospacedDigit().weight(isHealthy ? .regular : .semibold))
+            .foregroundStyle(tint)
+            .help(help)
+    }
+
+    private var tint: Color {
+        if isHealthy {
+            return .green
+        }
+
+        return isUnhealthy ? .red : .orange
+    }
+}
+
+private struct ResourceDeploymentStatusCell: View {
+    let resource: KubernetesUnstructuredResource
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .imageScale(.small)
+                .foregroundStyle(tint)
+
+            Text(resource.displayStatus)
+                .lineLimit(1)
+                .foregroundStyle(titleColor)
+        }
+        .font(.callout.weight(resource.isDeploymentUnhealthy ? .semibold : .regular))
+        .padding(.horizontal, resource.isDeploymentUnhealthy ? 7 : 0)
+        .padding(.vertical, resource.isDeploymentUnhealthy ? 3 : 0)
+        .background {
+            if resource.isDeploymentUnhealthy {
+                Capsule().fill(tint.opacity(0.14))
+            }
+        }
+        .help(statusHelp)
+    }
+
+    private var titleColor: Color {
+        resource.isDeploymentUnhealthy ? tint : .primary
+    }
+
+    private var tint: Color {
+        let status = resource.displayStatus.lowercased()
+        if resource.isDeploymentUnhealthy {
+            return .red
+        }
+
+        if status.contains("updating") || status.contains("scaled") {
+            return .orange
+        }
+
+        return .green
+    }
+
+    private var systemImage: String {
+        let status = resource.displayStatus.lowercased()
+        if resource.isDeploymentUnhealthy {
+            return "exclamationmark.triangle.fill"
+        }
+
+        if status.contains("updating") || status.contains("scaled") {
+            return "clock"
+        }
+
+        return "checkmark.circle.fill"
+    }
+
+    private var statusHelp: String {
+        if resource.isDeploymentUnhealthy {
+            return "Deployment status needs attention: \(resource.displayStatus)"
+        }
+
+        return "Deployment status: \(resource.displayStatus)"
     }
 }
 
