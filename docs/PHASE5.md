@@ -9,7 +9,7 @@ Goal: browse Kubernetes resources by group with sortable, filterable, namespace-
 - [x] Phase plan exists.
 - [x] Generic resource identity exists.
 - [x] Built-in resource list loaders exist.
-- [ ] Generic discovered custom resource browsing exists.
+- [ ] Generic discovered custom resource table browsing exists.
 - [x] Tables support sorting/filtering.
 - [x] Namespace scope works.
 - [x] Selecting a row opens a read-only manifest inspector.
@@ -72,7 +72,7 @@ Goal: browse Kubernetes resources by group with sortable, filterable, namespace-
 - [x] Support cluster-scoped resources.
 - [x] Support pagination and continue tokens.
 - [x] Add generic columns: name, namespace, status, age, labels.
-- [ ] Add CRD/custom resource navigation.
+- [ ] Add CRD/custom resource table navigation from the catalog.
 
 ### 5.4 Table UX
 
@@ -106,7 +106,7 @@ Checkpoint: stop after Pods, Deployments, Services, ConfigMaps, Secrets, and Eve
 
 - [x] User can browse common resource groups in the demo cluster.
 - [ ] Tables stay readable in light and dark mode.
-- [ ] Unknown discovered resources are still visible.
+- [x] Unknown discovered resources are still visible in the API catalog.
 - [x] Secret values are not exposed in list views.
 - [x] Refresh and namespace switching work consistently.
 
@@ -114,7 +114,6 @@ Checkpoint: stop after Pods, Deployments, Services, ConfigMaps, Secrets, and Eve
 
 - [x] `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests`
 - [x] `VIBEKUBE_RUN_KIND_INTEGRATION=1 xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/KubernetesClientIntegrationTests/connectsToCurrentKubeconfigWhenEnabled`
-- [x] `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeUITests/vibekubeUITests/testShellLaunches`
 - [ ] Manual app review by user.
 
 ## Validation Commands

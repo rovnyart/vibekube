@@ -11,7 +11,7 @@ Goal: make the app navigation feel like a real Kubernetes client: cluster, dashb
 - [x] Sidebar uses real cluster/namespace state.
 - [x] Resource groups are navigable.
 - [x] Toolbar exposes cluster, searchable namespace, search, refresh, and settings controls.
-- [x] Keyboard shortcuts exist for search, common routes, detail tabs, YAML, logs handoff, and refresh.
+- [x] Keyboard shortcuts exist for search, common routes, detail tabs, YAML, detail logs, and refresh.
 - [x] Formal top-level app route model with selected cluster/resource restoration exists.
 - [x] Menus expose route-aware resource detail/YAML/log actions.
 - [ ] Full keyboard navigation and focus traversal coverage is complete.
@@ -22,7 +22,8 @@ Goal: make the app navigation feel like a real Kubernetes client: cluster, dashb
 - Cluster selection, connect/disconnect, searchable namespace selection, search, refresh, and settings are reachable from the toolbar.
 - Resource navigation is grouped into Overview, Workloads, Network, Config, Storage, Access Control, Cluster, and Custom.
 - Built-in resource groups route to live list views when discovery finds the matching API resource.
-- Dashboard, Logs, Settings, Custom Resources, resource lists, bottom detail inspector tabs, and placeholder states are reachable without dead ends.
+- Dashboard, Settings, Custom Resources, resource lists, bottom detail inspector tabs, and placeholder states are reachable without dead ends.
+- A standalone top-level Logs route was removed; logs now live in the resource detail inspector where the selected Pod context is explicit.
 - The current shell has a persisted top-level `AppRoute` for selected cluster and resource, plus focused commands for the active resource detail inspector. Deep links, full resource-detail routes, and a true quick-open palette remain future work.
 
 ## Implementation Slices
@@ -66,7 +67,7 @@ Goal: make the app navigation feel like a real Kubernetes client: cluster, dashb
 - [x] Resource list route view.
 - [x] Resource detail inspector route.
 - [x] YAML detail tab.
-- [x] Logs placeholder route view.
+- [x] Pod detail Logs tab is reachable from the resource detail inspector.
 - [x] Events resource route and detail tab.
 - [x] Settings placeholder route view.
 
@@ -75,7 +76,7 @@ Checkpoint: stop when navigation is complete even if data is still placeholder/m
 ### 3.5 Tests
 
 - [x] Unit tests for route transitions.
-- [x] Preview UI smoke test opens resource detail overview.
+- [x] Model and view-level smoke coverage exercises resource detail overview state.
 - [ ] UI test for dashboard to pods to placeholder detail.
 - [ ] UI test for keyboard shortcut focus behavior.
 

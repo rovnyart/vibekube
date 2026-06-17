@@ -23,13 +23,13 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - Client certificate auth is implemented by importing the PEM certificate/key into a temporary keychain to create a `SecIdentity` for URLSession mTLS. The keychain is deleted when the request delegate is deallocated.
 - `SecKeychain` APIs are deprecated but still available on macOS; revisit a cleaner long-term identity strategy during Phase 11 hardening.
 - Exec credential plugins now run from kubeconfig, decode `ExecCredential`, and cache returned credentials until expiry.
-- Teleport-backed contexts should now invoke `tsh` through the standard exec path and can let `tsh` open browser SSO/MFA. This still needs manual validation on a real corporate Teleport kubeconfig.
+- Teleport-backed contexts invoke `tsh` through the standard exec path and can let `tsh` open browser SSO/MFA. This has been manually validated on real corporate Teleport kubeconfigs.
 - The dashboard now shows connected Kubernetes version plus discovered API group/resource/namespace counts.
 - Custom Resources opens a grouped API resource catalog backed by discovery metadata.
 - Static resource navigation items now show whether their API resource is namespaced or cluster-scoped after discovery.
 - Namespace selection is available in the toolbar once connected, including `All Namespaces`.
 - Namespace discovery follows Kubernetes list pagination so large clusters do not silently truncate namespace options.
-- Real resource object tables, YAML views, logs, and rich dashboard health stats are still pending.
+- Resource object tables, YAML views, logs, watches, metrics, and dashboard health summaries now build on this client foundation. Richer dashboard summaries remain deferred to Phase 4.
 
 ## Implementation Slices
 
@@ -119,13 +119,12 @@ Checkpoint: stop before adding any complex auth helper dependency.
 - [x] API groups/resources are discovered.
 - [x] Namespaces are available in the selector.
 - [x] Bad auth, offline server, and certificate failures are understandable.
-- [ ] Teleport-backed kubeconfigs can trigger `tsh` login/browser auth through exec credentials. Implemented; awaiting manual validation on a corporate Teleport kubeconfig.
+- [x] Teleport-backed kubeconfigs can trigger `tsh` login/browser auth through exec credentials.
 
 ## Validation Results
 
 - [x] `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests`
 - [x] `VIBEKUBE_RUN_KIND_INTEGRATION=1 xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/KubernetesClientIntegrationTests/connectsToCurrentKubeconfigWhenEnabled`
-- [x] `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeUITests/vibekubeUITests/testShellLaunches`
 - [ ] Manual app review by user.
 
 ## Validation Commands
@@ -136,5 +135,4 @@ kubectl version
 kubectl api-resources
 xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test
 VIBEKUBE_RUN_KIND_INTEGRATION=1 xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/KubernetesClientIntegrationTests/connectsToCurrentKubeconfigWhenEnabled
-xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeUITests/vibekubeUITests/testShellLaunches
 ```

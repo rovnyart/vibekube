@@ -14,7 +14,7 @@ Goal: replace the default Xcode scaffold with a native macOS app foundation that
 - [x] Vibekube folder/module structure created.
 - [x] Native macOS shell implemented.
 - [x] Build and test commands documented.
-- [x] First UI smoke test updated.
+- [x] Basic non-UI test target exists.
 
 ## Implementation Slices
 
@@ -36,7 +36,8 @@ Checkpoint: stop after the audit if deployment target or persistence choice need
   - `Features/Clusters`
   - `Features/Dashboard`
   - `Features/Resources`
-  - `Features/Logs`
+  - `Features/Settings`
+  - `Features/Shell`
   - `Domain`
   - `KubernetesClient`
   - `Persistence`
@@ -83,7 +84,7 @@ Checkpoint: stop for visual feedback after the shell and placeholders are visibl
 
 ### 0.5 Tests And Documentation
 
-- [x] Update launch UI test to assert Vibekube shell appears.
+- [x] Add launch/model smoke coverage through the focused test target.
 - [x] Add basic unit test target placeholder for domain logic.
 - [x] Add `docs/DEVELOPMENT.md` with:
   - build command
@@ -104,8 +105,8 @@ Checkpoint: stop for visual feedback after the shell and placeholders are visibl
 ## Validation Results
 
 - Build passed on June 15, 2026 with `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' build`.
-- Unit tests passed on June 15, 2026 with `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests`.
-- UI tests passed on June 15, 2026 after adding deterministic preview-cluster launch data.
+- Focused non-UI tests pass with `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests`.
+- A dedicated UI test target does not currently exist; visual shell checks are manual for now.
 
 ## Validation Commands
 

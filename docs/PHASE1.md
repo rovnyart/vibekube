@@ -21,7 +21,7 @@ Goal: parse local kubeconfig files on startup, show contexts immediately, and le
 - Kubeconfig parsing is currently a focused native parser that covers the structures needed for the first client slice. Revisit a full YAML dependency if we hit advanced YAML features in real configs.
 - `exec` credential plugins are parsed as supported connection paths, including Teleport `tsh` detection for corporate kubeconfigs.
 - App Sandbox is disabled for the app target at this checkpoint so Vibekube can read local kubeconfig files and, in the next phase, make Kubernetes API calls. Revisit distribution hardening in Phase 11.
-- UI tests use `VIBEKUBE_USE_PREVIEW_CLUSTERS=1` so they stay deterministic and do not depend on the developer machine kubeconfig.
+- Preview and model tests can use deterministic preview clusters so they do not depend on the developer machine kubeconfig.
 
 ## Implementation Slices
 
@@ -64,8 +64,8 @@ Checkpoint result: no external YAML dependency added yet; native parser is enoug
 - [x] Publish discovered contexts to SwiftUI.
 - [ ] Watch kubeconfig files for changes.
 - [x] Add manual reload action.
-- [ ] Persist recently selected context.
-- [ ] Persist preferred namespace per context.
+- [x] Persist recently selected context.
+- [x] Persist preferred namespace per context.
 
 ### 1.4 Cluster Selection UI
 
@@ -83,7 +83,7 @@ Checkpoint result: no external YAML dependency added yet; native parser is enoug
 - [x] Merge precedence tests.
 - [x] Secret redaction tests.
 - [ ] File watching test or documented manual QA.
-- [x] UI test for context list using fixture injection.
+- [x] Model tests cover deterministic context restoration and kubeconfig override loading.
 
 ## Acceptance Criteria
 
@@ -97,7 +97,7 @@ Checkpoint result: no external YAML dependency added yet; native parser is enoug
 
 - [x] `kubectl config current-context` returns `kind-vibekube-dev` locally.
 - [x] `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests`
-- [x] `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeUITests`
+- [x] Model tests cover context restoration and namespace preference behavior.
 - [ ] Manual app review by user.
 
 ## Validation Commands

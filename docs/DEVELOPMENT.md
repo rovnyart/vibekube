@@ -27,7 +27,7 @@ Full test suite:
 xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test
 ```
 
-The full suite includes macOS UI tests. If the UI automation runner cannot enable automation mode locally, rerun the unit-test command above and verify the UI from Xcode.
+The current suite is focused on non-UI tests. Verify visible SwiftUI flows manually from Xcode until a dedicated UI automation target is restored.
 
 ## Demo Cluster
 

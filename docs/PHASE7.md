@@ -23,7 +23,7 @@ Goal: provide a fast, native log viewer for pods, containers, and common workloa
 ## Checkpoint Notes
 
 - The primary logs entry point is the Pod detail inspector: open Pods, select a Pod, then choose the Logs tab.
-- The standalone Logs route is hidden from primary navigation until it has a clearer product role.
+- The standalone top-level Logs route was removed; the supported logs entry point is the selected resource detail inspector.
 - The Logs tab supports bounded tail loading and live streaming via Kubernetes `follow=true`.
 - Live streaming starts with `tailLines=0` and seeds from the already-loaded recent tail, so enabling Live appends new lines instead of replaying the pod log backlog.
 - The Live checkbox is the pause/resume control: turning it off stops streaming and keeps the current snapshot visible.
@@ -35,7 +35,7 @@ Goal: provide a fast, native log viewer for pods, containers, and common workloa
 - JSONL mode safely pretty-prints valid object/array log lines and leaves malformed or plain-text lines unchanged. Grep still filters against raw log lines; copy/save displayed logs use the rendered view.
 - Since controls can limit non-live log loads to any time, 5m, 15m, 1h, or 6h. The control is disabled while Live is active because streaming should continue from the current tail instead of replaying a historical time window.
 - ANSI/control sequences are stripped before log text is stored, so search, grep, JSONL formatting, copy, save, and download all use clean text.
-- Large-log hardening still needs stream retry UI and a future Settings control for the buffer size.
+- Large-log hardening still needs stream retry UI. The live log buffer size is now configurable in Settings.
 
 ## Implementation Slices
 

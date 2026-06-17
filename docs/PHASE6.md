@@ -23,7 +23,7 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - Open detail tabs refresh their manifest when the backing list row reports a newer Kubernetes `resourceVersion`.
 - The manifest view is read-only, selectable, line-numbered, searchable, copyable, and lightly syntax-highlighted.
 - Secret manifests redact top-level `data`, `stringData`, and `binaryData`.
-- Resource detail now has Overview, YAML, Metadata, and Conditions tabs.
+- Resource detail now has Overview, Events, Logs, Env, YAML, Metadata, and Conditions tabs.
 - The overview tab extracts status, identity, owner references, conditions, and pod-like container summaries.
 - Pod details now include an Environment tab for `env`, `envFrom`, ConfigMap refs, field refs, resource refs, and Secret key refs.
 - Pod `envFrom` ConfigMaps and Secrets are resolved into the env vars Kubernetes actually injects when the user has `get` access to the referenced object.
@@ -102,7 +102,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] Show Secret references from pod env vars.
 - [x] Reveal individual Secret key values on demand.
 - [x] Surface RBAC/fetch failures per env row.
-- [ ] Add a global setting for secret reveal confirmation policy.
+- [x] Add a global setting for secret reveal confirmation policy.
 
 ### 6.7 Tests
 

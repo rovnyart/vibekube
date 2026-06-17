@@ -6,8 +6,8 @@ This file tracks implementation status across all phases. Keep this updated when
 
 | Phase | Plan | Status | Current Checkpoint |
 | --- | --- | --- | --- |
-| 0 | [Project Foundation](PHASE0.md) | Review checkpoint | Native shell foundation builds; unit and UI tests pass with preview fixtures |
-| 1 | [Kubeconfig Discovery](PHASE1.md) | Review checkpoint | App loads kubeconfig contexts, including exec/Teleport metadata; parser/unit/UI tests pass |
+| 0 | [Project Foundation](PHASE0.md) | Review checkpoint | Native shell foundation builds; focused non-UI tests pass with preview fixtures |
+| 1 | [Kubeconfig Discovery](PHASE1.md) | Review checkpoint | App loads kubeconfig contexts, including exec/Teleport metadata; parser and model tests pass |
 | 2 | [Kubernetes API Connectivity](PHASE2.md) | Review checkpoint | Native client connects, runs exec auth, discovers API resources, and loads namespaces |
 | 3 | [Main App Shell](PHASE3.md) | Review checkpoint | NavigationSplitView shell has persisted top-level route state, grouped nav, searchable namespace switching, route-aware commands, detail/YAML shortcuts, and basic keyboard navigation |
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Started | Dashboard is simplified to a fast nodes/pods/discovery/metrics overview while workload, event, and storage summaries wait for a non-blocking design |
