@@ -110,6 +110,7 @@ struct KubernetesResourceDetailSummary: Equatable {
     var persistentVolumeName: String?
     var configMapReferences: [KubernetesResourceReferenceSummary]
     var secretReferences: [KubernetesResourceReferenceSummary]
+    var portForwardTargets: [KubernetesPortForwardTargetSummary]
     var conditions: [KubernetesConditionSummary]
     var containers: [KubernetesContainerSummary]
     var environment: [KubernetesContainerEnvironmentSummary]
@@ -144,6 +145,7 @@ struct KubernetesResourceDetailSummary: Equatable {
         self.persistentVolumeName = Self.persistentVolumeName(in: spec, kind: kind)
         self.configMapReferences = Self.resourceReferences(in: spec, kind: kind, referenceKind: .configMap)
         self.secretReferences = Self.resourceReferences(in: spec, kind: kind, referenceKind: .secret)
+        self.portForwardTargets = Self.portForwardTargets(value: value, kind: kind)
         self.conditions = conditions
         self.containers = containers
         self.environment = Self.environment(in: spec)
@@ -398,6 +400,66 @@ struct KubernetesResourceDetailSummary: Equatable {
                     object["lastUpdateTime"]?.stringValue
             )
         } ?? []
+    }
+
+    nonisolated private static func portForwardTargets(
+        value: KubernetesJSONValue,
+        kind: String?
+    ) -> [KubernetesPortForwardTargetSummary] {
+        let metadata = value["metadata"]
+        guard let kind,
+              let resourceKind = KubernetesPortForwardTargetSummary.resourceKind(forKubernetesKind: kind),
+              let resourceName = metadata?["name"]?.stringValue,
+              !resourceName.isEmpty else {
+            return []
+        }
+
+        let namespace = metadata?["namespace"]?.stringValue
+        let portValues: [KubernetesJSONValue]
+        switch kind {
+        case "Pod":
+            portValues = containerPortValues(in: value["spec"])
+        case "Deployment":
+            portValues = containerPortValues(in: value["spec"]?["template"]?["spec"])
+        case "Service":
+            portValues = value["spec"]?["ports"]?.arrayValue ?? []
+        default:
+            portValues = []
+        }
+
+        let targets = portValues.compactMap { portValue -> KubernetesPortForwardTargetSummary? in
+            guard let object = portValue.objectValue else {
+                return nil
+            }
+
+            let remotePort = kind == "Service"
+                ? object["port"]?.intValue
+                : object["containerPort"]?.intValue
+            guard let remotePort, remotePort > 0 else {
+                return nil
+            }
+
+            return KubernetesPortForwardTargetSummary(
+                resourceKind: resourceKind,
+                resourceName: resourceName,
+                namespace: namespace,
+                portName: object["name"]?.stringValue,
+                localPort: KubernetesPortForwardTargetSummary.defaultLocalPort(forRemotePort: remotePort),
+                remotePort: remotePort,
+                protocolName: object["protocol"]?.stringValue
+            )
+        }
+
+        var seen: Set<String> = []
+        return targets.filter { target in
+            seen.insert(target.id).inserted
+        }
+    }
+
+    nonisolated private static func containerPortValues(in podSpec: KubernetesJSONValue?) -> [KubernetesJSONValue] {
+        (podSpec?["containers"]?.arrayValue ?? []).flatMap { container in
+            container["ports"]?.arrayValue ?? []
+        }
     }
 
     nonisolated private static func containers(
@@ -1108,6 +1170,56 @@ struct KubernetesIngressServiceBackendSummary: Equatable, Hashable, Identifiable
 
     var id: String {
         "\(name)/\(route)"
+    }
+}
+
+struct KubernetesPortForwardTargetSummary: Equatable, Hashable, Identifiable {
+    var resourceKind: String
+    var resourceName: String
+    var namespace: String?
+    var portName: String?
+    var localPort: Int
+    var remotePort: Int
+    var protocolName: String?
+
+    var id: String {
+        [
+            resourceKind,
+            namespace ?? "",
+            resourceName,
+            portName ?? "",
+            String(localPort),
+            String(remotePort)
+        ].joined(separator: "/")
+    }
+
+    var displayName: String {
+        if let portName, !portName.isEmpty {
+            return portName
+        }
+        return "Port \(remotePort)"
+    }
+
+    var displayDetail: String {
+        let protocolText = protocolName?.isEmpty == false ? "\(protocolName ?? "TCP") " : ""
+        return "\(protocolText)127.0.0.1:\(localPort) -> \(resourceKind)/\(resourceName):\(remotePort)"
+    }
+
+    static func resourceKind(forKubernetesKind kind: String) -> String? {
+        switch kind {
+        case "Pod":
+            "pod"
+        case "Service":
+            "service"
+        case "Deployment":
+            "deployment"
+        default:
+            nil
+        }
+    }
+
+    static func defaultLocalPort(forRemotePort remotePort: Int) -> Int {
+        remotePort < 1024 ? 10_000 + remotePort : remotePort
     }
 }
 

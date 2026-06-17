@@ -243,6 +243,114 @@ struct KubernetesResourceListTests {
         #expect(list.items[1].isPodUnhealthy)
     }
 
+    @Test func detailSummaryExtractsPortForwardTargets() throws {
+        let service = try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "Service",
+                  "metadata": {
+                    "name": "echo-web",
+                    "namespace": "vibekube-demo"
+                  },
+                  "spec": {
+                    "ports": [
+                      {
+                        "name": "http",
+                        "port": 80,
+                        "targetPort": 8080,
+                        "protocol": "TCP"
+                      }
+                    ]
+                  }
+                }
+                """.utf8
+            )
+        )
+        let pod = try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "Pod",
+                  "metadata": {
+                    "name": "echo-web-abc",
+                    "namespace": "vibekube-demo"
+                  },
+                  "spec": {
+                    "containers": [
+                      {
+                        "name": "web",
+                        "image": "nginx",
+                        "ports": [
+                          {
+                            "name": "http-alt",
+                            "containerPort": 8080,
+                            "protocol": "TCP"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+                """.utf8
+            )
+        )
+        let deployment = try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "apps/v1",
+                  "kind": "Deployment",
+                  "metadata": {
+                    "name": "echo-web",
+                    "namespace": "vibekube-demo"
+                  },
+                  "spec": {
+                    "template": {
+                      "spec": {
+                        "containers": [
+                          {
+                            "name": "web",
+                            "image": "nginx",
+                            "ports": [
+                              {
+                                "name": "metrics",
+                                "containerPort": 9090,
+                                "protocol": "TCP"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+                """.utf8
+            )
+        )
+
+        #expect(service.summary.portForwardTargets == [
+            KubernetesPortForwardTargetSummary(
+                resourceKind: "service",
+                resourceName: "echo-web",
+                namespace: "vibekube-demo",
+                portName: "http",
+                localPort: 10080,
+                remotePort: 80,
+                protocolName: "TCP"
+            )
+        ])
+        #expect(pod.summary.portForwardTargets.first?.resourceKind == "pod")
+        #expect(pod.summary.portForwardTargets.first?.localPort == 8080)
+        #expect(deployment.summary.portForwardTargets.first?.resourceKind == "deployment")
+        #expect(deployment.summary.portForwardTargets.first?.remotePort == 9090)
+    }
+
     @Test func jobRowsExposeCompletionStatusAndFailures() throws {
         let list = try JSONDecoder().decode(
             KubernetesUnstructuredResourceList.self,

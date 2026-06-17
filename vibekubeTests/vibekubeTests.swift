@@ -215,6 +215,51 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelStartsAndStopsPortForwardSession() async throws {
+        let portForwardService = RecordingPortForwardService()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            portForwardService: portForwardService,
+            loadedKubeconfig: kubeconfig()
+        )
+        let target = KubernetesPortForwardTargetSummary(
+            resourceKind: "service",
+            resourceName: "echo-web",
+            namespace: "vibekube-demo",
+            portName: "http",
+            localPort: 10080,
+            remotePort: 80,
+            protocolName: "TCP"
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.startPortForward(target: target)
+        try await waitForPortForwardSession(model, status: .running(processIdentifier: 4242))
+
+        #expect(portForwardService.requests == [
+            KubernetesPortForwardRequest(
+                contextName: "kind-vibekube-dev",
+                namespace: "vibekube-demo",
+                resourceKind: "service",
+                resourceName: "echo-web",
+                localPort: 10080,
+                remotePort: 80,
+                kubeconfigPath: nil
+            )
+        ])
+        #expect(model.portForwardSessions.first?.localURLString == "http://127.0.0.1:10080")
+
+        let session = try #require(model.portForwardSessions.first)
+        model.stopPortForward(sessionID: session.id)
+
+        #expect(portForwardService.handles.first?.stopped == true)
+        #expect(model.portForwardSessions.first?.status == .stopped)
+    }
+
+    @MainActor
     @Test func appModelNavigatesToKnownOwnerResource() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -1559,6 +1604,16 @@ private func waitForPodLogs(
 }
 
 @MainActor
+private func waitForPortForwardSession(
+    _ model: AppModel,
+    status: PortForwardSession.Status
+) async throws {
+    try await waitUntil("port-forward session \(status)") {
+        model.portForwardSessions.contains { $0.status == status }
+    }
+}
+
+@MainActor
 private func waitForEnvSecretValue(
     _ model: AppModel,
     namespace: String?,
@@ -1620,6 +1675,34 @@ private struct SucceedingConnectionService: KubernetesConnectionServicing {
                 ])
             )
         )
+    }
+}
+
+private final class RecordingPortForwardService: KubernetesPortForwardServicing {
+    var requests: [KubernetesPortForwardRequest] = []
+    var handles: [RecordingPortForwardHandle] = []
+
+    func startPortForward(
+        request: KubernetesPortForwardRequest,
+        onTermination: @escaping @Sendable (KubernetesPortForwardTermination) -> Void
+    ) async throws -> KubernetesPortForwardHandle {
+        let handle = RecordingPortForwardHandle(processIdentifier: 4242)
+        requests.append(request)
+        handles.append(handle)
+        return handle
+    }
+}
+
+private final class RecordingPortForwardHandle: KubernetesPortForwardHandle {
+    let processIdentifier: Int32?
+    var stopped = false
+
+    init(processIdentifier: Int32?) {
+        self.processIdentifier = processIdentifier
+    }
+
+    func stop() {
+        stopped = true
     }
 }
 

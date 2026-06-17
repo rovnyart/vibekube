@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var envSecretValueStateByQuery: [ResourceEnvSecretValueQuery: ResourceEnvSecretValueLoadState]
     @Published private(set) var dashboardMetricsStateByQuery: [DashboardMetricsQuery: DashboardMetricsLoadState]
     @Published private(set) var podLogStateByQuery: [PodLogQuery: PodLogLoadState]
+    @Published private(set) var portForwardSessions: [PortForwardSession]
     @Published private(set) var searchFocusRequestID = 0
     @Published private(set) var diagnosticsFileLoggingEnabled: Bool
     @Published private(set) var diagnosticsIncludeClusterNames: Bool
@@ -46,6 +47,7 @@ final class AppModel: ObservableObject {
     private let resourceEventService: KubernetesResourceEventServicing?
     private let metricsService: KubernetesMetricsServicing?
     private let logService: KubernetesLogServicing?
+    private let portForwardService: KubernetesPortForwardServicing?
     private let diagnosticsLogger: DiagnosticsLogger
     private var userPreferences: UserPreferencesProviding
     private var loadedKubeconfig: Kubeconfig
@@ -59,6 +61,7 @@ final class AppModel: ObservableObject {
     private var resourceEventsTask: Task<Void, Never>?
     private var dashboardMetricsTask: Task<Void, Never>?
     private var podLogTask: Task<Void, Never>?
+    private var portForwardHandlesBySessionID: [PortForwardSession.ID: KubernetesPortForwardHandle]
     private var envSecretValueTasksByQuery: [ResourceEnvSecretValueQuery: Task<Void, Never>]
     nonisolated static let defaultPodLogLineLimit = 5_000
     private static let resourceWatchReconnectDelaysNanoseconds: [UInt64] = [
@@ -88,6 +91,7 @@ final class AppModel: ObservableObject {
                 resourceEventService: usePreviewData ? PreviewKubernetesResourceEventService() : nil,
                 metricsService: usePreviewData ? PreviewKubernetesMetricsService() : nil,
                 logService: usePreviewData ? PreviewKubernetesLogService() : nil,
+                portForwardService: usePreviewData ? nil : KubectlPortForwardService(),
                 userPreferences: InMemoryUserPreferences()
             )
         } else {
@@ -105,6 +109,7 @@ final class AppModel: ObservableObject {
                 resourceEventService: KubernetesResourceEventService(execCredentialProvider: execCredentialProvider),
                 metricsService: KubernetesMetricsService(execCredentialProvider: execCredentialProvider),
                 logService: KubernetesLogService(execCredentialProvider: execCredentialProvider),
+                portForwardService: KubectlPortForwardService(),
                 userPreferences: UserDefaultsUserPreferences()
             )
             reloadKubeconfig()
@@ -121,6 +126,7 @@ final class AppModel: ObservableObject {
         resourceEventService: KubernetesResourceEventServicing? = nil,
         metricsService: KubernetesMetricsServicing? = nil,
         logService: KubernetesLogServicing? = nil,
+        portForwardService: KubernetesPortForwardServicing? = nil,
         userPreferences: UserPreferencesProviding? = nil,
         loadedKubeconfig: Kubeconfig? = nil,
         discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot] = [:],
@@ -154,6 +160,7 @@ final class AppModel: ObservableObject {
         self.resourceEventService = resourceEventService
         self.metricsService = metricsService
         self.logService = logService
+        self.portForwardService = portForwardService
         self.diagnosticsLogger = diagnosticsLogger
         self.userPreferences = userPreferences
         self.loadedKubeconfig = loadedKubeconfig ?? .empty
@@ -165,6 +172,7 @@ final class AppModel: ObservableObject {
         self.envSecretValueStateByQuery = envSecretValueStateByQuery ?? [:]
         self.dashboardMetricsStateByQuery = dashboardMetricsStateByQuery ?? [:]
         self.podLogStateByQuery = podLogStateByQuery ?? [:]
+        self.portForwardSessions = []
         self.diagnosticsFileLoggingEnabled = userPreferences.diagnosticsFileLoggingEnabled
         self.diagnosticsIncludeClusterNames = userPreferences.diagnosticsIncludeClusterNames
         self.diagnosticsRetentionDays = userPreferences.diagnosticsRetentionDays
@@ -190,6 +198,7 @@ final class AppModel: ObservableObject {
         self.resourceEventsTask = nil
         self.dashboardMetricsTask = nil
         self.podLogTask = nil
+        self.portForwardHandlesBySessionID = [:]
         self.envSecretValueTasksByQuery = [:]
 
         userPreferences.selectedContextID = initialClusterID
@@ -794,6 +803,86 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func portForwardSession(for target: KubernetesPortForwardTargetSummary) -> PortForwardSession? {
+        guard let selectedClusterID else {
+            return nil
+        }
+
+        return portForwardSessions.first { session in
+            session.isActive && session.matches(target: target, contextID: selectedClusterID)
+        }
+    }
+
+    func startPortForward(target: KubernetesPortForwardTargetSummary) {
+        guard let selectedClusterID,
+              selectedConnectionState == .connected else {
+            return
+        }
+
+        if portForwardSession(for: target) != nil {
+            return
+        }
+
+        let sessionID = UUID()
+        let session = PortForwardSession(
+            id: sessionID,
+            contextID: selectedClusterID,
+            namespace: target.namespace,
+            resourceKind: target.resourceKind,
+            resourceName: target.resourceName,
+            portName: target.portName,
+            localPort: target.localPort,
+            remotePort: target.remotePort,
+            startedAt: Date(),
+            status: .starting
+        )
+        portForwardSessions.insert(session, at: 0)
+
+        guard let portForwardService else {
+            failPortForwardSession(sessionID, message: "Port forwarding is not available in preview mode.")
+            return
+        }
+
+        let request = KubernetesPortForwardRequest(
+            contextName: selectedClusterID,
+            namespace: target.namespace,
+            resourceKind: target.resourceKind,
+            resourceName: target.resourceName,
+            localPort: target.localPort,
+            remotePort: target.remotePort,
+            kubeconfigPath: kubeconfigPath(forContextID: selectedClusterID)
+        )
+
+        Task { [weak self, portForwardService] in
+            do {
+                let handle = try await portForwardService.startPortForward(request: request) { termination in
+                    Task { @MainActor [weak self] in
+                        self?.finishPortForwardSession(sessionID, termination: termination)
+                    }
+                }
+                self?.portForwardHandlesBySessionID[sessionID] = handle
+                self?.updatePortForwardSession(sessionID) { session in
+                    session.status = .running(processIdentifier: handle.processIdentifier)
+                }
+            } catch {
+                self?.failPortForwardSession(sessionID, message: error.localizedDescription)
+            }
+        }
+    }
+
+    func stopPortForward(sessionID: PortForwardSession.ID) {
+        portForwardHandlesBySessionID[sessionID]?.stop()
+        portForwardHandlesBySessionID[sessionID] = nil
+        updatePortForwardSession(sessionID) { session in
+            session.status = .stopped
+        }
+    }
+
+    func clearInactivePortForwardSessions() {
+        let inactiveIDs = Set(portForwardSessions.filter { !$0.isActive }.map(\.id))
+        portForwardSessions.removeAll { inactiveIDs.contains($0.id) }
+    }
+
     func refresh() {
         cancelResourceWatchTasks()
         if selectedResource == .dashboard, selectedConnectionState == .connected {
@@ -821,6 +910,7 @@ final class AppModel: ObservableObject {
         clusters = discoveredClusters
         connectionErrorMessage = nil
         let validContextIDs = Set(discoveredClusters.map(\.id))
+        stopPortForwardSessions { !validContextIDs.contains($0.contextID) }
         discoveryByContextID = discoveryByContextID.filter { validContextIDs.contains($0.key) }
         resourceListStateByQuery = resourceListStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
         resourceDetailStateByQuery = resourceDetailStateByQuery.filter { validContextIDs.contains($0.key.contextID) }
@@ -901,6 +991,7 @@ final class AppModel: ObservableObject {
         cancelDashboardMetricsTask()
         cancelPodLogTask()
         cancelEnvSecretValueTasks()
+        stopPortForwardSessions { $0.contextID == selectedClusterID }
         connectionErrorMessage = nil
         recordDiagnostic(
             .info,
@@ -973,6 +1064,7 @@ final class AppModel: ObservableObject {
         cancelDashboardMetricsTask()
         cancelPodLogTask()
         cancelEnvSecretValueTasks()
+        stopPortForwardSessions { $0.contextID == selectedClusterID }
         connectionTask = nil
         resourceDetailTask = nil
         resourceDetailWatchTasksByQuery.removeAll()
@@ -3028,6 +3120,48 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func stopPortForwardSessions(where shouldStop: (PortForwardSession) -> Bool) {
+        for session in portForwardSessions where session.isActive && shouldStop(session) {
+            portForwardHandlesBySessionID[session.id]?.stop()
+            portForwardHandlesBySessionID[session.id] = nil
+            updatePortForwardSession(session.id) { session in
+                session.status = .stopped
+            }
+        }
+    }
+
+    private func finishPortForwardSession(
+        _ sessionID: PortForwardSession.ID,
+        termination: KubernetesPortForwardTermination
+    ) {
+        portForwardHandlesBySessionID[sessionID] = nil
+        updatePortForwardSession(sessionID) { session in
+            if termination.userStopped || termination.exitCode == 0 {
+                session.status = .stopped
+            } else {
+                session.status = .failed("kubectl exited with code \(termination.exitCode)")
+            }
+        }
+    }
+
+    private func failPortForwardSession(_ sessionID: PortForwardSession.ID, message: String) {
+        portForwardHandlesBySessionID[sessionID] = nil
+        updatePortForwardSession(sessionID) { session in
+            session.status = .failed(message)
+        }
+    }
+
+    private func updatePortForwardSession(
+        _ sessionID: PortForwardSession.ID,
+        _ update: (inout PortForwardSession) -> Void
+    ) {
+        guard let index = portForwardSessions.firstIndex(where: { $0.id == sessionID }) else {
+            return
+        }
+
+        update(&portForwardSessions[index])
+    }
+
     private func navigate(
         clusterID: ClusterSummary.ID?,
         resource: ResourceNavigationItem,
@@ -3109,6 +3243,10 @@ final class AppModel: ObservableObject {
             timestamps: timestamps,
             follow: follow
         )
+    }
+
+    private func kubeconfigPath(forContextID contextID: String) -> String? {
+        loadedKubeconfig.contexts.first { $0.name == contextID }?.source.url.path
     }
 
     private func podLogOptions(for query: PodLogQuery) -> KubernetesPodLogOptions {

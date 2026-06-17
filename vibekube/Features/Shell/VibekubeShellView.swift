@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct VibekubeShellView: View {
@@ -29,6 +30,8 @@ struct VibekubeShellView: View {
                     .frame(width: 220)
                     .focused($focusedField, equals: .search)
                     .accessibilityIdentifier("toolbar.search")
+
+                PortForwardSessionsButton()
 
                 Button {
                     appModel.refresh()
@@ -76,6 +79,196 @@ private enum ShellFocusedField {
 
 private enum NamespacePickerFocusedField {
     case search
+}
+
+private struct PortForwardSessionsButton: View {
+    @EnvironmentObject private var appModel: AppModel
+    @State private var isPresented = false
+
+    var body: some View {
+        if !appModel.portForwardSessions.isEmpty {
+            Button {
+                isPresented.toggle()
+            } label: {
+                Label(buttonTitle, systemImage: "arrow.left.and.right")
+            }
+            .buttonStyle(.bordered)
+            .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+                PortForwardSessionsPopover()
+                    .environmentObject(appModel)
+            }
+            .help(buttonTitle)
+            .accessibilityIdentifier("toolbar.portForwardSessions")
+        }
+    }
+
+    private var buttonTitle: String {
+        let activeCount = appModel.portForwardSessions.filter(\.isActive).count
+        guard activeCount > 0 else {
+            return "Port Forwards"
+        }
+        return activeCount == 1 ? "1 Port Forward" : "\(activeCount) Port Forwards"
+    }
+}
+
+private struct PortForwardSessionsPopover: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Port Forwards")
+                    .font(.headline)
+
+                Spacer()
+
+                if appModel.portForwardSessions.contains(where: { !$0.isActive }) {
+                    Button("Clear Finished") {
+                        appModel.clearInactivePortForwardSessions()
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                }
+            }
+            .padding(12)
+
+            Divider()
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(appModel.portForwardSessions) { session in
+                        PortForwardSessionRow(session: session)
+
+                        if session.id != appModel.portForwardSessions.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+            }
+            .frame(width: 440, height: min(320, CGFloat(max(appModel.portForwardSessions.count, 1)) * 76))
+        }
+        .frame(width: 440)
+    }
+}
+
+private struct PortForwardSessionRow: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let session: PortForwardSession
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: statusImage)
+                .foregroundStyle(statusTint)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(session.displayResource)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Text(session.displayNamespace)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(detailText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 8)
+
+            if case .running = session.status {
+                Button {
+                    openURL(session.localURLString)
+                } label: {
+                    Label("Open", systemImage: "safari")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("Open \(session.localURLString)")
+
+                Button {
+                    copyToPasteboard(session.localURLString)
+                } label: {
+                    Label("Copy URL", systemImage: "doc.on.doc")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("Copy \(session.localURLString)")
+            }
+
+            if session.isActive {
+                Button {
+                    appModel.stopPortForward(sessionID: session.id)
+                } label: {
+                    Label("Stop", systemImage: "stop.fill")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Stop")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    private var detailText: String {
+        switch session.status {
+        case .starting:
+            "\(session.localURLString) -> \(session.remotePort) starting"
+        case .running:
+            "\(session.localURLString) -> \(session.remotePort) running"
+        case .stopped:
+            "\(session.localURLString) stopped"
+        case .failed(let message):
+            message
+        }
+    }
+
+    private var statusImage: String {
+        switch session.status {
+        case .starting:
+            "hourglass"
+        case .running:
+            "checkmark.circle.fill"
+        case .stopped:
+            "stop.circle"
+        case .failed:
+            "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var statusTint: Color {
+        switch session.status {
+        case .starting:
+            .orange
+        case .running:
+            .green
+        case .stopped:
+            .secondary
+        case .failed:
+            .red
+        }
+    }
+
+    private func copyToPasteboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func openURL(_ string: String) {
+        guard let url = URL(string: string) else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
 }
 
 private struct ClusterPicker: View {

@@ -9,9 +9,9 @@ Goal: add practical debugging workflows: describe-style views, container details
 - [x] Phase plan exists.
 - [x] Initial describe-style debug summary exists.
 - [x] Container details exist for Pod detail manifests.
-- [ ] Port-forwarding exists.
+- [x] Basic `kubectl`-backed port-forwarding exists for Pods, Services, and Deployments.
 - [ ] Exec session support exists.
-- [ ] Active sessions can be stopped safely.
+- [x] Active port-forward sessions can be stopped safely.
 
 ## Implementation Slices
 
@@ -33,16 +33,18 @@ Goal: add practical debugging workflows: describe-style views, container details
 
 ### 9.2 Port Forward
 
-- [ ] Decide native WebSocket/SPDY strategy or isolated `kubectl` adapter.
-- [ ] Add `PortForwardSession` model.
-- [ ] Add local port selection.
+- [x] Decide native WebSocket/SPDY strategy or isolated `kubectl` adapter.
+- [x] Use isolated `kubectl` adapter for the first slice.
+- [x] Add `PortForwardSession` model.
+- [x] Add deterministic local port defaults.
 - [ ] Detect local port conflicts.
-- [ ] Start session.
-- [ ] Stop session.
-- [ ] Show active sessions.
-- [ ] Cleanup on app quit/context switch.
+- [x] Start session.
+- [x] Stop session.
+- [x] Show active sessions.
+- [x] Cleanup on context switch/disconnect.
+- [ ] Cleanup on app quit.
 
-Checkpoint: stop before choosing `kubectl` fallback vs native implementation if the tradeoff is significant.
+Checkpoint: keep `kubectl` isolated behind a service protocol. Native API streaming can replace the adapter later without changing the app model/UI flow.
 
 ### 9.3 Exec
 
@@ -57,8 +59,8 @@ Checkpoint: stop before choosing `kubectl` fallback vs native implementation if 
 ### 9.4 Debugging UX
 
 - [x] Add actions from pod/workload detail.
-- [ ] Keep cluster/namespace/pod/container visible in session UI.
-- [ ] Add clear active-session stop controls.
+- [x] Keep cluster/namespace/resource visible in port-forward session UI.
+- [x] Add clear active port-forward stop controls.
 - [ ] Add failure explanations for RBAC/unsupported protocol.
 
 ### 9.5 Tests
@@ -72,9 +74,10 @@ Checkpoint: stop before choosing `kubectl` fallback vs native implementation if 
 ## Acceptance Criteria
 
 - [x] User can understand common unhealthy Pod/workload signals and related warning Events from one detail screen.
-- [ ] User can port-forward a demo service or pod.
+- [x] User can port-forward a service, deployment, or pod with declared ports.
 - [ ] User can start and stop a basic exec session.
-- [ ] Active sessions never become hidden or orphaned.
+- [x] Active port-forward sessions are visible from the toolbar and detail overview.
+- [ ] Active exec sessions never become hidden or orphaned.
 
 ## Validation Commands
 

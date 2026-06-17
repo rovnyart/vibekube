@@ -15,7 +15,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, Containers, expanded Environment, searchable/copyable/saveable YAML, Metadata, Conditions, masked Secret env reveal, owner jumps, selector-based related Pod navigation, and version-aware refresh |
 | 7 | [Logs](PHASE7.md) | Review checkpoint | Pod detail inspector has rich logs: tail/since controls, live streaming with smart follow, timestamps, safe JSONL formatting, search, grep, copy, save, download-all, fullscreen, and previous-container logs |
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Review checkpoint | Active watchable resource lists have watch merging, durable reconnect/backoff, live/stale/failure status, burst coalescing, version-aware detail refresh, narrow selected-resource detail watches, interaction-stable table ordering, subtle updated-row feedback, and manual validation |
-| 9 | [Workload Debugging Basics](PHASE9.md) | Started | Workload Overview includes event-aware debug summaries, scheduling/QoS context, and quick jumps to Events, Logs, Containers, Env, and YAML |
+| 9 | [Workload Debugging Basics](PHASE9.md) | Started | Workload Overview includes event-aware debug summaries plus `kubectl`-backed port-forward sessions for Pods, Services, and Deployments |
 | 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
 | 11 | [Preferences, Security, Packaging](PHASE11.md) | Started | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, kubeconfig path, appearance, table density, log buffer, default namespace, resource watch, Secret reveal settings, reset preferences, privacy docs, and real Teleport/TLS validation exist |
 | 12 | [AI Foundations](PHASE12.md) | Not started | Waiting for stable resource context model |
@@ -29,7 +29,7 @@ The current product milestone is Vibekube 0.1.x: a fast, read-only, distributabl
 
 Recommended next focus:
 
-1. Continue Phase 9 by starting port-forward sessions instead of adding more passive workload aggregates.
+1. Continue Phase 9 with basic exec via external terminal or improve port-forward ergonomics with conflict detection and custom local ports.
 2. Use diagnostics on the work Mac during the next real-cluster validation pass and expand the logged categories only where gaps appear.
 3. Finish release readiness with the clean-machine checklist after the current debug surfaces settle.
 
@@ -54,6 +54,7 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Search, grep, tail/since filtering, smart live follow, safe JSONL formatting, copy, save, download, fullscreen, and previous-container Pod logs.
 - [x] Inspect Pod container state, restarts, probes, volume mounts, and resource requests/limits.
 - [x] See event-aware workload debug summaries with scheduling/QoS context for common unhealthy signals.
+- [x] Start and stop visible `kubectl`-backed port-forward sessions from resource detail.
 - [x] Connect to real Teleport-backed corporate clusters through kubeconfig exec auth.
 - [x] Package signed/notarized DMG builds through `scripts/release`.
 - [x] Expand Pod `envFrom` ConfigMap and Secret keys in the Env inspector.

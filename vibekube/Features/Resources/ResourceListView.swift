@@ -2257,6 +2257,12 @@ private struct ResourceDetailOverviewView: View {
                     }
                 }
 
+                if !summary.portForwardTargets.isEmpty {
+                    SectionSurface(title: "Port Forward", systemImage: "arrow.left.and.right") {
+                        ResourcePortForwardView(targets: summary.portForwardTargets)
+                    }
+                }
+
                 if !summary.containers.isEmpty {
                     SectionSurface(title: "Containers", systemImage: "cube") {
                         VStack(spacing: 0) {
@@ -2465,6 +2471,184 @@ private struct ResourceDetailOverviewView: View {
             return .orange
         }
         return .secondary
+    }
+}
+
+private struct ResourcePortForwardView: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let targets: [KubernetesPortForwardTargetSummary]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(targets) { target in
+                ResourcePortForwardRow(
+                    target: target,
+                    session: appModel.portForwardSession(for: target),
+                    canStart: appModel.selectedConnectionState == .connected,
+                    start: {
+                        appModel.startPortForward(target: target)
+                    },
+                    stop: { session in
+                        appModel.stopPortForward(sessionID: session.id)
+                    }
+                )
+            }
+        }
+    }
+}
+
+private struct ResourcePortForwardRow: View {
+    let target: KubernetesPortForwardTargetSummary
+    let session: PortForwardSession?
+    let canStart: Bool
+    let start: () -> Void
+    let stop: (PortForwardSession) -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: statusImage)
+                .foregroundStyle(statusTint)
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(target.displayName)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+
+                    Text(statusText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(statusTint)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(statusTint.opacity(0.12), in: Capsule())
+                }
+
+                Text(detailText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+
+            Spacer(minLength: 12)
+
+            if let session, case .running = session.status {
+                Button {
+                    openURL(session.localURLString)
+                } label: {
+                    Label("Open", systemImage: "safari")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("Open \(session.localURLString)")
+
+                Button {
+                    copyToPasteboard(session.localURLString)
+                } label: {
+                    Label("Copy URL", systemImage: "doc.on.doc")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("Copy \(session.localURLString)")
+            }
+
+            Button {
+                if let session {
+                    stop(session)
+                } else {
+                    start()
+                }
+            } label: {
+                Label(buttonTitle, systemImage: buttonImage)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(!canStart && session == nil)
+            .help(buttonTitle)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 2)
+    }
+
+    private var detailText: String {
+        if let session {
+            return "\(session.localURLString) -> \(session.displayResource):\(session.remotePort)"
+        }
+        return target.displayDetail
+    }
+
+    private var buttonTitle: String {
+        session == nil ? "Start" : "Stop"
+    }
+
+    private var buttonImage: String {
+        session == nil ? "play.fill" : "stop.fill"
+    }
+
+    private var statusText: String {
+        guard let session else {
+            return "Ready"
+        }
+
+        switch session.status {
+        case .starting:
+            return "Starting"
+        case .running:
+            return "Running"
+        case .stopped:
+            return "Stopped"
+        case .failed:
+            return "Failed"
+        }
+    }
+
+    private var statusImage: String {
+        guard let session else {
+            return "network"
+        }
+
+        switch session.status {
+        case .starting:
+            return "hourglass"
+        case .running:
+            return "checkmark.circle.fill"
+        case .stopped:
+            return "stop.circle"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var statusTint: Color {
+        guard let session else {
+            return .secondary
+        }
+
+        switch session.status {
+        case .starting:
+            return .orange
+        case .running:
+            return .green
+        case .stopped:
+            return .secondary
+        case .failed:
+            return .red
+        }
+    }
+
+    private func copyToPasteboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func openURL(_ string: String) {
+        guard let url = URL(string: string) else {
+            return
+        }
+        NSWorkspace.shared.open(url)
     }
 }
 
