@@ -436,6 +436,34 @@ spec:
       targetPort: http
       nodePort: 30080
 ---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: echo-web
+  namespace: vibekube-demo
+  labels:
+    app.kubernetes.io/name: echo-web
+    app.kubernetes.io/part-of: vibekube
+  annotations:
+    vibekube.io/demo-note: "Fixture only; no ingress controller required."
+spec:
+  defaultBackend:
+    service:
+      name: echo-web
+      port:
+        name: http
+  rules:
+    - host: echo-web.vibekube.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: echo-web
+                port:
+                  name: http
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:

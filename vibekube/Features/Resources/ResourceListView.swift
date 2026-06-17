@@ -1802,6 +1802,9 @@ private struct ResourceDetailView: View {
                         sourceTitle: sourceTitle,
                         namespace: namespace
                     )
+                },
+                openNamedResource: { targetResource, name, namespace in
+                    appModel.navigateToResource(targetResource, name: name, namespace: namespace)
                 }
             )
         case .events:
@@ -2046,6 +2049,7 @@ private struct ResourceDetailOverviewView: View {
     let openOwner: (KubernetesOwnerReferenceSummary, String?) -> Void
     let openPods: (KubernetesLabelSelectorSummary, String?, String) -> Void
     let openOwnedResources: (KubernetesOwnerReferenceSummary, ResourceNavigationItem, String?, String) -> Void
+    let openNamedResource: (ResourceNavigationItem, String, String?) -> Void
 
     private let columns = [
         GridItem(.adaptive(minimum: 170), spacing: 12)
@@ -2140,6 +2144,23 @@ private struct ResourceDetailOverviewView: View {
                                     namespace: namespaceTextForOwner,
                                     sourceTitle: sourceTitle,
                                     openOwnedResources: openOwnedResources
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if !summary.ingressServices.isEmpty {
+                    SectionSurface(title: "Related Services", systemImage: "point.3.connected.trianglepath.dotted") {
+                        VStack(spacing: 0) {
+                            ForEach(summary.ingressServices) { backend in
+                                ResourceRelatedNamedResourceRow(
+                                    title: "Open Service",
+                                    resource: .services,
+                                    name: backend.name,
+                                    detail: backend.route,
+                                    namespace: namespaceTextForOwner,
+                                    openNamedResource: openNamedResource
                                 )
                             }
                         }
@@ -4598,6 +4619,55 @@ private struct ResourceRelatedOwnedResourcesRow: View {
         .buttonStyle(.plain)
         .help("Open \(action.targetResource.title) owned by \(action.owner.kind) \(action.owner.name)")
         .accessibilityIdentifier("resource.detail.relatedOwnedResources.open.\(action.targetResource.id)")
+    }
+}
+
+private struct ResourceRelatedNamedResourceRow: View {
+    let title: String
+    let resource: ResourceNavigationItem
+    let name: String
+    let detail: String
+    let namespace: String?
+    let openNamedResource: (ResourceNavigationItem, String, String?) -> Void
+
+    var body: some View {
+        Button {
+            openNamedResource(resource, name, namespace)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "arrowshape.turn.up.right")
+                    .foregroundStyle(.blue)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.callout.weight(.semibold))
+
+                    Text("\(name) · \(detail)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+
+                Spacer()
+
+                if let namespace {
+                    Text(namespace)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Open \(resource.title) named \(name)")
+        .accessibilityIdentifier("resource.detail.relatedNamedResource.open.\(resource.id).\(name)")
     }
 }
 

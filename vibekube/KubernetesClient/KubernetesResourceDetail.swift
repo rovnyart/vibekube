@@ -106,6 +106,7 @@ struct KubernetesResourceDetailSummary: Equatable {
     var annotations: [String: String]
     var ownerReferences: [KubernetesOwnerReferenceSummary]
     var labelSelector: KubernetesLabelSelectorSummary?
+    var ingressServices: [KubernetesIngressServiceBackendSummary]
     var conditions: [KubernetesConditionSummary]
     var containers: [KubernetesContainerSummary]
     var environment: [KubernetesContainerEnvironmentSummary]
@@ -130,6 +131,7 @@ struct KubernetesResourceDetailSummary: Equatable {
         self.annotations = Self.stringMap(metadata?["annotations"], redactingValues: true, kind: kind)
         self.ownerReferences = Self.ownerReferences(in: metadata)
         self.labelSelector = Self.labelSelector(in: spec, kind: kind)
+        self.ingressServices = Self.ingressServices(in: spec, kind: kind)
         self.conditions = Self.conditions(in: statusObject)
         self.containers = Self.containers(in: spec, status: statusObject)
         self.environment = Self.environment(in: spec)
@@ -231,6 +233,57 @@ struct KubernetesResourceDetailSummary: Equatable {
         }
 
         return KubernetesLabelSelectorSummary(matchLabels: matchLabels)
+    }
+
+    nonisolated private static func ingressServices(
+        in spec: KubernetesJSONValue?,
+        kind: String?
+    ) -> [KubernetesIngressServiceBackendSummary] {
+        guard kind == "Ingress", let spec else {
+            return []
+        }
+
+        var services: [KubernetesIngressServiceBackendSummary] = []
+        if let backend = serviceBackend(in: spec["defaultBackend"], route: "Default backend") {
+            services.append(backend)
+        }
+
+        for rule in spec["rules"]?.arrayValue ?? [] {
+            let host = rule["host"]?.stringValue
+            for path in rule["http"]?["paths"]?.arrayValue ?? [] {
+                guard let backend = serviceBackend(
+                    in: path["backend"],
+                    route: ingressRouteText(host: host, path: path["path"]?.stringValue)
+                ) else {
+                    continue
+                }
+                services.append(backend)
+            }
+        }
+
+        var seenNames: Set<String> = []
+        return services.filter { backend in
+            seenNames.insert(backend.name).inserted
+        }
+    }
+
+    nonisolated private static func serviceBackend(
+        in backend: KubernetesJSONValue?,
+        route: String
+    ) -> KubernetesIngressServiceBackendSummary? {
+        let name = backend?["service"]?["name"]?.stringValue ??
+            backend?["serviceName"]?.stringValue
+        guard let name, !name.isEmpty else {
+            return nil
+        }
+
+        return KubernetesIngressServiceBackendSummary(name: name, route: route)
+    }
+
+    nonisolated private static func ingressRouteText(host: String?, path: String?) -> String {
+        let hostText = host?.isEmpty == false ? host : "*"
+        let pathText = path?.isEmpty == false ? path : "/"
+        return "\(hostText ?? "*") \(pathText ?? "/")"
     }
 
     nonisolated private static func conditions(in status: KubernetesJSONValue?) -> [KubernetesConditionSummary] {
@@ -595,6 +648,15 @@ struct KubernetesLabelSelectorSummary: Equatable {
         return matchLabels.allSatisfy { key, value in
             labels[key] == value
         }
+    }
+}
+
+struct KubernetesIngressServiceBackendSummary: Equatable, Hashable, Identifiable {
+    var name: String
+    var route: String
+
+    var id: String {
+        "\(name)/\(route)"
     }
 }
 

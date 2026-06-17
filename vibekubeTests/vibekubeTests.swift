@@ -252,6 +252,39 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelNavigatesToNamedResource() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: WatchableWorkloadsConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+        model.searchText = "old search"
+
+        model.navigateToResource(.services, name: "echo-web", namespace: "vibekube-demo")
+
+        try await waitForResourceList(model, .services)
+
+        #expect(model.selectedResource == .services)
+        #expect(model.selectedNamespaceSelection == "vibekube-demo")
+        #expect(model.searchText == "echo-web")
+        #expect(model.resourceLabelFilter == nil)
+        #expect(model.resourceOwnerFilter == nil)
+        #expect(model.searchFocusRequestID == 1)
+
+        guard case .loaded(let snapshot) = model.resourceListState(for: .services) else {
+            Issue.record("Expected loaded service list")
+            return
+        }
+
+        #expect(snapshot.query.resource.name == "services")
+        #expect(snapshot.query.namespaceSelection == "vibekube-demo")
+    }
+
+    @MainActor
     @Test func appModelNavigatesToPodsWithLabelFilter() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -1601,13 +1634,21 @@ private struct WatchableWorkloadsConnectionService: KubernetesConnectionServicin
                             KubernetesGroupVersion(groupVersion: "batch/v1", version: "v1")
                         ],
                         preferredVersion: KubernetesGroupVersion(groupVersion: "batch/v1", version: "v1")
+                    ),
+                    KubernetesAPIGroup(
+                        name: "networking.k8s.io",
+                        versions: [
+                            KubernetesGroupVersion(groupVersion: "networking.k8s.io/v1", version: "v1")
+                        ],
+                        preferredVersion: KubernetesGroupVersion(groupVersion: "networking.k8s.io/v1", version: "v1")
                     )
                 ],
                 resourceLists: [
                     KubernetesAPIResourceList(
                         groupVersion: "v1",
                         resources: [
-                            KubernetesAPIResource(name: "pods", singularName: "", namespaced: true, kind: "Pod", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil)
+                            KubernetesAPIResource(name: "pods", singularName: "", namespaced: true, kind: "Pod", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil),
+                            KubernetesAPIResource(name: "services", singularName: "", namespaced: true, kind: "Service", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil)
                         ]
                     ),
                     KubernetesAPIResourceList(
@@ -1622,6 +1663,12 @@ private struct WatchableWorkloadsConnectionService: KubernetesConnectionServicin
                         resources: [
                             KubernetesAPIResource(name: "jobs", singularName: "", namespaced: true, kind: "Job", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil),
                             KubernetesAPIResource(name: "cronjobs", singularName: "", namespaced: true, kind: "CronJob", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil)
+                        ]
+                    ),
+                    KubernetesAPIResourceList(
+                        groupVersion: "networking.k8s.io/v1",
+                        resources: [
+                            KubernetesAPIResource(name: "ingresses", singularName: "", namespaced: true, kind: "Ingress", verbs: ["get", "list", "watch"], shortNames: nil, categories: nil)
                         ]
                     )
                 ],

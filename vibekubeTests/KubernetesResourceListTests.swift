@@ -1342,6 +1342,71 @@ struct KubernetesResourceListTests {
         ]))
     }
 
+    @Test func extractsResourceDetailIngressServices() throws {
+        let detail = try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "networking.k8s.io/v1",
+                  "kind": "Ingress",
+                  "metadata": {
+                    "name": "echo-web",
+                    "namespace": "vibekube-demo"
+                  },
+                  "spec": {
+                    "defaultBackend": {
+                      "service": {
+                        "name": "echo-web",
+                        "port": {
+                          "name": "http"
+                        }
+                      }
+                    },
+                    "rules": [
+                      {
+                        "host": "echo-web.vibekube.local",
+                        "http": {
+                          "paths": [
+                            {
+                              "path": "/",
+                              "pathType": "Prefix",
+                              "backend": {
+                                "service": {
+                                  "name": "echo-web",
+                                  "port": {
+                                    "name": "http"
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "path": "/api",
+                              "pathType": "Prefix",
+                              "backend": {
+                                "service": {
+                                  "name": "api-web",
+                                  "port": {
+                                    "number": 8080
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+                """.utf8
+            )
+        )
+
+        #expect(detail.summary.ingressServices.map(\.name) == ["echo-web", "api-web"])
+        #expect(detail.summary.ingressServices.first?.route == "Default backend")
+        #expect(detail.summary.ingressServices.last?.route == "echo-web.vibekube.local /api")
+    }
+
     @Test func decodesCoreAndEventsAPIResourceEvents() throws {
         let list = try JSONDecoder().decode(
             KubernetesResourceEventList.self,

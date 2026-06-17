@@ -29,6 +29,7 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - Deployments expose a Related ReplicaSets action that opens ReplicaSets with a clearable owner-reference filter.
 - Workloads and Services with concrete label selectors expose a Related Pods action that opens Pods with a clearable selector filter.
 - CronJobs expose a Related Jobs action that opens Jobs with a clearable owner-reference filter.
+- Ingresses expose Related Services actions for `spec.defaultBackend` and rule path backends.
 - Pod details now include an Environment tab for `env`, `envFrom`, ConfigMap refs, field refs, resource refs, and Secret key refs.
 - Pod `envFrom` ConfigMaps and Secrets are resolved into the env vars Kubernetes actually injects when the user has `get` access to the referenced object.
 - Literal and ConfigMap-backed values render directly; only Secret-backed values are masked and revealable.
@@ -82,7 +83,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] Job to Pod.
 - [x] CronJob to Job.
 - [x] Service to selected Pods.
-- [ ] Ingress to Service.
+- [x] Ingress to Service.
 - [ ] PVC to PV.
 - [ ] ConfigMap/Secret references from Pods where feasible.
 
