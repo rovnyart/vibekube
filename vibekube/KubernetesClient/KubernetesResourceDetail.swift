@@ -114,7 +114,6 @@ struct KubernetesResourceDetailSummary: Equatable {
     var containers: [KubernetesContainerSummary]
     var environment: [KubernetesContainerEnvironmentSummary]
     var podScheduling: KubernetesPodSchedulingSummary?
-    var podRollup: KubernetesPodRollupSummary?
     var debugSummary: KubernetesResourceDebugSummary?
 
     init(value: KubernetesJSONValue) {
@@ -149,7 +148,6 @@ struct KubernetesResourceDetailSummary: Equatable {
         self.containers = containers
         self.environment = Self.environment(in: spec)
         self.podScheduling = Self.podScheduling(in: value, kind: kind)
-        self.podRollup = nil
         self.debugSummary = Self.debugSummary(
             value: value,
             kind: kind,
@@ -1150,99 +1148,6 @@ struct KubernetesPodSchedulingSummary: Equatable {
             ("Nominated Node", nominatedNodeName?.isEmpty == false ? nominatedNodeName ?? "-" : "-"),
             ("QoS Class", qosClass?.isEmpty == false ? qosClass ?? "-" : "-")
         ]
-    }
-}
-
-struct KubernetesPodRollupSummary: Equatable {
-    var totalCount: Int
-    var readyCount: Int
-    var runningCount: Int
-    var pendingCount: Int
-    var failedCount: Int
-    var succeededCount: Int
-    var unknownCount: Int
-    var needsAttentionCount: Int
-    var restartCount: Int
-    var pods: [KubernetesPodRollupItem]
-
-    init(pods: [KubernetesUnstructuredResource], sampleLimit: Int = 6) {
-        let podItems = pods.filter { $0.displayKind == "Pod" }
-        self.totalCount = podItems.count
-        self.readyCount = podItems.filter { pod in
-            pod.podContainerCount > 0 && pod.podReadyCount >= pod.podContainerCount
-        }.count
-        self.runningCount = podItems.filter { Self.phase($0) == "Running" }.count
-        self.pendingCount = podItems.filter { Self.phase($0) == "Pending" }.count
-        self.failedCount = podItems.filter { Self.phase($0) == "Failed" }.count
-        self.succeededCount = podItems.filter { Self.phase($0) == "Succeeded" }.count
-        self.unknownCount = max(0, totalCount - runningCount - pendingCount - failedCount - succeededCount)
-        self.needsAttentionCount = podItems.filter(Self.needsAttention).count
-        self.restartCount = podItems.reduce(0) { $0 + $1.podRestartCount }
-        self.pods = podItems
-            .sorted { lhs, rhs in
-                let lhsAttention = Self.needsAttention(lhs)
-                let rhsAttention = Self.needsAttention(rhs)
-                if lhsAttention != rhsAttention {
-                    return lhsAttention && !rhsAttention
-                }
-
-                return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
-            }
-            .prefix(sampleLimit)
-            .map(KubernetesPodRollupItem.init(pod:))
-    }
-
-    var rows: [(String, String)] {
-        [
-            ("Pods", "\(totalCount)"),
-            ("Ready", "\(readyCount)/\(totalCount)"),
-            ("Running", "\(runningCount)"),
-            ("Pending", "\(pendingCount)"),
-            ("Failed", "\(failedCount)"),
-            ("Succeeded", "\(succeededCount)"),
-            ("Needs Attention", "\(needsAttentionCount)"),
-            ("Restarts", "\(restartCount)")
-        ]
-    }
-
-    private static func phase(_ pod: KubernetesUnstructuredResource) -> String {
-        pod.status?["phase"]?.stringValue ?? pod.displayStatus
-    }
-
-    private static func needsAttention(_ pod: KubernetesUnstructuredResource) -> Bool {
-        let status = pod.displayStatus.lowercased()
-        return pod.isPodUnhealthy ||
-            status == "pending" ||
-            status == "failed" ||
-            status.contains("unschedulable")
-    }
-}
-
-struct KubernetesPodRollupItem: Equatable, Identifiable {
-    var name: String
-    var namespace: String?
-    var status: String
-    var ready: String
-    var restarts: Int
-    var age: String
-    var needsAttention: Bool
-
-    var id: String {
-        "\(namespace ?? "")/\(name)"
-    }
-
-    init(pod: KubernetesUnstructuredResource) {
-        self.name = pod.displayName
-        self.namespace = pod.metadata.namespace
-        self.status = pod.displayStatus
-        self.ready = pod.podReadyDescription
-        self.restarts = pod.podRestartCount
-        self.age = pod.ageDescription()
-        let status = pod.displayStatus.lowercased()
-        self.needsAttention = pod.isPodUnhealthy ||
-            status == "pending" ||
-            status == "failed" ||
-            status.contains("unschedulable")
     }
 }
 

@@ -24,7 +24,6 @@ Goal: add practical debugging workflows: describe-style views, container details
 - [x] Container state summary for Pod detail manifests.
 - [x] Restart/termination reason details for Pod detail manifests.
 - [x] Image pull status from container waiting reasons.
-- [x] Selector-backed workload Pod rollups.
 - [x] Environment variables with secret-aware redaction.
 - [x] Volume mounts.
 - [x] Probes.
