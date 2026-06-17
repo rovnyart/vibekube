@@ -29,7 +29,7 @@ The current product milestone is Vibekube 0.1.x: a fast, read-only, distributabl
 
 Recommended next focus:
 
-1. Continue the read-only workload debugging track with workload-owned pod rollups before starting active sessions.
+1. Continue Phase 9 by starting port-forward sessions instead of adding more passive workload aggregates.
 2. Use diagnostics on the work Mac during the next real-cluster validation pass and expand the logged categories only where gaps appear.
 3. Finish release readiness with the clean-machine checklist after the current debug surfaces settle.
 
