@@ -82,6 +82,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             return "Terminating"
         }
 
+        if let podStatus = podDisplayStatus {
+            return podStatus
+        }
+
         if let phase = status?["phase"]?.stringValue, !phase.isEmpty {
             return phase
         }
@@ -95,6 +99,43 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
         }
 
         return type ?? "-"
+    }
+
+    var podRestartCount: Int {
+        guard isPod else {
+            return 0
+        }
+
+        return podContainerStatuses.reduce(0) { result, status in
+            result + (status["restartCount"]?.intValue ?? 0)
+        }
+    }
+
+    var podRestartCountDescription: String {
+        guard isPod else {
+            return "-"
+        }
+
+        return String(podRestartCount)
+    }
+
+    var isPodUnhealthy: Bool {
+        guard isPod else {
+            return false
+        }
+
+        let status = displayStatus.lowercased()
+        if status.contains("backoff") ||
+            status.contains("error") ||
+            status.contains("failed") ||
+            status.contains("errimagepull") ||
+            status.contains("crashloop") ||
+            status.contains("invalidimage") ||
+            status.contains("createcontainer") {
+            return true
+        }
+
+        return false
     }
 
     var labelsSummary: String {
@@ -248,6 +289,64 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
 
     private var isEvent: Bool {
         displayKind == "Event" || reason != nil && (message != nil || note != nil)
+    }
+
+    private var isPod: Bool {
+        displayKind == "Pod"
+    }
+
+    private var podDisplayStatus: String? {
+        guard isPod else {
+            return nil
+        }
+
+        if let initStatus = podContainerStatusText(
+            statuses: status?["initContainerStatuses"]?.arrayValue,
+            prefix: "Init"
+        ) {
+            return initStatus
+        }
+
+        if let containerStatus = podContainerStatusText(statuses: status?["containerStatuses"]?.arrayValue) {
+            return containerStatus
+        }
+
+        return nil
+    }
+
+    private var podContainerStatuses: [[String: KubernetesJSONValue]] {
+        [
+            status?["initContainerStatuses"]?.arrayValue,
+            status?["containerStatuses"]?.arrayValue,
+            status?["ephemeralContainerStatuses"]?.arrayValue
+        ]
+        .compactMap { $0 }
+        .flatMap { statuses in
+            statuses.compactMap(\.objectValue)
+        }
+    }
+
+    private func podContainerStatusText(
+        statuses: [KubernetesJSONValue]?,
+        prefix: String? = nil
+    ) -> String? {
+        let statusObjects = statuses?.compactMap(\.objectValue) ?? []
+        for status in statusObjects {
+            if let waiting = status["state"]?["waiting"]?.objectValue,
+               let reason = waiting["reason"]?.stringValue,
+               !reason.isEmpty {
+                return prefix.map { "\($0):\(reason)" } ?? reason
+            }
+
+            if let terminated = status["state"]?["terminated"]?.objectValue,
+               let reason = terminated["reason"]?.stringValue,
+               !reason.isEmpty,
+               terminated["exitCode"]?.intValue != 0 {
+                return prefix.map { "\($0):\(reason)" } ?? reason
+            }
+        }
+
+        return nil
     }
 
     private var desiredReplicas: Int? {

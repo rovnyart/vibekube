@@ -136,6 +136,93 @@ struct KubernetesResourceListTests {
         #expect(pod.labelsSummary == "app=web")
     }
 
+    @Test func podRowsPreferContainerWaitingReasonAndSumRestarts() throws {
+        let list = try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "PodList",
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "crashy",
+                        "namespace": "vibekube-demo"
+                      },
+                      "status": {
+                        "phase": "Running",
+                        "initContainerStatuses": [
+                          {
+                            "name": "prepare",
+                            "restartCount": 1,
+                            "state": {
+                              "terminated": {
+                                "reason": "Completed",
+                                "exitCode": 0
+                              }
+                            }
+                          }
+                        ],
+                        "containerStatuses": [
+                          {
+                            "name": "worker",
+                            "restartCount": 3,
+                            "state": {
+                              "waiting": {
+                                "reason": "CrashLoopBackOff"
+                              }
+                            }
+                          },
+                          {
+                            "name": "sidecar",
+                            "restartCount": 2,
+                            "state": {
+                              "running": {}
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "missing-image",
+                        "namespace": "vibekube-demo"
+                      },
+                      "status": {
+                        "phase": "Pending",
+                        "containerStatuses": [
+                          {
+                            "name": "app",
+                            "restartCount": 0,
+                            "state": {
+                              "waiting": {
+                                "reason": "ImagePullBackOff"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        #expect(list.items[0].displayStatus == "CrashLoopBackOff")
+        #expect(list.items[0].podRestartCount == 6)
+        #expect(list.items[0].podRestartCountDescription == "6")
+        #expect(list.items[0].isPodUnhealthy)
+        #expect(list.items[1].displayStatus == "ImagePullBackOff")
+        #expect(list.items[1].podRestartCount == 0)
+        #expect(list.items[1].isPodUnhealthy)
+    }
+
     @Test func mergesResourceListPagesInOrder() throws {
         let first = try JSONDecoder().decode(
             KubernetesUnstructuredResourceList.self,

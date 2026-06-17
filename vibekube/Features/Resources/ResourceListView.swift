@@ -131,20 +131,50 @@ struct ResourceListView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Table(visibleRows, selection: $selectedResourceID, sortOrder: $sortOrder) {
-                TableColumn("Name", value: \.displayName) { resource in
-                    ResourceNameCell(
-                        resource: resource,
-                        isRecentlyUpdated: recentlyUpdatedRowIDs.contains(resource.id),
-                        density: appModel.tableDensity
-                    )
+                if item == .pods {
+                    TableColumn("Name", value: \.displayName) { resource in
+                        ResourceNameCell(
+                            resource: resource,
+                            isRecentlyUpdated: recentlyUpdatedRowIDs.contains(resource.id),
+                            density: appModel.tableDensity
+                        )
+                    }
+                    .width(min: 280, ideal: 340)
+
+                    TableColumn("Namespace", value: \.displayNamespace)
+                        .width(min: 150, ideal: 180)
+                    TableColumn("Status", value: \.displayStatus) { resource in
+                        ResourcePodStatusCell(resource: resource)
+                    }
+                    .width(min: 150, ideal: 180)
+                    TableColumn("Restarts", value: \.podRestartCount) { resource in
+                        Text(resource.podRestartCountDescription)
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(resource.podRestartCount > 0 ? .orange : .secondary)
+                    }
+                    .width(min: 82, ideal: 96, max: 120)
+                    TableColumn("Age") { resource in
+                        Text(resource.ageDescription())
+                    }
+                    .width(min: 72, ideal: 90, max: 120)
+                } else {
+                    TableColumn("Name", value: \.displayName) { resource in
+                        ResourceNameCell(
+                            resource: resource,
+                            isRecentlyUpdated: recentlyUpdatedRowIDs.contains(resource.id),
+                            density: appModel.tableDensity
+                        )
+                    }
+                    .width(min: 220, ideal: 280)
+
+                    TableColumn("Namespace", value: \.displayNamespace)
+                    TableColumn("Kind", value: \.displayKind)
+                    TableColumn("Status", value: \.displayStatus)
+                    TableColumn("Age") { resource in
+                        Text(resource.ageDescription())
+                    }
+                    TableColumn("Labels", value: \.labelsSummary)
                 }
-                TableColumn("Namespace", value: \.displayNamespace)
-                TableColumn("Kind", value: \.displayKind)
-                TableColumn("Status", value: \.displayStatus)
-                TableColumn("Age") { resource in
-                    Text(resource.ageDescription())
-                }
-                TableColumn("Labels", value: \.labelsSummary)
             }
             .tableStyle(.inset)
             .font(appModel.tableDensity.tableFont)
@@ -482,6 +512,84 @@ private extension TableDensity {
         case .spacious:
             9
         }
+    }
+}
+
+private struct ResourcePodStatusCell: View {
+    let resource: KubernetesUnstructuredResource
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .imageScale(.small)
+                .foregroundStyle(tint)
+
+            Text(resource.displayStatus)
+                .lineLimit(1)
+                .foregroundStyle(titleColor)
+        }
+        .font(.callout.weight(resource.isPodUnhealthy ? .semibold : .regular))
+        .padding(.horizontal, resource.isPodUnhealthy ? 7 : 0)
+        .padding(.vertical, resource.isPodUnhealthy ? 3 : 0)
+        .background {
+            if resource.isPodUnhealthy {
+                Capsule().fill(tint.opacity(0.14))
+            }
+        }
+        .help(statusHelp)
+    }
+
+    private var titleColor: Color {
+        resource.isPodUnhealthy ? tint : .primary
+    }
+
+    private var tint: Color {
+        let status = resource.displayStatus.lowercased()
+        if status.contains("crashloop") ||
+            status.contains("failed") ||
+            status.contains("error") ||
+            status.contains("errimagepull") ||
+            status.contains("invalidimage") {
+            return .red
+        }
+
+        if status.contains("backoff") ||
+            status.contains("pending") ||
+            status.contains("terminating") ||
+            status.contains("containercreating") {
+            return .orange
+        }
+
+        if status.contains("succeeded") || status.contains("completed") {
+            return .secondary
+        }
+
+        return .green
+    }
+
+    private var systemImage: String {
+        let status = resource.displayStatus.lowercased()
+        if resource.isPodUnhealthy {
+            return "exclamationmark.triangle.fill"
+        }
+
+        if status.contains("succeeded") || status.contains("completed") {
+            return "checkmark.circle"
+        }
+
+        if status.contains("pending") || status.contains("terminating") {
+            return "clock"
+        }
+
+        return "checkmark.circle.fill"
+    }
+
+    private var statusHelp: String {
+        if resource.isPodUnhealthy {
+            return "Pod status needs attention: \(resource.displayStatus)"
+        }
+
+        return "Pod status: \(resource.displayStatus)"
     }
 }
 
