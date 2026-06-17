@@ -326,6 +326,54 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelLaunchesPodExecInExternalTerminal() async throws {
+        let execLauncher = RecordingExecLauncher()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            execLauncher: execLauncher,
+            loadedKubeconfig: kubeconfig()
+        )
+        let pod = try podResource(name: "echo-web-abc", namespace: "vibekube-demo")
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.openPodExec(for: pod, containerName: "web")
+        try await waitUntil("exec launch request") {
+            execLauncher.requests.count == 1
+        }
+
+        #expect(execLauncher.requests == [
+            KubernetesExecLaunchRequest(
+                contextName: "kind-vibekube-dev",
+                namespace: "vibekube-demo",
+                podName: "echo-web-abc",
+                containerName: "web",
+                command: ["/bin/sh"],
+                kubeconfigPath: nil
+            )
+        ])
+    }
+
+    @Test func terminalExecLauncherBuildsKubectlExecCommand() {
+        let command = TerminalKubernetesExecLauncher.shellCommand(
+            for: KubernetesExecLaunchRequest(
+                contextName: "kind-vibekube-dev",
+                namespace: "vibekube-demo",
+                podName: "echo-web-abc",
+                containerName: "web",
+                command: ["/bin/sh"],
+                kubeconfigPath: "/Users/art/.kube/config"
+            )
+        )
+
+        #expect(command.contains("export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"))
+        #expect(command.contains("export KUBECONFIG='/Users/art/.kube/config'"))
+        #expect(command.contains("'kubectl' '--context' 'kind-vibekube-dev' '-n' 'vibekube-demo' 'exec' '-it' 'echo-web-abc' '-c' 'web' '--' '/bin/sh'"))
+    }
+
+    @MainActor
     @Test func appModelNavigatesToKnownOwnerResource() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -1619,6 +1667,32 @@ private func testKubeconfig(named name: String, server: String) -> String {
     """
 }
 
+private func podResource(name: String, namespace: String) throws -> KubernetesUnstructuredResource {
+    try JSONDecoder().decode(
+        KubernetesUnstructuredResource.self,
+        from: Data(
+            """
+            {
+              "apiVersion": "v1",
+              "kind": "Pod",
+              "metadata": {
+                "name": "\(name)",
+                "namespace": "\(namespace)"
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "name": "web",
+                    "image": "nginx"
+                  }
+                ]
+              }
+            }
+            """.utf8
+        )
+    )
+}
+
 @MainActor
 private func waitForResourceDetail(
     _ model: AppModel,
@@ -1794,6 +1868,16 @@ private final class TerminatingPortForwardService: KubernetesPortForwardServicin
             onTermination(termination)
         }
         return RecordingPortForwardHandle(processIdentifier: 4242)
+    }
+}
+
+private final class RecordingExecLauncher: KubernetesExecLaunching {
+    var requests: [KubernetesExecLaunchRequest] = []
+
+    nonisolated func launchExec(request: KubernetesExecLaunchRequest) async throws {
+        await MainActor.run {
+            requests.append(request)
+        }
     }
 }
 

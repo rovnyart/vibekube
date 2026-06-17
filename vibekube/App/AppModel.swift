@@ -23,6 +23,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var dashboardMetricsStateByQuery: [DashboardMetricsQuery: DashboardMetricsLoadState]
     @Published private(set) var podLogStateByQuery: [PodLogQuery: PodLogLoadState]
     @Published private(set) var portForwardSessions: [PortForwardSession]
+    @Published private(set) var execLaunchErrorMessage: String?
     @Published private(set) var searchFocusRequestID = 0
     @Published private(set) var diagnosticsFileLoggingEnabled: Bool
     @Published private(set) var diagnosticsIncludeClusterNames: Bool
@@ -48,6 +49,7 @@ final class AppModel: ObservableObject {
     private let metricsService: KubernetesMetricsServicing?
     private let logService: KubernetesLogServicing?
     private let portForwardService: KubernetesPortForwardServicing?
+    private let execLauncher: KubernetesExecLaunching?
     private let diagnosticsLogger: DiagnosticsLogger
     private var userPreferences: UserPreferencesProviding
     private var loadedKubeconfig: Kubeconfig
@@ -92,6 +94,7 @@ final class AppModel: ObservableObject {
                 metricsService: usePreviewData ? PreviewKubernetesMetricsService() : nil,
                 logService: usePreviewData ? PreviewKubernetesLogService() : nil,
                 portForwardService: usePreviewData ? nil : KubectlPortForwardService(),
+                execLauncher: usePreviewData ? nil : TerminalKubernetesExecLauncher(),
                 userPreferences: InMemoryUserPreferences()
             )
         } else {
@@ -110,6 +113,7 @@ final class AppModel: ObservableObject {
                 metricsService: KubernetesMetricsService(execCredentialProvider: execCredentialProvider),
                 logService: KubernetesLogService(execCredentialProvider: execCredentialProvider),
                 portForwardService: KubectlPortForwardService(),
+                execLauncher: TerminalKubernetesExecLauncher(),
                 userPreferences: UserDefaultsUserPreferences()
             )
             reloadKubeconfig()
@@ -127,6 +131,7 @@ final class AppModel: ObservableObject {
         metricsService: KubernetesMetricsServicing? = nil,
         logService: KubernetesLogServicing? = nil,
         portForwardService: KubernetesPortForwardServicing? = nil,
+        execLauncher: KubernetesExecLaunching? = nil,
         userPreferences: UserPreferencesProviding? = nil,
         loadedKubeconfig: Kubeconfig? = nil,
         discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot] = [:],
@@ -161,6 +166,7 @@ final class AppModel: ObservableObject {
         self.metricsService = metricsService
         self.logService = logService
         self.portForwardService = portForwardService
+        self.execLauncher = execLauncher
         self.diagnosticsLogger = diagnosticsLogger
         self.userPreferences = userPreferences
         self.loadedKubeconfig = loadedKubeconfig ?? .empty
@@ -173,6 +179,7 @@ final class AppModel: ObservableObject {
         self.dashboardMetricsStateByQuery = dashboardMetricsStateByQuery ?? [:]
         self.podLogStateByQuery = podLogStateByQuery ?? [:]
         self.portForwardSessions = []
+        self.execLaunchErrorMessage = nil
         self.diagnosticsFileLoggingEnabled = userPreferences.diagnosticsFileLoggingEnabled
         self.diagnosticsIncludeClusterNames = userPreferences.diagnosticsIncludeClusterNames
         self.diagnosticsRetentionDays = userPreferences.diagnosticsRetentionDays
@@ -880,6 +887,52 @@ final class AppModel: ObservableObject {
     func clearInactivePortForwardSessions() {
         let inactiveIDs = Set(portForwardSessions.filter { !$0.isActive }.map(\.id))
         portForwardSessions.removeAll { inactiveIDs.contains($0.id) }
+    }
+
+    func canOpenPodExec(for pod: KubernetesUnstructuredResource) -> Bool {
+        selectedConnectionState == .connected &&
+            pod.displayKind == "Pod" &&
+            pod.metadata.name?.isEmpty == false &&
+            pod.metadata.namespace?.isEmpty == false
+    }
+
+    func openPodExec(
+        for pod: KubernetesUnstructuredResource,
+        containerName: String? = nil,
+        command: [String] = ["/bin/sh"]
+    ) {
+        guard let selectedClusterID,
+              canOpenPodExec(for: pod),
+              let namespace = pod.metadata.namespace,
+              let podName = pod.metadata.name else {
+            return
+        }
+
+        guard let execLauncher else {
+            execLaunchErrorMessage = "Exec is not available in preview mode."
+            return
+        }
+
+        let request = KubernetesExecLaunchRequest(
+            contextName: selectedClusterID,
+            namespace: namespace,
+            podName: podName,
+            containerName: containerName,
+            command: command,
+            kubeconfigPath: kubeconfigPath(forContextID: selectedClusterID)
+        )
+
+        Task { [weak self, execLauncher] in
+            do {
+                try await execLauncher.launchExec(request: request)
+            } catch {
+                self?.execLaunchErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func clearExecLaunchError() {
+        execLaunchErrorMessage = nil
     }
 
     func refresh() {

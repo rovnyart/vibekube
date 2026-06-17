@@ -10,7 +10,7 @@ Goal: add practical debugging workflows: describe-style views, container details
 - [x] Initial describe-style debug summary exists.
 - [x] Container details exist for Pod detail manifests.
 - [x] Basic `kubectl`-backed port-forwarding exists for Pods, Services, and Deployments.
-- [ ] Exec session support exists.
+- [x] Basic external-terminal Pod exec support exists.
 - [x] Active port-forward sessions can be stopped safely.
 
 ## Implementation Slices
@@ -48,25 +48,30 @@ Checkpoint: keep `kubectl` isolated behind a service protocol. Native API stream
 
 ### 9.3 Exec
 
-- [ ] Decide native WebSocket/SPDY strategy or isolated `kubectl` adapter.
-- [ ] Add `ExecSession` model.
-- [ ] Select pod/container.
-- [ ] Select command/shell.
-- [ ] Add terminal-like UI.
-- [ ] Stop session.
-- [ ] Cleanup on app quit/context switch.
+- [x] Decide native WebSocket/SPDY strategy or isolated `kubectl` adapter.
+- [x] Use isolated `kubectl exec` external-terminal adapter for the first slice.
+- [x] Select pod from Pods table context menu.
+- [x] Select container from Pod Containers detail tab.
+- [x] Select default shell command.
+- [ ] Add command/shell picker.
+- [ ] Add terminal app preference.
+- [ ] Track external exec launches as lightweight history.
+- [ ] Cleanup on app quit/context switch if future native sessions are added.
 
 ### 9.4 Debugging UX
 
 - [x] Add actions from pod/workload detail.
 - [x] Keep cluster/namespace/resource visible in port-forward session UI.
 - [x] Add clear active port-forward stop controls.
+- [x] Add Pod context menu action for exec.
+- [x] Add per-container exec actions outside the Overview tab.
 - [ ] Add failure explanations for RBAC/unsupported protocol.
 
 ### 9.5 Tests
 
 - [x] Unit tests for workload debug summary signals.
-- [ ] Unit tests for session lifecycle.
+- [x] Unit tests for port-forward session lifecycle.
+- [x] Unit tests for external-terminal exec command construction.
 - [ ] Manual QA for port-forwarding demo service.
 - [ ] Manual QA for exec into demo pod.
 - [ ] Shutdown cleanup QA.
@@ -75,9 +80,9 @@ Checkpoint: keep `kubectl` isolated behind a service protocol. Native API stream
 
 - [x] User can understand common unhealthy Pod/workload signals and related warning Events from one detail screen.
 - [x] User can port-forward a service, deployment, or pod with declared ports.
-- [ ] User can start and stop a basic exec session.
+- [x] User can open a basic Pod exec shell in an external Terminal window.
 - [x] Active port-forward sessions are visible from the toolbar and detail overview.
-- [ ] Active exec sessions never become hidden or orphaned.
+- [ ] External exec launches have a visible in-app history or native sessions never become hidden/orphaned.
 
 ## Validation Commands
 

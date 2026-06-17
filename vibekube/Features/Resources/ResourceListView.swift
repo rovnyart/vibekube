@@ -30,6 +30,23 @@ struct ResourceListView: View {
         .task(id: appModel.resourceListTaskID(for: item)) {
             appModel.loadResourceList(for: item)
         }
+        .alert(
+            "Could Not Open Exec",
+            isPresented: Binding(
+                get: { appModel.execLaunchErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        appModel.clearExecLaunchError()
+                    }
+                }
+            )
+        ) {
+            Button("OK") {
+                appModel.clearExecLaunchError()
+            }
+        } message: {
+            Text(appModel.execLaunchErrorMessage ?? "")
+        }
         .accessibilityIdentifier("resource.list.\(item.id)")
     }
 
@@ -138,6 +155,14 @@ struct ResourceListView: View {
                             isRecentlyUpdated: recentlyUpdatedRowIDs.contains(resource.id),
                             density: appModel.tableDensity
                         )
+                        .contextMenu {
+                            PodResourceContextMenu(
+                                pod: resource,
+                                openDetail: {
+                                    openDetailTab(for: resource.id, in: visibleRows)
+                                }
+                            )
+                        }
                     }
                     .width(min: 280, ideal: 340)
 
@@ -817,6 +842,28 @@ private struct ResourceNameCell: View {
             .help("Updated by live watch")
             .accessibilityLabel("Recently updated")
             .accessibilityHidden(!isRecentlyUpdated)
+        }
+    }
+}
+
+private struct PodResourceContextMenu: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let pod: KubernetesUnstructuredResource
+    let openDetail: () -> Void
+
+    var body: some View {
+        Button {
+            appModel.openPodExec(for: pod)
+        } label: {
+            Label("Exec Shell", systemImage: "terminal")
+        }
+        .disabled(!appModel.canOpenPodExec(for: pod))
+
+        Button {
+            openDetail()
+        } label: {
+            Label("Open Detail", systemImage: "sidebar.bottom")
         }
     }
 }
@@ -1890,7 +1937,7 @@ private struct ResourceDetailView: View {
         case .logs:
             ResourceDetailLogsView(row: row, summary: snapshot.summary)
         case .containers:
-            ResourceDetailContainersView(summary: snapshot.summary)
+            ResourceDetailContainersView(row: row, summary: snapshot.summary)
         case .environment:
             ResourceDetailEnvironmentView(summary: snapshot.summary)
         case .yaml:
@@ -4435,6 +4482,9 @@ private struct ResourceDetailConditionsView: View {
 }
 
 private struct ResourceDetailContainersView: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let row: KubernetesUnstructuredResource
     let summary: KubernetesResourceDetailSummary
 
     var body: some View {
@@ -4451,7 +4501,13 @@ private struct ResourceDetailContainersView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         ForEach(summary.containers) { container in
-                            ResourceContainerDebugSection(container: container)
+                            ResourceContainerDebugSection(
+                                container: container,
+                                canExec: appModel.canOpenPodExec(for: row),
+                                exec: {
+                                    appModel.openPodExec(for: row, containerName: container.name)
+                                }
+                            )
                         }
                     }
                     .padding(16)
@@ -4466,6 +4522,8 @@ private struct ResourceDetailContainersView: View {
 
 private struct ResourceContainerDebugSection: View {
     let container: KubernetesContainerSummary
+    let canExec: Bool
+    let exec: () -> Void
 
     var body: some View {
         SectionSurface(title: container.name, systemImage: "shippingbox") {
@@ -4555,6 +4613,14 @@ private struct ResourceContainerDebugSection: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(container.ready == false ? .red : .secondary)
             }
+
+            Button(action: exec) {
+                Label("Exec", systemImage: "terminal")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(!canExec)
+            .help("Open shell in \(container.name)")
         }
     }
 
