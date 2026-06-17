@@ -1441,78 +1441,116 @@ private struct ResourceDetailLogsView: View {
                 .help("Refresh Logs")
             }
 
-            HStack(spacing: 12) {
-                Toggle("Timestamps", isOn: $showsTimestamps)
-                    .toggleStyle(.checkbox)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    logModeControls
 
-                Toggle("Previous", isOn: $showsPreviousLogs)
-                    .toggleStyle(.checkbox)
-                    .help("Show logs from the previously terminated container instance")
+                    Divider()
+                        .frame(height: 18)
 
-                Toggle("Live", isOn: $followsLogs)
-                    .toggleStyle(.checkbox)
-                    .disabled(showsPreviousLogs)
+                    logSearchControls
 
-                Toggle("JSON", isOn: $formatsJSONLines)
-                    .toggleStyle(.checkbox)
-                    .help("Safely pretty-print JSON log lines")
+                    Spacer()
 
-                Picker("Tail", selection: $tailSelection) {
-                    ForEach(LogTailSelection.allCases) { selection in
-                        Text(selection.title).tag(selection)
+                    logExportControls
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
+                        logModeControls
+
+                        Spacer(minLength: 8)
+                    }
+
+                    HStack(spacing: 10) {
+                        logSearchControls
+
+                        Spacer(minLength: 8)
+
+                        logExportControls
                     }
                 }
-                .pickerStyle(.menu)
-                .frame(width: 110)
-                .disabled(followsLogs)
-
-                Picker("Since", selection: $sinceSelection) {
-                    ForEach(LogSinceSelection.allCases) { selection in
-                        Text(selection.title).tag(selection)
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(width: 110)
-                .disabled(followsLogs)
-
-                Divider()
-                    .frame(height: 18)
-
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-
-                TextField("Search logs", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(minWidth: 180, idealWidth: 260, maxWidth: 360)
-
-                Toggle("Grep", isOn: $filtersMatches)
-                    .toggleStyle(.checkbox)
-                    .disabled(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                Spacer()
-
-                Button {
-                    saveDisplayedLogs()
-                } label: {
-                    Label("Save Displayed", systemImage: "square.and.arrow.down")
-                }
-                .buttonStyle(.bordered)
-                .disabled(isSavingLogs || displayedLogTextForCurrentState.isEmpty)
-
-                Button {
-                    Task {
-                        await downloadAllLogs()
-                    }
-                } label: {
-                    Label("Download All", systemImage: "arrow.down.doc")
-                }
-                .buttonStyle(.bordered)
-                .disabled(isSavingLogs || appModel.selectedConnectionState != .connected)
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(.bar)
+    }
+
+    private var logModeControls: some View {
+        HStack(spacing: 12) {
+            Toggle("Timestamps", isOn: $showsTimestamps)
+                .toggleStyle(.checkbox)
+
+            Toggle("Previous", isOn: $showsPreviousLogs)
+                .toggleStyle(.checkbox)
+                .help("Show logs from the previously terminated container instance")
+
+            Toggle("Live", isOn: $followsLogs)
+                .toggleStyle(.checkbox)
+                .disabled(showsPreviousLogs)
+
+            Toggle("JSON", isOn: $formatsJSONLines)
+                .toggleStyle(.checkbox)
+                .help("Safely pretty-print JSON log lines")
+
+            Picker("Tail", selection: $tailSelection) {
+                ForEach(LogTailSelection.allCases) { selection in
+                    Text(selection.title).tag(selection)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 96)
+            .disabled(followsLogs)
+
+            Picker("Since", selection: $sinceSelection) {
+                ForEach(LogSinceSelection.allCases) { selection in
+                    Text(selection.title).tag(selection)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 96)
+            .disabled(followsLogs)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var logSearchControls: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField("Search logs", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 140, idealWidth: 240, maxWidth: 320)
+
+            Toggle("Grep", isOn: $filtersMatches)
+                .toggleStyle(.checkbox)
+                .disabled(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+    }
+
+    private var logExportControls: some View {
+        HStack(spacing: 10) {
+            Button {
+                saveDisplayedLogs()
+            } label: {
+                Label("Save Displayed", systemImage: "square.and.arrow.down")
+            }
+            .buttonStyle(.bordered)
+            .disabled(isSavingLogs || displayedLogTextForCurrentState.isEmpty)
+
+            Button {
+                Task {
+                    await downloadAllLogs()
+                }
+            } label: {
+                Label("Download All", systemImage: "arrow.down.doc")
+            }
+            .buttonStyle(.bordered)
+            .disabled(isSavingLogs || appModel.selectedConnectionState != .connected)
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     @ViewBuilder
@@ -1557,15 +1595,15 @@ private struct ResourceDetailLogsView: View {
 
                     Spacer()
 
-                    if followsLogs && !logViewIsPinnedToBottom {
+                    if !logViewIsPinnedToBottom {
                         Button {
                             logViewIsPinnedToBottom = true
                             jumpToLatestRequestID += 1
                         } label: {
-                            Label("Jump to Latest", systemImage: "arrow.down.to.line")
+                            Label("Jump to Bottom", systemImage: "arrow.down.to.line")
                         }
                         .buttonStyle(.borderless)
-                        .help("Jump to the newest live log line")
+                        .help("Jump to the bottom of the displayed logs")
                     }
 
                     Button {
@@ -2185,6 +2223,7 @@ private struct SelectableLogTextView: NSViewRepresentable {
             context.coordinator.text = text
             context.coordinator.searchText = needle
             context.coordinator.formatsJSONLines = formatsJSONLines
+            context.coordinator.layoutTextViewIfNeeded()
 
             if shouldFollow {
                 context.coordinator.scrollToBottom(in: scrollView)
@@ -2352,7 +2391,8 @@ private struct SelectableLogTextView: NSViewRepresentable {
                 }
 
                 self.ignoresBoundsChanges = true
-                self.textView?.scrollToEndOfDocument(nil)
+                self.layoutTextViewIfNeeded()
+                self.scrollVerticallyToBottom(in: scrollView)
                 self.publishPinnedState(for: scrollView, forcedValue: true)
                 DispatchQueue.main.async { [weak self] in
                     self?.ignoresBoundsChanges = false
@@ -2367,13 +2407,58 @@ private struct SelectableLogTextView: NSViewRepresentable {
                 }
 
                 self.ignoresBoundsChanges = true
-                scrollView.contentView.scroll(to: origin)
-                scrollView.reflectScrolledClipView(scrollView.contentView)
+                self.layoutTextViewIfNeeded()
+                self.scroll(in: scrollView, to: origin)
                 self.publishPinnedState(for: scrollView, forcedValue: pinnedValue)
                 DispatchQueue.main.async { [weak self] in
                     self?.ignoresBoundsChanges = false
                 }
             }
+        }
+
+        func layoutTextViewIfNeeded() {
+            guard let textView,
+                  let layoutManager = textView.layoutManager,
+                  let textContainer = textView.textContainer else {
+                return
+            }
+
+            layoutManager.ensureLayout(for: textContainer)
+            let usedRect = layoutManager.usedRect(for: textContainer)
+            let inset = textView.textContainerInset
+            let width = max(textView.enclosingScrollView?.contentSize.width ?? 1, ceil(usedRect.width + inset.width * 2 + 24))
+            let height = max(textView.enclosingScrollView?.contentSize.height ?? 1, ceil(usedRect.height + inset.height * 2 + 24))
+            textView.frame = NSRect(origin: .zero, size: NSSize(width: width, height: height))
+        }
+
+        private func scrollVerticallyToBottom(in scrollView: NSScrollView) {
+            guard let documentView = scrollView.documentView else {
+                return
+            }
+
+            let clipView = scrollView.contentView
+            let visibleBounds = clipView.bounds
+            let maxX = max(0, documentView.bounds.width - visibleBounds.width)
+            let maxY = max(0, documentView.bounds.height - visibleBounds.height)
+            let preservedX = min(max(0, visibleBounds.origin.x), maxX)
+            scroll(in: scrollView, to: NSPoint(x: preservedX, y: maxY))
+        }
+
+        private func scroll(in scrollView: NSScrollView, to origin: NSPoint) {
+            guard let documentView = scrollView.documentView else {
+                return
+            }
+
+            let clipView = scrollView.contentView
+            let visibleBounds = clipView.bounds
+            let maxX = max(0, documentView.bounds.width - visibleBounds.width)
+            let maxY = max(0, documentView.bounds.height - visibleBounds.height)
+            let clampedOrigin = NSPoint(
+                x: min(max(0, origin.x), maxX),
+                y: min(max(0, origin.y), maxY)
+            )
+            clipView.scroll(to: clampedOrigin)
+            scrollView.reflectScrolledClipView(clipView)
         }
 
         func isScrolledNearBottom(in scrollView: NSScrollView) -> Bool {
