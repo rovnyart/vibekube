@@ -809,7 +809,7 @@ final class AppModel: ObservableObject {
         }
 
         return portForwardSessions.first { session in
-            session.isActive && session.matches(target: target, contextID: selectedClusterID)
+            session.matches(target: target, contextID: selectedClusterID)
         }
     }
 
@@ -819,7 +819,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        if portForwardSession(for: target) != nil {
+        if portForwardSession(for: target)?.isActive == true {
             return
         }
 
@@ -3139,7 +3139,8 @@ final class AppModel: ObservableObject {
             if termination.userStopped || termination.exitCode == 0 {
                 session.status = .stopped
             } else {
-                session.status = .failed("kubectl exited with code \(termination.exitCode)")
+                let message = termination.message.map { ": \($0)" } ?? ""
+                session.status = .failed("kubectl exited with code \(termination.exitCode)\(message)")
             }
         }
     }

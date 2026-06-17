@@ -260,6 +260,62 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelKeepsFailedPortForwardSessionVisible() async throws {
+        let portForwardService = TerminatingPortForwardService(
+            termination: KubernetesPortForwardTermination(
+                exitCode: 127,
+                userStopped: false,
+                message: "env: kubectl: No such file or directory"
+            )
+        )
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            portForwardService: portForwardService,
+            loadedKubeconfig: kubeconfig()
+        )
+        let target = KubernetesPortForwardTargetSummary(
+            resourceKind: "service",
+            resourceName: "echo-web",
+            namespace: "vibekube-demo",
+            portName: "http",
+            localPort: 10080,
+            remotePort: 80,
+            protocolName: "TCP"
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.startPortForward(target: target)
+        try await waitForPortForwardSession(
+            model,
+            status: .failed("kubectl exited with code 127: env: kubectl: No such file or directory")
+        )
+
+        #expect(model.portForwardSession(for: target)?.isActive == false)
+    }
+
+    @Test func kubectlPortForwardEnvironmentIncludesCommonHomebrewPaths() {
+        let request = KubernetesPortForwardRequest(
+            contextName: "kind-vibekube-dev",
+            namespace: "vibekube-demo",
+            resourceKind: "service",
+            resourceName: "echo-web",
+            localPort: 10080,
+            remotePort: 80,
+            kubeconfigPath: nil
+        )
+        let environment = KubectlPortForwardService.environment(
+            for: request,
+            baseEnvironment: ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
+        )
+
+        #expect(environment["PATH"]?.contains("/usr/local/bin") == true)
+        #expect(environment["PATH"]?.contains("/opt/homebrew/bin") == true)
+    }
+
+    @MainActor
     @Test func appModelNavigatesToKnownOwnerResource() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -1703,6 +1759,25 @@ private final class RecordingPortForwardHandle: KubernetesPortForwardHandle {
 
     func stop() {
         stopped = true
+    }
+}
+
+private final class TerminatingPortForwardService: KubernetesPortForwardServicing {
+    let termination: KubernetesPortForwardTermination
+
+    init(termination: KubernetesPortForwardTermination) {
+        self.termination = termination
+    }
+
+    func startPortForward(
+        request: KubernetesPortForwardRequest,
+        onTermination: @escaping @Sendable (KubernetesPortForwardTermination) -> Void
+    ) async throws -> KubernetesPortForwardHandle {
+        Task {
+            try? await Task.sleep(nanoseconds: 1_000_000)
+            onTermination(termination)
+        }
+        return RecordingPortForwardHandle(processIdentifier: 4242)
     }
 }
 

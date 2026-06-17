@@ -13,6 +13,7 @@ struct KubernetesPortForwardRequest: Equatable, Sendable {
 struct KubernetesPortForwardTermination: Equatable, Sendable {
     var exitCode: Int32
     var userStopped: Bool
+    var message: String?
 }
 
 protocol KubernetesPortForwardHandle: AnyObject {
@@ -90,15 +91,34 @@ struct KubectlPortForwardService: KubernetesPortForwardServicing {
         return arguments
     }
 
-    private static func environment(
+    static func environment(
         for request: KubernetesPortForwardRequest,
         baseEnvironment: [String: String]
     ) -> [String: String] {
         var environment = baseEnvironment
+        environment["PATH"] = augmentedPath(baseEnvironment["PATH"])
         if let kubeconfigPath = request.kubeconfigPath, !kubeconfigPath.isEmpty {
             environment["KUBECONFIG"] = kubeconfigPath
         }
         return environment
+    }
+
+    private static func augmentedPath(_ path: String?) -> String {
+        let commonExecutableDirectories = [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin"
+        ]
+        let existingDirectories = path?
+            .split(separator: ":", omittingEmptySubsequences: true)
+            .map(String.init) ?? []
+        var seen: Set<String> = []
+        return (existingDirectories + commonExecutableDirectories)
+            .filter { seen.insert($0).inserted }
+            .joined(separator: ":")
     }
 }
 
@@ -119,6 +139,8 @@ private final class KubectlPortForwardHandle: KubernetesPortForwardHandle {
     private let stderr: Pipe
     private let lock = NSLock()
     private var requestedStop = false
+    private var outputData = Data()
+    private var errorData = Data()
 
     init(
         process: Process,
@@ -130,21 +152,23 @@ private final class KubectlPortForwardHandle: KubernetesPortForwardHandle {
         self.stdout = stdout
         self.stderr = stderr
 
-        stdout.fileHandleForReading.readabilityHandler = { handle in
-            _ = handle.availableData
+        stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            self?.appendOutput(handle.availableData, isError: false)
         }
-        stderr.fileHandleForReading.readabilityHandler = { handle in
-            _ = handle.availableData
+        stderr.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            self?.appendOutput(handle.availableData, isError: true)
         }
 
         process.terminationHandler = { [weak self] process in
             let userStopped = self?.didRequestStop ?? false
+            let message = self?.diagnosticMessage
             self?.stdout.fileHandleForReading.readabilityHandler = nil
             self?.stderr.fileHandleForReading.readabilityHandler = nil
             onTermination(
                 KubernetesPortForwardTermination(
                     exitCode: process.terminationStatus,
-                    userStopped: userStopped
+                    userStopped: userStopped,
+                    message: message
                 )
             )
         }
@@ -168,5 +192,34 @@ private final class KubectlPortForwardHandle: KubernetesPortForwardHandle {
         lock.lock()
         defer { lock.unlock() }
         return requestedStop
+    }
+
+    private var diagnosticMessage: String? {
+        lock.lock()
+        let data = errorData.isEmpty ? outputData : errorData
+        lock.unlock()
+
+        let message = String(decoding: data, as: UTF8.self)
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .suffix(3)
+            .joined(separator: " ")
+
+        return message.isEmpty ? nil : message
+    }
+
+    private func appendOutput(_ data: Data, isError: Bool) {
+        guard !data.isEmpty else {
+            return
+        }
+
+        lock.lock()
+        if isError {
+            errorData.append(data)
+        } else {
+            outputData.append(data)
+        }
+        lock.unlock()
     }
 }

@@ -2556,7 +2556,7 @@ private struct ResourcePortForwardRow: View {
             }
 
             Button {
-                if let session {
+                if let session, session.isActive {
                     stop(session)
                 } else {
                     start()
@@ -2575,17 +2575,30 @@ private struct ResourcePortForwardRow: View {
 
     private var detailText: String {
         if let session {
-            return "\(session.localURLString) -> \(session.displayResource):\(session.remotePort)"
+            switch session.status {
+            case .failed(let message):
+                return message
+            case .stopped:
+                return "\(session.localURLString) stopped"
+            case .starting, .running:
+                return "\(session.localURLString) -> \(session.displayResource):\(session.remotePort)"
+            }
         }
         return target.displayDetail
     }
 
     private var buttonTitle: String {
-        session == nil ? "Start" : "Stop"
+        guard let session else {
+            return "Start"
+        }
+        return session.isActive ? "Stop" : "Start"
     }
 
     private var buttonImage: String {
-        session == nil ? "play.fill" : "stop.fill"
+        guard let session else {
+            return "play.fill"
+        }
+        return session.isActive ? "stop.fill" : "play.fill"
     }
 
     private var statusText: String {
