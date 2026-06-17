@@ -11,7 +11,7 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - [ ] Dedicated resource detail route exists.
 - [x] Basic YAML viewer exists.
 - [x] Event panel exists.
-- [ ] Relationship resolver exists.
+- [x] Initial relationship resolver exists.
 - [x] Conditions/metadata views exist.
 
 ## Checkpoint Notes
@@ -25,6 +25,8 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - Secret manifests redact top-level `data`, `stringData`, and `binaryData`.
 - Resource detail now has Overview, Events, Logs, Env, YAML, Metadata, and Conditions tabs.
 - The overview tab extracts status, identity, owner references, conditions, and pod-like container summaries.
+- Owner references for known Kubernetes kinds are clickable and navigate to the matching resource list.
+- Workloads and Services with concrete label selectors expose a Related Pods action that opens Pods with a clearable selector filter.
 - Pod details now include an Environment tab for `env`, `envFrom`, ConfigMap refs, field refs, resource refs, and Secret key refs.
 - Pod `envFrom` ConfigMaps and Secrets are resolved into the env vars Kubernetes actually injects when the user has `get` access to the referenced object.
 - Literal and ConfigMap-backed values render directly; only Secret-backed values are masked and revealable.
@@ -72,11 +74,12 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 ### 6.4 Relationships
 
 - [ ] Deployment to ReplicaSet to Pod.
-- [ ] StatefulSet to Pod.
-- [ ] DaemonSet to Pod.
-- [ ] Job to Pod.
+- [x] Deployment to selected Pods.
+- [x] StatefulSet to Pod.
+- [x] DaemonSet to Pod.
+- [x] Job to Pod.
 - [ ] CronJob to Job.
-- [ ] Service to selected Pods.
+- [x] Service to selected Pods.
 - [ ] Ingress to Service.
 - [ ] PVC to PV.
 - [ ] ConfigMap/Secret references from Pods where feasible.
@@ -115,7 +118,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] Secret env reveal tests.
 - [x] `envFrom` expansion tests.
 - [x] Preview UI smoke test opens resource detail overview.
-- [ ] Relationship resolver tests.
+- [x] Relationship resolver tests.
 - [x] Resource event decoding tests.
 - [x] Resource event model load tests.
 - [x] Version-aware detail refresh test for watched Pod rows.

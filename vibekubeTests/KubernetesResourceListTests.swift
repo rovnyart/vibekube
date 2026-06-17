@@ -1292,6 +1292,43 @@ struct KubernetesResourceListTests {
         #expect(detail.decodedSecretValue(forKey: "token") == "plain-token")
     }
 
+    @Test func extractsResourceDetailLabelSelector() throws {
+        let detail = try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "apps/v1",
+                  "kind": "Deployment",
+                  "metadata": {
+                    "name": "echo-web",
+                    "namespace": "vibekube-demo"
+                  },
+                  "spec": {
+                    "selector": {
+                      "matchLabels": {
+                        "app.kubernetes.io/name": "echo-web",
+                        "tier": "frontend"
+                      }
+                    }
+                  }
+                }
+                """.utf8
+            )
+        )
+
+        let selector = try #require(detail.summary.labelSelector)
+        #expect(selector.displayText == "app.kubernetes.io/name=echo-web, tier=frontend")
+        #expect(selector.matches(labels: [
+            "app.kubernetes.io/name": "echo-web",
+            "tier": "frontend",
+            "pod-template-hash": "abc123"
+        ]))
+        #expect(!selector.matches(labels: [
+            "app.kubernetes.io/name": "echo-web"
+        ]))
+    }
+
     @Test func decodesCoreAndEventsAPIResourceEvents() throws {
         let list = try JSONDecoder().decode(
             KubernetesResourceEventList.self,

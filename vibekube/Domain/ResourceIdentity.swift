@@ -48,6 +48,23 @@ struct ResourceListSnapshot: Equatable {
     var loadedAt: Date
 }
 
+struct ResourceLabelFilter: Equatable {
+    var sourceTitle: String
+    var selector: KubernetesLabelSelectorSummary
+
+    var title: String {
+        "Pods for \(sourceTitle)"
+    }
+
+    var detail: String {
+        selector.displayText
+    }
+
+    func matches(_ resource: KubernetesUnstructuredResource) -> Bool {
+        selector.matches(labels: resource.metadata.labels)
+    }
+}
+
 struct ResourceListLoadingProgress: Equatable {
     var query: ResourceListQuery
     var startedAt: Date

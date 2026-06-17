@@ -105,6 +105,7 @@ struct KubernetesResourceDetailSummary: Equatable {
     var labels: [String: String]
     var annotations: [String: String]
     var ownerReferences: [KubernetesOwnerReferenceSummary]
+    var labelSelector: KubernetesLabelSelectorSummary?
     var conditions: [KubernetesConditionSummary]
     var containers: [KubernetesContainerSummary]
     var environment: [KubernetesContainerEnvironmentSummary]
@@ -128,6 +129,7 @@ struct KubernetesResourceDetailSummary: Equatable {
         self.labels = Self.stringMap(metadata?["labels"], redactingValues: false, kind: kind)
         self.annotations = Self.stringMap(metadata?["annotations"], redactingValues: true, kind: kind)
         self.ownerReferences = Self.ownerReferences(in: metadata)
+        self.labelSelector = Self.labelSelector(in: spec, kind: kind)
         self.conditions = Self.conditions(in: statusObject)
         self.containers = Self.containers(in: spec, status: statusObject)
         self.environment = Self.environment(in: spec)
@@ -210,6 +212,25 @@ struct KubernetesResourceDetailSummary: Equatable {
                 controller: object["controller"]?.boolValue ?? false
             )
         } ?? []
+    }
+
+    nonisolated private static func labelSelector(
+        in spec: KubernetesJSONValue?,
+        kind: String?
+    ) -> KubernetesLabelSelectorSummary? {
+        let selector: KubernetesJSONValue?
+        if kind == "Service" {
+            selector = spec?["selector"]
+        } else {
+            selector = spec?["selector"]?["matchLabels"]
+        }
+
+        let matchLabels = stringMap(selector, redactingValues: false, kind: kind)
+        guard !matchLabels.isEmpty else {
+            return nil
+        }
+
+        return KubernetesLabelSelectorSummary(matchLabels: matchLabels)
     }
 
     nonisolated private static func conditions(in status: KubernetesJSONValue?) -> [KubernetesConditionSummary] {
@@ -553,6 +574,27 @@ struct KubernetesOwnerReferenceSummary: Equatable, Identifiable {
 
     var id: String {
         "\(kind)/\(name)"
+    }
+}
+
+struct KubernetesLabelSelectorSummary: Equatable {
+    var matchLabels: [String: String]
+
+    var displayText: String {
+        matchLabels
+            .sorted { lhs, rhs in lhs.key.localizedStandardCompare(rhs.key) == .orderedAscending }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: ", ")
+    }
+
+    func matches(labels: [String: String]?) -> Bool {
+        guard let labels else {
+            return false
+        }
+
+        return matchLabels.allSatisfy { key, value in
+            labels[key] == value
+        }
     }
 }
 

@@ -34,6 +34,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var kubeconfigPathOverride: String?
     @Published private(set) var tableDensity: TableDensity
     @Published private(set) var appAppearance: AppAppearance
+    @Published private(set) var resourceLabelFilter: ResourceLabelFilter?
     @Published private var selectedNamespaceByContextID: [ClusterSummary.ID: String]
 
     private var kubeconfigLoader: KubeconfigLoader?
@@ -173,6 +174,7 @@ final class AppModel: ObservableObject {
         self.kubeconfigPathOverride = userPreferences.kubeconfigPathOverride
         self.tableDensity = userPreferences.tableDensity
         self.appAppearance = userPreferences.appAppearance
+        self.resourceLabelFilter = nil
         self.selectedNamespaceByContextID = selectedNamespaceByContextID.isEmpty
             ? userPreferences.selectedNamespaceByContextID
             : selectedNamespaceByContextID
@@ -329,6 +331,9 @@ final class AppModel: ObservableObject {
             return
         }
 
+        if resource != .pods {
+            resourceLabelFilter = nil
+        }
         navigate(clusterID: selectedClusterID, resource: resource)
         cancelResourceWatchTasks()
         cancelResourceDetailWatchTasks()
@@ -340,12 +345,47 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func navigateToPods(
+        matching selector: KubernetesLabelSelectorSummary,
+        sourceTitle: String,
+        namespace: String?
+    ) {
+        guard let selectedClusterID else {
+            return
+        }
+
+        let previousResource = selectedResource
+        let previousNamespaceSelection = selectedNamespaceSelection
+        if let podDiscovery = ResourceNavigationItem.pods.discoveredResource(in: selectedDiscovery),
+           podDiscovery.namespaced,
+           let namespace,
+           !namespace.isEmpty,
+           namespace != selectedNamespaceSelection {
+            selectedNamespaceByContextID[selectedClusterID] = namespace
+            userPreferences.selectedNamespaceByContextID = selectedNamespaceByContextID
+        }
+
+        searchText = ""
+        resourceLabelFilter = ResourceLabelFilter(sourceTitle: sourceTitle, selector: selector)
+
+        if previousResource == .pods {
+            if previousNamespaceSelection != selectedNamespaceSelection {
+                refreshSelectedNamespaceScope()
+            } else {
+                loadResourceList(for: .pods, force: true)
+            }
+        } else {
+            selectResource(.pods)
+        }
+    }
+
     func navigateToOwner(_ owner: KubernetesOwnerReferenceSummary, namespace: String?) {
         guard let targetResource = ResourceNavigationItem.navigationItem(forOwnerKind: owner.kind),
               let selectedClusterID else {
             return
         }
 
+        resourceLabelFilter = nil
         let previousResource = selectedResource
         let previousNamespaceSelection = selectedNamespaceSelection
         if let targetDiscovery = targetResource.discoveredResource(in: selectedDiscovery),
@@ -418,6 +458,11 @@ final class AppModel: ObservableObject {
 
     func clearSearch() {
         searchText = ""
+        resourceLabelFilter = nil
+    }
+
+    func clearResourceLabelFilter() {
+        resourceLabelFilter = nil
     }
 
     func setDiagnosticsFileLoggingEnabled(_ enabled: Bool) {

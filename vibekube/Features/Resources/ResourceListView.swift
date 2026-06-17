@@ -511,6 +511,12 @@ struct ResourceListView: View {
                 ResourceWatchStatusBadge(status: watchStatus)
             }
 
+            if item == .pods, let labelFilter = appModel.resourceLabelFilter {
+                ResourceLabelFilterBadge(filter: labelFilter) {
+                    appModel.clearResourceLabelFilter()
+                }
+            }
+
             Button {
                 appModel.loadResourceList(for: item, force: true)
             } label: {
@@ -565,6 +571,10 @@ struct ResourceListView: View {
     }
 
     private func emptySubtitle(for snapshot: ResourceListSnapshot) -> String {
+        if item == .pods, let labelFilter = appModel.resourceLabelFilter {
+            return "No pods match \(labelFilter.detail)."
+        }
+
         let searchText = appModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !searchText.isEmpty {
             return "No rows match the current search."
@@ -579,9 +589,16 @@ struct ResourceListView: View {
 
     private func filteredRows(_ snapshot: ResourceListSnapshot) -> [KubernetesUnstructuredResource] {
         let searchText = appModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let labelFilteredRows: [KubernetesUnstructuredResource]
+        if item == .pods, let labelFilter = appModel.resourceLabelFilter {
+            labelFilteredRows = snapshot.items.filter { labelFilter.matches($0) }
+        } else {
+            labelFilteredRows = snapshot.items
+        }
+
         let rows = searchText.isEmpty
-            ? snapshot.items
-            : snapshot.items.filter { $0.searchBlob.contains(searchText) }
+            ? labelFilteredRows
+            : labelFilteredRows.filter { $0.searchBlob.contains(searchText) }
 
         return ResourceListRowOrdering.orderedRows(
             rows,
@@ -1435,6 +1452,42 @@ private struct ResourceWatchStatusBadge: View {
     }
 }
 
+private struct ResourceLabelFilterBadge: View {
+    let filter: ResourceLabelFilter
+    let clear: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .imageScale(.small)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(filter.title)
+                    .lineLimit(1)
+                Text(filter.detail)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Button(action: clear) {
+                Label("Clear Pod Filter", systemImage: "xmark.circle.fill")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Clear pod filter")
+        }
+        .font(.caption.weight(.medium))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .foregroundStyle(.blue)
+        .background(Color.blue.opacity(0.12), in: Capsule())
+        .help("\(filter.title): \(filter.detail)")
+        .accessibilityIdentifier("resource.list.pods.labelFilter")
+    }
+}
+
 private struct ResourceDetailTabsView: View {
     let item: ResourceNavigationItem
     let rows: [KubernetesUnstructuredResource]
@@ -1678,6 +1731,13 @@ private struct ResourceDetailView: View {
                 loadedAt: snapshot.loadedAt,
                 openOwner: { owner, namespace in
                     appModel.navigateToOwner(owner, namespace: namespace)
+                },
+                openPods: { selector, namespace, sourceTitle in
+                    appModel.navigateToPods(
+                        matching: selector,
+                        sourceTitle: sourceTitle,
+                        namespace: namespace
+                    )
                 }
             )
         case .events:
@@ -1920,6 +1980,7 @@ private struct ResourceDetailOverviewView: View {
     let summary: KubernetesResourceDetailSummary
     let loadedAt: Date
     let openOwner: (KubernetesOwnerReferenceSummary, String?) -> Void
+    let openPods: (KubernetesLabelSelectorSummary, String?, String) -> Void
 
     private let columns = [
         GridItem(.adaptive(minimum: 170), spacing: 12)
@@ -1994,6 +2055,17 @@ private struct ResourceDetailOverviewView: View {
                     }
                 }
 
+                if let labelSelector = summary.labelSelector {
+                    SectionSurface(title: "Related Pods", systemImage: "square.stack.3d.up") {
+                        ResourceRelatedPodsRow(
+                            selector: labelSelector,
+                            namespace: namespaceTextForOwner,
+                            sourceTitle: sourceTitle,
+                            openPods: openPods
+                        )
+                    }
+                }
+
                 if !summary.conditions.isEmpty {
                     SectionSurface(title: "Conditions", systemImage: "checklist") {
                         VStack(spacing: 10) {
@@ -2025,6 +2097,10 @@ private struct ResourceDetailOverviewView: View {
         }
 
         return row.displayNamespace == "-" ? nil : row.displayNamespace
+    }
+
+    private var sourceTitle: String {
+        "\(summary.kind ?? row.displayKind)/\(summary.name ?? row.displayName)"
     }
 
     private var statusTint: Color {
@@ -4310,6 +4386,53 @@ private struct ResourceOwnerSummaryRow: View {
             }
         }
         .padding(.vertical, 7)
+    }
+}
+
+private struct ResourceRelatedPodsRow: View {
+    let selector: KubernetesLabelSelectorSummary
+    let namespace: String?
+    let sourceTitle: String
+    let openPods: (KubernetesLabelSelectorSummary, String?, String) -> Void
+
+    var body: some View {
+        Button {
+            openPods(selector, namespace, sourceTitle)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "shippingbox.and.arrow.backward")
+                    .foregroundStyle(.blue)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Show matching Pods")
+                        .font(.callout.weight(.semibold))
+
+                    Text(selector.displayText)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+
+                Spacer()
+
+                if let namespace {
+                    Text(namespace)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Open Pods matching \(selector.displayText)")
+        .accessibilityIdentifier("resource.detail.relatedPods.open")
     }
 }
 

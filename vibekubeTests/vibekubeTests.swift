@@ -252,6 +252,48 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelNavigatesToPodsWithLabelFilter() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: WatchableWorkloadsConnectionService(),
+            resourceListService: SucceedingResourceListService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+        model.searchText = "old search"
+
+        let selector = KubernetesLabelSelectorSummary(matchLabels: [
+            "app.kubernetes.io/name": "echo-web"
+        ])
+        model.navigateToPods(
+            matching: selector,
+            sourceTitle: "Deployment/echo-web",
+            namespace: "vibekube-demo"
+        )
+
+        try await waitForResourceList(model, .pods)
+
+        #expect(model.selectedResource == .pods)
+        #expect(model.selectedNamespaceSelection == "vibekube-demo")
+        #expect(model.searchText == "")
+        #expect(model.resourceLabelFilter?.title == "Pods for Deployment/echo-web")
+        #expect(model.resourceLabelFilter?.detail == "app.kubernetes.io/name=echo-web")
+
+        guard case .loaded(let snapshot) = model.resourceListState(for: .pods) else {
+            Issue.record("Expected loaded pod list")
+            return
+        }
+
+        #expect(snapshot.query.resource.name == "pods")
+        #expect(snapshot.query.namespaceSelection == "vibekube-demo")
+
+        model.clearResourceLabelFilter()
+        #expect(model.resourceLabelFilter == nil)
+    }
+
+    @MainActor
     @Test func appModelBuildsCopyableRouteIdentity() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
