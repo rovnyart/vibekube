@@ -174,7 +174,7 @@ struct ResourceListView: View {
                     TableColumn("Namespace", value: \.displayNamespace)
                         .width(min: 150, ideal: 180)
                     TableColumn("Ready", value: \.deploymentReadySortValue) { resource in
-                        ResourceDeploymentCountCell(
+                        ResourceReplicaCountCell(
                             value: resource.deploymentReadyDescription,
                             isHealthy: resource.deploymentReadyReplicas >= resource.deploymentDesiredReplicas,
                             isUnhealthy: resource.isDeploymentUnhealthy,
@@ -183,7 +183,7 @@ struct ResourceListView: View {
                     }
                     .width(min: 78, ideal: 96, max: 118)
                     TableColumn("Up-to-date", value: \.deploymentUpdatedSortValue) { resource in
-                        ResourceDeploymentCountCell(
+                        ResourceReplicaCountCell(
                             value: resource.deploymentUpdatedDescription,
                             isHealthy: resource.deploymentUpdatedReplicas >= resource.deploymentDesiredReplicas,
                             isUnhealthy: false,
@@ -192,7 +192,7 @@ struct ResourceListView: View {
                     }
                     .width(min: 92, ideal: 112, max: 136)
                     TableColumn("Available", value: \.deploymentAvailableSortValue) { resource in
-                        ResourceDeploymentCountCell(
+                        ResourceReplicaCountCell(
                             value: resource.deploymentAvailableDescription,
                             isHealthy: resource.deploymentAvailableReplicas >= resource.deploymentDesiredReplicas,
                             isUnhealthy: resource.isDeploymentUnhealthy,
@@ -202,6 +202,53 @@ struct ResourceListView: View {
                     .width(min: 86, ideal: 106, max: 130)
                     TableColumn("Status", value: \.displayStatus) { resource in
                         ResourceDeploymentStatusCell(resource: resource)
+                    }
+                    .width(min: 150, ideal: 190)
+                    TableColumn("Age") { resource in
+                        Text(resource.ageDescription())
+                    }
+                    .width(min: 72, ideal: 90, max: 120)
+                } else if item == .replicaSets {
+                    TableColumn("Name", value: \.displayName) { resource in
+                        ResourceNameCell(
+                            resource: resource,
+                            isRecentlyUpdated: recentlyUpdatedRowIDs.contains(resource.id),
+                            density: appModel.tableDensity
+                        )
+                    }
+                    .width(min: 280, ideal: 340)
+
+                    TableColumn("Namespace", value: \.displayNamespace)
+                        .width(min: 150, ideal: 180)
+                    TableColumn("Desired", value: \.replicaSetDesiredReplicas) { resource in
+                        ResourceReplicaCountCell(
+                            value: resource.replicaSetDesiredDescription,
+                            isHealthy: true,
+                            isUnhealthy: false,
+                            help: "Desired replicas: \(resource.replicaSetDesiredDescription)"
+                        )
+                    }
+                    .width(min: 78, ideal: 96, max: 118)
+                    TableColumn("Current", value: \.replicaSetCurrentReplicas) { resource in
+                        ResourceReplicaCountCell(
+                            value: resource.replicaSetCurrentDescription,
+                            isHealthy: resource.replicaSetCurrentReplicas >= resource.replicaSetDesiredReplicas,
+                            isUnhealthy: resource.isReplicaSetUnhealthy,
+                            help: "Current replicas: \(resource.replicaSetCurrentDescription)"
+                        )
+                    }
+                    .width(min: 78, ideal: 96, max: 118)
+                    TableColumn("Ready", value: \.replicaSetReadyReplicas) { resource in
+                        ResourceReplicaCountCell(
+                            value: resource.replicaSetReadyDescription,
+                            isHealthy: resource.replicaSetReadyReplicas >= resource.replicaSetDesiredReplicas,
+                            isUnhealthy: resource.isReplicaSetUnhealthy,
+                            help: "Ready replicas: \(resource.replicaSetReadyDescription)"
+                        )
+                    }
+                    .width(min: 78, ideal: 96, max: 118)
+                    TableColumn("Status", value: \.displayStatus) { resource in
+                        ResourceReplicaSetStatusCell(resource: resource)
                     }
                     .width(min: 150, ideal: 190)
                     TableColumn("Age") { resource in
@@ -706,7 +753,7 @@ private struct ResourcePodReadyCell: View {
     }
 }
 
-private struct ResourceDeploymentCountCell: View {
+private struct ResourceReplicaCountCell: View {
     let value: String
     let isHealthy: Bool
     let isUnhealthy: Bool
@@ -725,6 +772,69 @@ private struct ResourceDeploymentCountCell: View {
         }
 
         return isUnhealthy ? .red : .orange
+    }
+}
+
+private struct ResourceReplicaSetStatusCell: View {
+    let resource: KubernetesUnstructuredResource
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .imageScale(.small)
+                .foregroundStyle(tint)
+
+            Text(resource.displayStatus)
+                .lineLimit(1)
+                .foregroundStyle(titleColor)
+        }
+        .font(.callout.weight(resource.isReplicaSetUnhealthy ? .semibold : .regular))
+        .padding(.horizontal, resource.isReplicaSetUnhealthy ? 7 : 0)
+        .padding(.vertical, resource.isReplicaSetUnhealthy ? 3 : 0)
+        .background {
+            if resource.isReplicaSetUnhealthy {
+                Capsule().fill(tint.opacity(0.14))
+            }
+        }
+        .help(statusHelp)
+    }
+
+    private var titleColor: Color {
+        resource.isReplicaSetUnhealthy ? tint : .primary
+    }
+
+    private var tint: Color {
+        let status = resource.displayStatus.lowercased()
+        if resource.isReplicaSetUnhealthy {
+            return .red
+        }
+
+        if status.contains("scaling") || status.contains("scaled") {
+            return .orange
+        }
+
+        return .green
+    }
+
+    private var systemImage: String {
+        let status = resource.displayStatus.lowercased()
+        if resource.isReplicaSetUnhealthy {
+            return "exclamationmark.triangle.fill"
+        }
+
+        if status.contains("scaling") || status.contains("scaled") {
+            return "clock"
+        }
+
+        return "checkmark.circle.fill"
+    }
+
+    private var statusHelp: String {
+        if resource.isReplicaSetUnhealthy {
+            return "ReplicaSet status needs attention: \(resource.displayStatus)"
+        }
+
+        return "ReplicaSet status: \(resource.displayStatus)"
     }
 }
 

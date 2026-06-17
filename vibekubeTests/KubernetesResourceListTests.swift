@@ -627,6 +627,77 @@ struct KubernetesResourceListTests {
         #expect(list.items[2].isDeploymentUnhealthy)
     }
 
+    @Test func replicaSetRowsExposeScaleSignal() throws {
+        let list = try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "apps/v1",
+                  "kind": "ReplicaSetList",
+                  "items": [
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "ReplicaSet",
+                      "metadata": {
+                        "name": "web-abc",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "replicas": 2
+                      },
+                      "status": {
+                        "replicas": 2,
+                        "readyReplicas": 2
+                      }
+                    },
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "ReplicaSet",
+                      "metadata": {
+                        "name": "scaling-abc",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "replicas": 3
+                      },
+                      "status": {
+                        "replicas": 1,
+                        "readyReplicas": 1
+                      }
+                    },
+                    {
+                      "apiVersion": "apps/v1",
+                      "kind": "ReplicaSet",
+                      "metadata": {
+                        "name": "broken-abc",
+                        "namespace": "vibekube-demo"
+                      },
+                      "spec": {
+                        "replicas": 1
+                      },
+                      "status": {
+                        "replicas": 1,
+                        "readyReplicas": 0
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        #expect(list.items[0].displayStatus == "Ready")
+        #expect(list.items[0].replicaSetDesiredDescription == "2")
+        #expect(list.items[0].replicaSetCurrentDescription == "2")
+        #expect(list.items[0].replicaSetReadyDescription == "2")
+        #expect(!list.items[0].isReplicaSetUnhealthy)
+        #expect(list.items[1].displayStatus == "Scaling")
+        #expect(!list.items[1].isReplicaSetUnhealthy)
+        #expect(list.items[2].displayStatus == "Unavailable")
+        #expect(list.items[2].isReplicaSetUnhealthy)
+    }
+
     @Test func rendersResourceDetailYAML() throws {
         let detail = try JSONDecoder().decode(
             KubernetesResourceDetail.self,

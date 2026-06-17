@@ -94,6 +94,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             return deploymentStatus
         }
 
+        if let replicaSetStatus = replicaSetDisplayStatus {
+            return replicaSetStatus
+        }
+
         if let phase = status?["phase"]?.stringValue, !phase.isEmpty {
             return phase
         }
@@ -321,6 +325,66 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             deploymentUnavailableReplicas > 0 && deploymentUpdatedReplicas >= deploymentDesiredReplicas
     }
 
+    var replicaSetDesiredReplicas: Int {
+        guard isReplicaSet else {
+            return 0
+        }
+
+        return spec?["replicas"]?.intValue ?? 1
+    }
+
+    var replicaSetCurrentReplicas: Int {
+        guard isReplicaSet else {
+            return 0
+        }
+
+        return status?["replicas"]?.intValue ?? 0
+    }
+
+    var replicaSetReadyReplicas: Int {
+        guard isReplicaSet else {
+            return 0
+        }
+
+        return status?["readyReplicas"]?.intValue ?? 0
+    }
+
+    var replicaSetDesiredDescription: String {
+        guard isReplicaSet else {
+            return "-"
+        }
+
+        return String(replicaSetDesiredReplicas)
+    }
+
+    var replicaSetCurrentDescription: String {
+        guard isReplicaSet else {
+            return "-"
+        }
+
+        return String(replicaSetCurrentReplicas)
+    }
+
+    var replicaSetReadyDescription: String {
+        guard isReplicaSet else {
+            return "-"
+        }
+
+        return String(replicaSetReadyReplicas)
+    }
+
+    var isReplicaSetUnhealthy: Bool {
+        guard isReplicaSet else {
+            return false
+        }
+
+        let status = displayStatus.lowercased()
+        return status.contains("unavailable") ||
+            replicaSetDesiredReplicas > 0 &&
+            replicaSetCurrentReplicas >= replicaSetDesiredReplicas &&
+            replicaSetReadyReplicas < replicaSetDesiredReplicas
+    }
+
     var labelsSummary: String {
         guard let labels = metadata.labels, !labels.isEmpty else {
             return "-"
@@ -486,6 +550,10 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
         displayKind == "Deployment"
     }
 
+    private var isReplicaSet: Bool {
+        displayKind == "ReplicaSet"
+    }
+
     private var podDisplayStatus: String? {
         guard isPod else {
             return nil
@@ -615,6 +683,32 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
             .first { condition in
                 condition["type"]?.stringValue == type
             }
+    }
+
+    private var replicaSetDisplayStatus: String? {
+        guard isReplicaSet, hasReplicaSetScaleStatus else {
+            return nil
+        }
+
+        if replicaSetDesiredReplicas == 0 {
+            return "Scaled to 0"
+        }
+
+        if replicaSetCurrentReplicas < replicaSetDesiredReplicas {
+            return "Scaling"
+        }
+
+        if replicaSetReadyReplicas < replicaSetDesiredReplicas {
+            return "Unavailable"
+        }
+
+        return "Ready"
+    }
+
+    private var hasReplicaSetScaleStatus: Bool {
+        status?["replicas"] != nil ||
+            status?["readyReplicas"] != nil ||
+            spec?["replicas"] != nil
     }
 
     private var podContainerStatuses: [[String: KubernetesJSONValue]] {
