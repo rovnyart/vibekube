@@ -35,6 +35,7 @@ Goal: inspect any Kubernetes resource deeply, including readable YAML, condition
 - Pod details now include an Environment tab for `env`, `envFrom`, ConfigMap refs, field refs, resource refs, and Secret key refs.
 - Pod `envFrom` ConfigMaps and Secrets are resolved into the env vars Kubernetes actually injects when the user has `get` access to the referenced object.
 - Literal and ConfigMap-backed values render directly; only Secret-backed values are masked and revealable.
+- The Environment tab groups values by source and collapses large groups so big `envFrom` ConfigMaps stay navigable.
 - Invalid `envFrom` keys are skipped using Kubernetes-style env var name rules instead of being shown as fake variables.
 - Secret-backed env values are masked by default and fetched/decoded on demand through an eye reveal button.
 - Resource details now include an Events tab that reads Kubernetes Events for the selected object using `events.k8s.io/v1` or core `v1/Event`.
@@ -100,6 +101,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] Conditions tab.
 - [x] Metadata tab.
 - [x] Environment tab for pod-like resources.
+- [x] Group and filter large environment sets.
 - [x] Dedicated containers tab for pod-like resources.
 - [x] ConfigMap values render directly for environment references.
 - [x] Manifest freshness indicator in the detail header.

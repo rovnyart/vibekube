@@ -4130,6 +4130,8 @@ private struct ResourceContainerVolumeMountRow: View {
 }
 
 private struct ResourceDetailEnvironmentView: View {
+    @State private var searchText = ""
+
     let summary: KubernetesResourceDetailSummary
 
     var body: some View {
@@ -4145,29 +4147,14 @@ private struct ResourceDetailEnvironmentView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
+                        ResourceEnvironmentFilterField(searchText: $searchText)
+
                         ForEach(summary.environment) { container in
-                            SectionSurface(title: container.containerName, systemImage: "shippingbox") {
-                                VStack(spacing: 0) {
-                                    ForEach(Array(container.variables.enumerated()), id: \.element.id) { index, variable in
-                                        ResourceEnvironmentVariableRow(
-                                            variable: variable,
-                                            namespace: summary.namespace
-                                        )
-
-                                        if index < container.variables.count - 1 || !container.envFrom.isEmpty {
-                                            Divider()
-                                        }
-                                    }
-
-                                    ForEach(Array(container.envFrom.enumerated()), id: \.element.id) { index, source in
-                                        ResourceEnvironmentFromRow(source: source)
-
-                                        if index < container.envFrom.count - 1 {
-                                            Divider()
-                                        }
-                                    }
-                                }
-                            }
+                            ResourceEnvironmentContainerSection(
+                                container: container,
+                                namespace: summary.namespace,
+                                searchText: searchText
+                            )
                         }
                     }
                     .padding(16)
@@ -4177,6 +4164,371 @@ private struct ResourceDetailEnvironmentView: View {
             }
         }
         .accessibilityIdentifier("resource.detail.environment")
+    }
+}
+
+private struct ResourceEnvironmentFilterField: View {
+    @Binding var searchText: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField("Filter environment", text: $searchText)
+                .textFieldStyle(.plain)
+
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Label("Clear Filter", systemImage: "xmark.circle.fill")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Clear environment filter")
+            }
+        }
+        .font(.callout)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(Color.secondary.opacity(0.16))
+        }
+        .accessibilityIdentifier("resource.detail.environment.filter")
+    }
+}
+
+private struct ResourceEnvironmentContainerSection: View {
+    let container: KubernetesContainerEnvironmentSummary
+    let namespace: String?
+    let searchText: String
+
+    var body: some View {
+        SectionSurface(title: container.containerName, systemImage: "shippingbox") {
+            VStack(spacing: 0) {
+                let filteredEnvFrom = filteredEnvFromSources
+                let groups = filteredVariableGroups
+
+                if filteredEnvFrom.isEmpty && groups.isEmpty {
+                    Text("No environment entries match the current filter.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 10)
+                } else {
+                    if !filteredEnvFrom.isEmpty {
+                        ResourceEnvironmentFromGroupView(
+                            sources: filteredEnvFrom,
+                            isFiltering: isFiltering
+                        )
+
+                        if !groups.isEmpty {
+                            Divider()
+                        }
+                    }
+
+                    ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                        ResourceEnvironmentVariableGroupView(
+                            group: group,
+                            namespace: namespace,
+                            isFiltering: isFiltering
+                        )
+
+                        if index < groups.count - 1 {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var filteredEnvFromSources: [KubernetesEnvFromSummary] {
+        guard isFiltering else {
+            return container.envFrom
+        }
+
+        return container.envFrom.filter { source in
+            source.searchBlob.contains(searchNeedle)
+        }
+    }
+
+    private var filteredVariableGroups: [ResourceEnvironmentVariableGroup] {
+        ResourceEnvironmentVariableGroup.groups(
+            for: container.variables.filter { variable in
+                !isFiltering || variable.searchBlob.contains(searchNeedle)
+            }
+        )
+    }
+
+    private var isFiltering: Bool {
+        !searchNeedle.isEmpty
+    }
+
+    private var searchNeedle: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+private struct ResourceEnvironmentVariableGroup: Identifiable {
+    var id: String
+    var title: String
+    var detail: String
+    var systemImage: String
+    var variables: [KubernetesEnvVarSummary]
+    var priority: Int
+
+    static func groups(for variables: [KubernetesEnvVarSummary]) -> [ResourceEnvironmentVariableGroup] {
+        let grouped = Dictionary(grouping: variables) { variable in
+            GroupKey(variable: variable)
+        }
+
+        return grouped.map { key, variables in
+            ResourceEnvironmentVariableGroup(
+                id: key.id,
+                title: key.title,
+                detail: key.detail,
+                systemImage: key.systemImage,
+                variables: variables.sorted { lhs, rhs in
+                    lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                },
+                priority: key.priority
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.priority == rhs.priority {
+                return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+            }
+            return lhs.priority < rhs.priority
+        }
+    }
+
+    private struct GroupKey: Hashable {
+        var id: String
+        var title: String
+        var detail: String
+        var systemImage: String
+        var priority: Int
+
+        init(variable: KubernetesEnvVarSummary) {
+            guard let source = variable.source else {
+                id = "literal"
+                title = "Literal Values"
+                detail = "Declared directly"
+                systemImage = "text.quote"
+                priority = 0
+                return
+            }
+
+            switch source.kind {
+            case .configMapKeyRef:
+                let name = source.name ?? "-"
+                id = "configMap/\(name)"
+                title = "ConfigMap \(name)"
+                detail = "ConfigMap-backed values"
+                systemImage = "doc.text"
+                priority = 10
+            case .secretKeyRef:
+                let name = source.name ?? "-"
+                id = "secret/\(name)"
+                title = "Secret \(name)"
+                detail = "Secret-backed values"
+                systemImage = "key"
+                priority = 20
+            case .fieldRef:
+                id = "fieldRef"
+                title = "Field References"
+                detail = "Pod metadata and status fields"
+                systemImage = "tag"
+                priority = 30
+            case .resourceFieldRef:
+                id = "resourceFieldRef"
+                title = "Resource References"
+                detail = "Container resource values"
+                systemImage = "cpu"
+                priority = 40
+            case .unknown:
+                id = "unknown"
+                title = "Other References"
+                detail = "Unsupported value references"
+                systemImage = "questionmark.circle"
+                priority = 50
+            }
+        }
+    }
+}
+
+private extension KubernetesEnvVarSummary {
+    var searchBlob: String {
+        [
+            name,
+            literalValue ?? "",
+            source?.kind.rawValue ?? "",
+            source?.name ?? "",
+            source?.key ?? "",
+            source?.fieldPath ?? "",
+            source?.resource ?? ""
+        ]
+        .joined(separator: " ")
+        .lowercased()
+    }
+}
+
+private extension KubernetesEnvFromSummary {
+    var searchBlob: String {
+        [
+            kind.rawValue,
+            name,
+            prefix ?? ""
+        ]
+        .joined(separator: " ")
+        .lowercased()
+    }
+}
+
+private struct ResourceEnvironmentVariableGroupView: View {
+    private static let collapsedCountThreshold = 24
+
+    @State private var isExpanded: Bool
+
+    let group: ResourceEnvironmentVariableGroup
+    let namespace: String?
+    let isFiltering: Bool
+
+    init(
+        group: ResourceEnvironmentVariableGroup,
+        namespace: String?,
+        isFiltering: Bool
+    ) {
+        self.group = group
+        self.namespace = namespace
+        self.isFiltering = isFiltering
+        _isExpanded = State(initialValue: group.variables.count <= Self.collapsedCountThreshold)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                ResourceEnvironmentGroupHeader(
+                    title: group.title,
+                    detail: group.detail,
+                    count: group.variables.count,
+                    systemImage: group.systemImage,
+                    isExpanded: effectiveIsExpanded
+                )
+            }
+            .buttonStyle(.plain)
+            .help(effectiveIsExpanded ? "Collapse group" : "Expand group")
+
+            if effectiveIsExpanded {
+                Divider()
+
+                ForEach(Array(group.variables.enumerated()), id: \.element.id) { index, variable in
+                    ResourceEnvironmentVariableRow(
+                        variable: variable,
+                        namespace: namespace
+                    )
+
+                    if index < group.variables.count - 1 {
+                        Divider()
+                    }
+                }
+            }
+        }
+    }
+
+    private var effectiveIsExpanded: Bool {
+        isFiltering || isExpanded
+    }
+}
+
+private struct ResourceEnvironmentFromGroupView: View {
+    @State private var isExpanded = true
+
+    let sources: [KubernetesEnvFromSummary]
+    let isFiltering: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                ResourceEnvironmentGroupHeader(
+                    title: "Bulk Imports",
+                    detail: "envFrom sources",
+                    count: sources.count,
+                    systemImage: "square.and.arrow.down",
+                    isExpanded: effectiveIsExpanded
+                )
+            }
+            .buttonStyle(.plain)
+            .help(effectiveIsExpanded ? "Collapse group" : "Expand group")
+
+            if effectiveIsExpanded {
+                Divider()
+
+                ForEach(Array(sources.enumerated()), id: \.element.id) { index, source in
+                    ResourceEnvironmentFromRow(source: source)
+
+                    if index < sources.count - 1 {
+                        Divider()
+                    }
+                }
+            }
+        }
+    }
+
+    private var effectiveIsExpanded: Bool {
+        isFiltering || isExpanded
+    }
+}
+
+private struct ResourceEnvironmentGroupHeader: View {
+    let title: String
+    let detail: String
+    let count: Int
+    let systemImage: String
+    let isExpanded: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 12)
+
+            Image(systemName: systemImage)
+                .foregroundStyle(.blue)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.callout.weight(.semibold))
+                    .lineLimit(1)
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Text("\(count)")
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Color.secondary.opacity(0.12), in: Capsule())
+        }
+        .padding(.vertical, 9)
+        .contentShape(Rectangle())
     }
 }
 
