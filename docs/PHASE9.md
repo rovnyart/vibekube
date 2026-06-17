@@ -1,6 +1,6 @@
 # Phase 9: Workload Debugging Basics
 
-Status: Not started.
+Status: Started.
 
 Goal: add practical debugging workflows: describe-style views, container details, port-forwarding, and basic exec.
 
@@ -8,7 +8,7 @@ Goal: add practical debugging workflows: describe-style views, container details
 
 - [x] Phase plan exists.
 - [ ] Describe-style view exists.
-- [ ] Container details exist.
+- [x] Container details exist for Pod detail manifests.
 - [ ] Port-forwarding exists.
 - [ ] Exec session support exists.
 - [ ] Active sessions can be stopped safely.
@@ -18,13 +18,14 @@ Goal: add practical debugging workflows: describe-style views, container details
 ### 9.1 Describe-Style Views
 
 - [ ] Pod scheduling summary.
-- [ ] Container state summary.
-- [ ] Restart/termination reason details.
-- [ ] Image pull status.
-- [ ] Environment variables with secret-aware redaction.
-- [ ] Volume mounts.
-- [ ] Probes.
-- [ ] QoS and resource requests/limits.
+- [x] Container state summary for Pod detail manifests.
+- [x] Restart/termination reason details for Pod detail manifests.
+- [x] Image pull status from container waiting reasons.
+- [x] Environment variables with secret-aware redaction.
+- [x] Volume mounts.
+- [x] Probes.
+- [ ] QoS class summary.
+- [x] Resource requests/limits.
 
 ### 9.2 Port Forward
 

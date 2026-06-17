@@ -92,7 +92,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] Conditions tab.
 - [x] Metadata tab.
 - [x] Environment tab for pod-like resources.
-- [ ] Dedicated containers tab for pod-like resources.
+- [x] Dedicated containers tab for pod-like resources.
 - [x] ConfigMap values render directly for environment references.
 - [x] Manifest freshness indicator in the detail header.
 
@@ -110,6 +110,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] Secret redaction tests.
 - [x] YAML search indexing tests.
 - [x] Resource summary extraction tests.
+- [x] Pod container detail extraction tests.
 - [x] Pod environment extraction tests.
 - [x] Secret env reveal tests.
 - [x] `envFrom` expansion tests.

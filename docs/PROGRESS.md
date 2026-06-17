@@ -12,10 +12,10 @@ This file tracks implementation status across all phases. Keep this updated when
 | 3 | [Main App Shell](PHASE3.md) | Review checkpoint | NavigationSplitView shell has persisted top-level route state, grouped nav, searchable namespace switching, route-aware commands, detail/YAML shortcuts, and basic keyboard navigation |
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Started | Dashboard is simplified to a fast nodes/pods/discovery/metrics overview while workload, event, and storage summaries wait for a non-blocking design |
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
-| 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, expanded Environment, YAML, Metadata, Conditions, masked Secret env reveal, and version-aware refresh |
+| 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, Containers, expanded Environment, YAML, Metadata, Conditions, masked Secret env reveal, and version-aware refresh |
 | 7 | [Logs](PHASE7.md) | Review checkpoint | Pod detail inspector has rich logs: tail/since controls, live streaming with smart follow, timestamps, safe JSONL formatting, search, grep, copy, save, download-all, fullscreen, and previous-container logs |
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Review checkpoint | Active watchable resource lists have watch merging, durable reconnect/backoff, live/stale/failure status, burst coalescing, version-aware detail refresh, narrow selected-resource detail watches, interaction-stable table ordering, subtle updated-row feedback, and manual validation |
-| 9 | [Workload Debugging Basics](PHASE9.md) | Not started | Waiting for logs/detail foundations |
+| 9 | [Workload Debugging Basics](PHASE9.md) | Started | Pod detail manifests expose container state, restarts, probes, volume mounts, and requests/limits |
 | 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
 | 11 | [Preferences, Security, Packaging](PHASE11.md) | Started | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, kubeconfig path, appearance, table density, log buffer, default namespace, resource watch, Secret reveal settings, reset preferences, privacy docs, and real Teleport/TLS validation exist |
 | 12 | [AI Foundations](PHASE12.md) | Not started | Waiting for stable resource context model |
@@ -29,9 +29,9 @@ The current product milestone is Vibekube 0.1.x: a fast, read-only, distributabl
 
 Recommended next focus:
 
-1. Finish release readiness by running the clean-machine checklist, then close the remaining Phase 11 security/reset-preferences items.
+1. Continue the read-only workload debugging track with pod scheduling/QoS and workload-owned pod rollups before starting active sessions.
 2. Use diagnostics on the work Mac during the next real-cluster validation pass and expand the logged categories only where gaps appear.
-3. Return to dashboard only after the read-only/debug workflows are stable enough to avoid another laggy rewrite loop.
+3. Finish release readiness with the clean-machine checklist after the current debug surfaces settle.
 
 Current stop rule: after any visible UI slice, stop for manual review before moving to the next feature family.
 
@@ -52,6 +52,7 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Show dashboard health summaries from live cluster resources.
 - [x] Stream logs.
 - [x] Search, grep, tail/since filtering, smart live follow, safe JSONL formatting, copy, save, download, fullscreen, and previous-container Pod logs.
+- [x] Inspect Pod container state, restarts, probes, volume mounts, and resource requests/limits.
 - [x] Connect to real Teleport-backed corporate clusters through kubeconfig exec auth.
 - [x] Package signed/notarized DMG builds through `scripts/release`.
 - [x] Expand Pod `envFrom` ConfigMap and Secret keys in the Env inspector.

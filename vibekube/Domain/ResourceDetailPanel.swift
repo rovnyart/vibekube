@@ -4,6 +4,7 @@ enum ResourceDetailPanel: String, CaseIterable, Identifiable {
     case overview
     case events
     case logs
+    case containers
     case environment
     case yaml
     case metadata
@@ -21,6 +22,8 @@ enum ResourceDetailPanel: String, CaseIterable, Identifiable {
             "Events"
         case .logs:
             "Logs"
+        case .containers:
+            "Containers"
         case .environment:
             "Env"
         case .yaml:
@@ -40,6 +43,8 @@ enum ResourceDetailPanel: String, CaseIterable, Identifiable {
             "waveform.path.ecg"
         case .logs:
             "terminal"
+        case .containers:
+            "shippingbox"
         case .environment:
             "switch.2"
         case .yaml:

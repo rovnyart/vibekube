@@ -233,17 +233,43 @@ struct KubernetesResourceDetailSummary: Equatable {
         in spec: KubernetesJSONValue?,
         status: KubernetesJSONValue?
     ) -> [KubernetesContainerSummary] {
-        let containerStatuses = status?["containerStatuses"]?.arrayValue ?? []
-        let statusPairs: [(String, [String: KubernetesJSONValue])] = containerStatuses.compactMap { value in
+        let containers = containerSummaries(
+            in: spec?["containers"]?.arrayValue,
+            statuses: status?["containerStatuses"]?.arrayValue,
+            kind: .container
+        )
+        let initContainers = containerSummaries(
+            in: spec?["initContainers"]?.arrayValue,
+            statuses: status?["initContainerStatuses"]?.arrayValue,
+            kind: .initContainer
+        )
+        let ephemeralContainers = containerSummaries(
+            in: spec?["ephemeralContainers"]?.arrayValue,
+            statuses: status?["ephemeralContainerStatuses"]?.arrayValue,
+            kind: .ephemeralContainer
+        )
+
+        return initContainers + containers + ephemeralContainers
+    }
+
+    nonisolated private static func containerSummaries(
+        in containers: [KubernetesJSONValue]?,
+        statuses: [KubernetesJSONValue]?,
+        kind: KubernetesContainerKind
+    ) -> [KubernetesContainerSummary] {
+        let statusPairs: [(String, [String: KubernetesJSONValue])] = (statuses ?? []).compactMap { value in
             guard let object = value.objectValue,
                   let name = object["name"]?.stringValue else {
                 return nil
             }
             return (name, object)
         }
-        let statusByName: [String: [String: KubernetesJSONValue]] = Dictionary(uniqueKeysWithValues: statusPairs)
+        let statusByName: [String: [String: KubernetesJSONValue]] = Dictionary(
+            statusPairs,
+            uniquingKeysWith: { first, _ in first }
+        )
 
-        return spec?["containers"]?.arrayValue?.compactMap { value -> KubernetesContainerSummary? in
+        return containers?.compactMap { value -> KubernetesContainerSummary? in
             guard let object = value.objectValue,
                   let name = object["name"]?.stringValue else {
                 return nil
@@ -252,9 +278,147 @@ struct KubernetesResourceDetailSummary: Equatable {
             let status = statusByName[name]
             return KubernetesContainerSummary(
                 name: name,
+                kind: kind,
                 image: object["image"]?.stringValue,
+                imagePullPolicy: object["imagePullPolicy"]?.stringValue,
+                imageID: status?["imageID"]?.stringValue,
+                containerID: status?["containerID"]?.stringValue,
                 ready: status?["ready"]?.boolValue,
-                restartCount: status?["restartCount"]?.intValue
+                started: status?["started"]?.boolValue,
+                restartCount: status?["restartCount"]?.intValue,
+                currentState: containerState(in: status?["state"]),
+                lastState: containerState(in: status?["lastState"]),
+                resources: containerResources(in: object["resources"]),
+                probes: containerProbes(in: object),
+                volumeMounts: containerVolumeMounts(in: object["volumeMounts"])
+            )
+        } ?? []
+    }
+
+    nonisolated private static func containerState(in value: KubernetesJSONValue?) -> KubernetesContainerStateSummary? {
+        guard let object = value?.objectValue else {
+            return nil
+        }
+
+        if let waiting = object["waiting"]?.objectValue {
+            return KubernetesContainerStateSummary(
+                kind: .waiting,
+                reason: waiting["reason"]?.stringValue,
+                message: waiting["message"]?.stringValue,
+                startedAt: nil,
+                finishedAt: nil,
+                exitCode: nil,
+                signal: nil
+            )
+        }
+
+        if let running = object["running"]?.objectValue {
+            return KubernetesContainerStateSummary(
+                kind: .running,
+                reason: nil,
+                message: nil,
+                startedAt: running["startedAt"]?.stringValue,
+                finishedAt: nil,
+                exitCode: nil,
+                signal: nil
+            )
+        }
+
+        if let terminated = object["terminated"]?.objectValue {
+            return KubernetesContainerStateSummary(
+                kind: .terminated,
+                reason: terminated["reason"]?.stringValue,
+                message: terminated["message"]?.stringValue,
+                startedAt: terminated["startedAt"]?.stringValue,
+                finishedAt: terminated["finishedAt"]?.stringValue,
+                exitCode: terminated["exitCode"]?.intValue,
+                signal: terminated["signal"]?.intValue
+            )
+        }
+
+        return nil
+    }
+
+    nonisolated private static func containerResources(
+        in value: KubernetesJSONValue?
+    ) -> KubernetesContainerResourcesSummary {
+        KubernetesContainerResourcesSummary(
+            requests: stringMap(value?["requests"], redactingValues: false, kind: nil),
+            limits: stringMap(value?["limits"], redactingValues: false, kind: nil)
+        )
+    }
+
+    nonisolated private static func containerProbes(
+        in object: [String: KubernetesJSONValue]
+    ) -> [KubernetesContainerProbeSummary] {
+        [
+            ("startupProbe", KubernetesContainerProbeKind.startup),
+            ("readinessProbe", KubernetesContainerProbeKind.readiness),
+            ("livenessProbe", KubernetesContainerProbeKind.liveness)
+        ].compactMap { key, kind in
+            guard let probeObject = object[key]?.objectValue else {
+                return nil
+            }
+
+            return KubernetesContainerProbeSummary(
+                kind: kind,
+                handler: probeHandlerDescription(in: probeObject),
+                initialDelaySeconds: probeObject["initialDelaySeconds"]?.intValue,
+                periodSeconds: probeObject["periodSeconds"]?.intValue,
+                timeoutSeconds: probeObject["timeoutSeconds"]?.intValue,
+                successThreshold: probeObject["successThreshold"]?.intValue,
+                failureThreshold: probeObject["failureThreshold"]?.intValue
+            )
+        }
+    }
+
+    nonisolated private static func probeHandlerDescription(in object: [String: KubernetesJSONValue]) -> String? {
+        if let httpGet = object["httpGet"]?.objectValue {
+            let scheme = httpGet["scheme"]?.stringValue ?? "HTTP"
+            let path = httpGet["path"]?.stringValue ?? "/"
+            let port = httpGet["port"]?.displayValue ?? "-"
+            return "\(scheme) \(path) :\(port)"
+        }
+
+        if let tcpSocket = object["tcpSocket"]?.objectValue {
+            let port = tcpSocket["port"]?.displayValue ?? "-"
+            return "TCP :\(port)"
+        }
+
+        if let exec = object["exec"]?.objectValue {
+            let command = exec["command"]?.arrayValue?
+                .map(\.displayValue)
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            return command.map { "exec \($0)" } ?? "exec"
+        }
+
+        if let grpc = object["grpc"]?.objectValue {
+            let port = grpc["port"]?.displayValue ?? "-"
+            if let service = grpc["service"]?.stringValue, !service.isEmpty {
+                return "gRPC \(service) :\(port)"
+            }
+            return "gRPC :\(port)"
+        }
+
+        return nil
+    }
+
+    nonisolated private static func containerVolumeMounts(
+        in value: KubernetesJSONValue?
+    ) -> [KubernetesContainerVolumeMountSummary] {
+        value?.arrayValue?.compactMap { value -> KubernetesContainerVolumeMountSummary? in
+            guard let object = value.objectValue,
+                  let name = object["name"]?.stringValue,
+                  let mountPath = object["mountPath"]?.stringValue else {
+                return nil
+            }
+
+            return KubernetesContainerVolumeMountSummary(
+                name: name,
+                mountPath: mountPath,
+                subPath: object["subPath"]?.stringValue,
+                readOnly: object["readOnly"]?.boolValue ?? false
             )
         } ?? []
     }
@@ -406,12 +570,117 @@ struct KubernetesConditionSummary: Equatable, Identifiable {
 
 struct KubernetesContainerSummary: Equatable, Identifiable {
     var name: String
+    var kind: KubernetesContainerKind
     var image: String?
+    var imagePullPolicy: String?
+    var imageID: String?
+    var containerID: String?
     var ready: Bool?
+    var started: Bool?
     var restartCount: Int?
+    var currentState: KubernetesContainerStateSummary?
+    var lastState: KubernetesContainerStateSummary?
+    var resources: KubernetesContainerResourcesSummary
+    var probes: [KubernetesContainerProbeSummary]
+    var volumeMounts: [KubernetesContainerVolumeMountSummary]
 
     var id: String {
-        name
+        "\(kind.rawValue)/\(name)"
+    }
+}
+
+enum KubernetesContainerKind: String, Equatable {
+    case initContainer
+    case container
+    case ephemeralContainer
+
+    var title: String {
+        switch self {
+        case .initContainer:
+            "Init"
+        case .container:
+            "Container"
+        case .ephemeralContainer:
+            "Ephemeral"
+        }
+    }
+}
+
+struct KubernetesContainerStateSummary: Equatable {
+    var kind: KubernetesContainerStateKind
+    var reason: String?
+    var message: String?
+    var startedAt: String?
+    var finishedAt: String?
+    var exitCode: Int?
+    var signal: Int?
+
+    var title: String {
+        switch kind {
+        case .waiting:
+            reason.map { "Waiting: \($0)" } ?? "Waiting"
+        case .running:
+            "Running"
+        case .terminated:
+            reason.map { "Terminated: \($0)" } ?? "Terminated"
+        }
+    }
+}
+
+enum KubernetesContainerStateKind: String, Equatable {
+    case waiting
+    case running
+    case terminated
+}
+
+struct KubernetesContainerResourcesSummary: Equatable {
+    var requests: [String: String]
+    var limits: [String: String]
+
+    var isEmpty: Bool {
+        requests.isEmpty && limits.isEmpty
+    }
+}
+
+struct KubernetesContainerProbeSummary: Equatable, Identifiable {
+    var kind: KubernetesContainerProbeKind
+    var handler: String?
+    var initialDelaySeconds: Int?
+    var periodSeconds: Int?
+    var timeoutSeconds: Int?
+    var successThreshold: Int?
+    var failureThreshold: Int?
+
+    var id: String {
+        kind.rawValue
+    }
+}
+
+enum KubernetesContainerProbeKind: String, Equatable {
+    case startup
+    case readiness
+    case liveness
+
+    var title: String {
+        switch self {
+        case .startup:
+            "Startup"
+        case .readiness:
+            "Readiness"
+        case .liveness:
+            "Liveness"
+        }
+    }
+}
+
+struct KubernetesContainerVolumeMountSummary: Equatable, Identifiable {
+    var name: String
+    var mountPath: String
+    var subPath: String?
+    var readOnly: Bool
+
+    var id: String {
+        "\(name)|\(mountPath)|\(subPath ?? "")"
     }
 }
 

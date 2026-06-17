@@ -134,10 +134,16 @@ struct VibekubeCommands: Commands {
             .keyboardShortcut("3", modifiers: [.command, .option])
             .disabled(!canUseDetailCommands)
 
+            Button("Open Detail Containers") {
+                resourceDetailCommandContext?.selectPanel(.containers)
+            }
+            .keyboardShortcut("4", modifiers: [.command, .option])
+            .disabled(!canUseDetailCommands)
+
             Button("Open Detail Environment") {
                 resourceDetailCommandContext?.selectPanel(.environment)
             }
-            .keyboardShortcut("4", modifiers: [.command, .option])
+            .keyboardShortcut("5", modifiers: [.command, .option])
             .disabled(!canUseDetailCommands)
 
             Button("Open YAML") {

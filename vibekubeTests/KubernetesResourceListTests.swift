@@ -439,10 +439,48 @@ struct KubernetesResourceListTests {
                     ]
                   },
                   "spec": {
+                    "initContainers": [
+                      {
+                        "name": "migrate",
+                        "image": "busybox:1.36"
+                      }
+                    ],
                     "containers": [
                       {
                         "name": "web",
                         "image": "nginx:1.27",
+                        "imagePullPolicy": "IfNotPresent",
+                        "resources": {
+                          "requests": {
+                            "cpu": "100m",
+                            "memory": "128Mi"
+                          },
+                          "limits": {
+                            "memory": "256Mi"
+                          }
+                        },
+                        "readinessProbe": {
+                          "httpGet": {
+                            "path": "/healthz",
+                            "port": 8080
+                          },
+                          "initialDelaySeconds": 3,
+                          "periodSeconds": 10,
+                          "failureThreshold": 2
+                        },
+                        "livenessProbe": {
+                          "tcpSocket": {
+                            "port": "http"
+                          },
+                          "periodSeconds": 20
+                        },
+                        "volumeMounts": [
+                          {
+                            "name": "config",
+                            "mountPath": "/etc/web",
+                            "readOnly": true
+                          }
+                        ],
                         "env": [
                           {
                             "name": "APP_ENV",
@@ -494,11 +532,41 @@ struct KubernetesResourceListTests {
                         "lastTransitionTime": "2026-06-15T10:01:00Z"
                       }
                     ],
+                    "initContainerStatuses": [
+                      {
+                        "name": "migrate",
+                        "restartCount": 0,
+                        "state": {
+                          "terminated": {
+                            "reason": "Completed",
+                            "exitCode": 0,
+                            "startedAt": "2026-06-15T10:00:10Z",
+                            "finishedAt": "2026-06-15T10:00:20Z"
+                          }
+                        }
+                      }
+                    ],
                     "containerStatuses": [
                       {
                         "name": "web",
+                        "imageID": "docker-pullable://nginx@sha256:abc",
+                        "containerID": "containerd://web123",
                         "ready": true,
-                        "restartCount": 1
+                        "started": true,
+                        "restartCount": 1,
+                        "state": {
+                          "running": {
+                            "startedAt": "2026-06-15T10:01:00Z"
+                          }
+                        },
+                        "lastState": {
+                          "terminated": {
+                            "reason": "Error",
+                            "message": "previous process failed",
+                            "exitCode": 137,
+                            "finishedAt": "2026-06-15T10:00:55Z"
+                          }
+                        }
                       }
                     ]
                   }
@@ -521,9 +589,34 @@ struct KubernetesResourceListTests {
         #expect(summary.ownerReferences.first?.controller == true)
         #expect(summary.conditions.first?.type == "Ready")
         #expect(summary.conditions.first?.status == "True")
-        #expect(summary.containers.first?.name == "web")
-        #expect(summary.containers.first?.ready == true)
-        #expect(summary.containers.first?.restartCount == 1)
+        #expect(summary.containers.count == 2)
+        #expect(summary.containers.first?.name == "migrate")
+        #expect(summary.containers.first?.kind == .initContainer)
+        #expect(summary.containers.first?.currentState?.kind == .terminated)
+        #expect(summary.containers.first?.currentState?.exitCode == 0)
+        #expect(summary.containers[1].name == "web")
+        #expect(summary.containers[1].kind == .container)
+        #expect(summary.containers[1].imagePullPolicy == "IfNotPresent")
+        #expect(summary.containers[1].imageID == "docker-pullable://nginx@sha256:abc")
+        #expect(summary.containers[1].containerID == "containerd://web123")
+        #expect(summary.containers[1].ready == true)
+        #expect(summary.containers[1].started == true)
+        #expect(summary.containers[1].restartCount == 1)
+        #expect(summary.containers[1].currentState?.kind == .running)
+        #expect(summary.containers[1].currentState?.startedAt == "2026-06-15T10:01:00Z")
+        #expect(summary.containers[1].lastState?.kind == .terminated)
+        #expect(summary.containers[1].lastState?.reason == "Error")
+        #expect(summary.containers[1].lastState?.message == "previous process failed")
+        #expect(summary.containers[1].lastState?.exitCode == 137)
+        #expect(summary.containers[1].resources.requests["cpu"] == "100m")
+        #expect(summary.containers[1].resources.limits["memory"] == "256Mi")
+        #expect(summary.containers[1].probes.count == 2)
+        #expect(summary.containers[1].probes.first?.kind == .readiness)
+        #expect(summary.containers[1].probes.first?.handler == "HTTP /healthz :8080")
+        #expect(summary.containers[1].probes.first?.failureThreshold == 2)
+        #expect(summary.containers[1].volumeMounts.first?.name == "config")
+        #expect(summary.containers[1].volumeMounts.first?.mountPath == "/etc/web")
+        #expect(summary.containers[1].volumeMounts.first?.readOnly == true)
         #expect(summary.environment.first?.containerName == "web")
         #expect(summary.environment.first?.variables.first?.name == "APP_ENV")
         #expect(summary.environment.first?.variables.first?.literalValue == "demo")

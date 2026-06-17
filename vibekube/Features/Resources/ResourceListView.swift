@@ -819,6 +819,8 @@ private struct ResourceDetailView: View {
             ResourceDetailEventsView(detail: snapshot)
         case .logs:
             ResourceDetailLogsView(row: row, summary: snapshot.summary)
+        case .containers:
+            ResourceDetailContainersView(summary: snapshot.summary)
         case .environment:
             ResourceDetailEnvironmentView(summary: snapshot.summary)
         case .yaml:
@@ -1006,7 +1008,7 @@ private struct ResourceDetailPanelTabButton: View {
                     .foregroundStyle(titleColor)
             }
             .font(.caption.weight(isSelected ? .semibold : .medium))
-            .frame(minWidth: 82, maxWidth: .infinity)
+            .frame(minWidth: 74, maxWidth: .infinity)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(tabBackground)
@@ -2613,6 +2615,325 @@ private struct ResourceDetailConditionsView: View {
     }
 }
 
+private struct ResourceDetailContainersView: View {
+    let summary: KubernetesResourceDetailSummary
+
+    var body: some View {
+        Group {
+            if summary.containers.isEmpty {
+                EmptyStateView(
+                    title: "No Containers",
+                    subtitle: "This resource does not expose pod container details.",
+                    systemImage: "shippingbox"
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .textBackgroundColor))
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        ForEach(summary.containers) { container in
+                            ResourceContainerDebugSection(container: container)
+                        }
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .background(Color(nsColor: .textBackgroundColor))
+            }
+        }
+        .accessibilityIdentifier("resource.detail.containers")
+    }
+}
+
+private struct ResourceContainerDebugSection: View {
+    let container: KubernetesContainerSummary
+
+    var body: some View {
+        SectionSurface(title: container.name, systemImage: "shippingbox") {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+
+                ResourceKeyValueList(rows: identityRows)
+
+                if let currentState = container.currentState {
+                    ResourceContainerStateBlock(
+                        title: "Current State",
+                        state: currentState
+                    )
+                }
+
+                if let lastState = container.lastState {
+                    ResourceContainerStateBlock(
+                        title: "Last State",
+                        state: lastState
+                    )
+                }
+
+                ResourceContainerDebugSubsection(title: "Resources") {
+                    ResourceKeyValueList(rows: resourceRows, emptyValue: "No requests or limits")
+                }
+
+                ResourceContainerDebugSubsection(title: "Probes") {
+                    if container.probes.isEmpty {
+                        Text("No probes")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(Array(container.probes.enumerated()), id: \.element.id) { index, probe in
+                                ResourceContainerProbeRow(probe: probe)
+
+                                if index < container.probes.count - 1 {
+                                    Divider()
+                                }
+                            }
+                        }
+                    }
+                }
+
+                ResourceContainerDebugSubsection(title: "Volume Mounts") {
+                    if container.volumeMounts.isEmpty {
+                        Text("No volume mounts")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(Array(container.volumeMounts.enumerated()), id: \.element.id) { index, mount in
+                                ResourceContainerVolumeMountRow(mount: mount)
+
+                                if index < container.volumeMounts.count - 1 {
+                                    Divider()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            ResourceContainerStatePill(state: container.currentState, ready: container.ready)
+
+            Text(container.kind.title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color.secondary.opacity(0.12), in: Capsule())
+
+            Spacer(minLength: 0)
+
+            if let restartCount = container.restartCount {
+                Text("\(restartCount) restarts")
+                    .font(.caption.monospacedDigit().weight(.medium))
+                    .foregroundStyle(restartCount > 0 ? .orange : .secondary)
+            }
+
+            if let readyText {
+                Text(readyText)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(container.ready == false ? .red : .secondary)
+            }
+        }
+    }
+
+    private var identityRows: [(String, String)] {
+        [
+            ("Image", container.image ?? "-"),
+            ("Pull Policy", container.imagePullPolicy ?? "-"),
+            ("Image ID", container.imageID ?? "-"),
+            ("Container ID", container.containerID ?? "-"),
+            ("Started", boolText(container.started))
+        ].filter { !$0.1.isEmpty }
+    }
+
+    private var resourceRows: [(String, String)] {
+        resourceRows(title: "Request", values: container.resources.requests) +
+            resourceRows(title: "Limit", values: container.resources.limits)
+    }
+
+    private var readyText: String? {
+        guard let ready = container.ready else {
+            return nil
+        }
+
+        return ready ? "Ready" : "Not ready"
+    }
+
+    private func resourceRows(title: String, values: [String: String]) -> [(String, String)] {
+        values
+            .sorted { lhs, rhs in lhs.key.localizedStandardCompare(rhs.key) == .orderedAscending }
+            .map { ("\(title) \($0.key)", $0.value) }
+    }
+
+    private func boolText(_ value: Bool?) -> String {
+        guard let value else {
+            return "-"
+        }
+
+        return value ? "true" : "false"
+    }
+}
+
+private struct ResourceContainerDebugSubsection<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            content
+        }
+    }
+}
+
+private struct ResourceContainerStateBlock: View {
+    let title: String
+    let state: KubernetesContainerStateSummary
+
+    var body: some View {
+        ResourceContainerDebugSubsection(title: title) {
+            ResourceKeyValueList(rows: rows)
+        }
+    }
+
+    private var rows: [(String, String)] {
+        [
+            ("State", state.title),
+            ("Message", state.message ?? ""),
+            ("Started At", state.startedAt ?? ""),
+            ("Finished At", state.finishedAt ?? ""),
+            ("Exit Code", state.exitCode.map(String.init) ?? ""),
+            ("Signal", state.signal.map(String.init) ?? "")
+        ].filter { !$0.1.isEmpty }
+    }
+}
+
+private struct ResourceContainerStatePill: View {
+    let state: KubernetesContainerStateSummary?
+    let ready: Bool?
+
+    var body: some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(tint.opacity(0.12), in: Capsule())
+    }
+
+    private var title: String {
+        if let state {
+            return state.title
+        }
+
+        if ready == true {
+            return "Ready"
+        }
+
+        if ready == false {
+            return "Not ready"
+        }
+
+        return "State unknown"
+    }
+
+    private var tint: Color {
+        switch state?.kind {
+        case .running:
+            return .green
+        case .waiting:
+            return .orange
+        case .terminated:
+            return .red
+        case nil:
+            return ready == true ? .green : .secondary
+        }
+    }
+}
+
+private struct ResourceContainerProbeRow: View {
+    let probe: KubernetesContainerProbeSummary
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(probe.kind.title)
+                    .font(.callout.weight(.semibold))
+                    .textSelection(.enabled)
+
+                Text(probe.handler ?? "Handler unavailable")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            .frame(width: 220, alignment: .leading)
+
+            Text(timingDescription)
+                .font(.callout.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private var timingDescription: String {
+        [
+            probe.initialDelaySeconds.map { "initial=\($0)s" },
+            probe.periodSeconds.map { "period=\($0)s" },
+            probe.timeoutSeconds.map { "timeout=\($0)s" },
+            probe.successThreshold.map { "success=\($0)" },
+            probe.failureThreshold.map { "failure=\($0)" }
+        ]
+        .compactMap { $0 }
+        .joined(separator: " · ")
+    }
+}
+
+private struct ResourceContainerVolumeMountRow: View {
+    let mount: KubernetesContainerVolumeMountSummary
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(mount.mountPath)
+                    .font(.callout.weight(.semibold))
+                    .textSelection(.enabled)
+
+                Text(mount.name)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            .frame(width: 220, alignment: .leading)
+
+            Text(detailText)
+                .font(.callout.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private var detailText: String {
+        [
+            mount.readOnly ? "read-only" : "read-write",
+            mount.subPath.map { "subPath=\($0)" }
+        ]
+        .compactMap { $0 }
+        .joined(separator: " · ")
+    }
+}
+
 private struct ResourceDetailEnvironmentView: View {
     let summary: KubernetesResourceDetailSummary
 
@@ -3000,8 +3321,8 @@ private struct ResourceContainerSummaryRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: container.ready == false ? "xmark.circle.fill" : "checkmark.circle.fill")
-                .foregroundStyle(container.ready == false ? .red : .green)
+            Image(systemName: statusSystemImage)
+                .foregroundStyle(statusTint)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(container.name)
@@ -3025,6 +3346,38 @@ private struct ResourceContainerSummaryRow: View {
             }
         }
         .padding(.vertical, 7)
+    }
+
+    private var statusSystemImage: String {
+        if container.currentState?.kind == .waiting || container.ready == false {
+            return "exclamationmark.circle.fill"
+        }
+
+        if container.currentState?.kind == .terminated {
+            return "xmark.circle.fill"
+        }
+
+        if container.ready == true || container.currentState?.kind == .running {
+            return "checkmark.circle.fill"
+        }
+
+        return "circle.fill"
+    }
+
+    private var statusTint: Color {
+        if container.currentState?.kind == .waiting || (container.restartCount ?? 0) > 0 {
+            return .orange
+        }
+
+        if container.currentState?.kind == .terminated || container.ready == false {
+            return .red
+        }
+
+        if container.ready == true || container.currentState?.kind == .running {
+            return .green
+        }
+
+        return .secondary
     }
 }
 
