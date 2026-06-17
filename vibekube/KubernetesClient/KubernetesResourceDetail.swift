@@ -108,6 +108,8 @@ struct KubernetesResourceDetailSummary: Equatable {
     var labelSelector: KubernetesLabelSelectorSummary?
     var ingressServices: [KubernetesIngressServiceBackendSummary]
     var persistentVolumeName: String?
+    var configMapReferences: [KubernetesResourceReferenceSummary]
+    var secretReferences: [KubernetesResourceReferenceSummary]
     var conditions: [KubernetesConditionSummary]
     var containers: [KubernetesContainerSummary]
     var environment: [KubernetesContainerEnvironmentSummary]
@@ -134,6 +136,8 @@ struct KubernetesResourceDetailSummary: Equatable {
         self.labelSelector = Self.labelSelector(in: spec, kind: kind)
         self.ingressServices = Self.ingressServices(in: spec, kind: kind)
         self.persistentVolumeName = Self.persistentVolumeName(in: spec, kind: kind)
+        self.configMapReferences = Self.resourceReferences(in: spec, kind: kind, referenceKind: .configMap)
+        self.secretReferences = Self.resourceReferences(in: spec, kind: kind, referenceKind: .secret)
         self.conditions = Self.conditions(in: statusObject)
         self.containers = Self.containers(in: spec, status: statusObject)
         self.environment = Self.environment(in: spec)
@@ -299,6 +303,70 @@ struct KubernetesResourceDetailSummary: Equatable {
         }
 
         return volumeName
+    }
+
+    nonisolated private static func resourceReferences(
+        in spec: KubernetesJSONValue?,
+        kind: String?,
+        referenceKind: KubernetesReferencedResourceKind
+    ) -> [KubernetesResourceReferenceSummary] {
+        guard kind == "Pod", let spec else {
+            return []
+        }
+
+        var referencesByName: [String: Set<String>] = [:]
+        func append(name: String?, detail: String) {
+            guard let name, !name.isEmpty else {
+                return
+            }
+
+            referencesByName[name, default: []].insert(detail)
+        }
+
+        let podContainers = (spec["initContainers"]?.arrayValue ?? []) +
+            (spec["containers"]?.arrayValue ?? []) +
+            (spec["ephemeralContainers"]?.arrayValue ?? [])
+
+        for container in podContainers {
+            for env in container["env"]?.arrayValue ?? [] {
+                let envName = env["name"]?.stringValue ?? "env"
+                let valueFrom = env["valueFrom"]
+                switch referenceKind {
+                case .configMap:
+                    append(name: valueFrom?["configMapKeyRef"]?["name"]?.stringValue, detail: "env \(envName)")
+                case .secret:
+                    append(name: valueFrom?["secretKeyRef"]?["name"]?.stringValue, detail: "env \(envName)")
+                }
+            }
+
+            for envFrom in container["envFrom"]?.arrayValue ?? [] {
+                switch referenceKind {
+                case .configMap:
+                    append(name: envFrom["configMapRef"]?["name"]?.stringValue, detail: "envFrom")
+                case .secret:
+                    append(name: envFrom["secretRef"]?["name"]?.stringValue, detail: "envFrom")
+                }
+            }
+        }
+
+        for volume in spec["volumes"]?.arrayValue ?? [] {
+            let volumeName = volume["name"]?.stringValue ?? "volume"
+            switch referenceKind {
+            case .configMap:
+                append(name: volume["configMap"]?["name"]?.stringValue, detail: "volume \(volumeName)")
+            case .secret:
+                append(name: volume["secret"]?["secretName"]?.stringValue, detail: "volume \(volumeName)")
+            }
+        }
+
+        return referencesByName
+            .map { name, details in
+                KubernetesResourceReferenceSummary(
+                    name: name,
+                    detail: details.sorted().joined(separator: ", ")
+                )
+            }
+            .sorted { lhs, rhs in lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending }
     }
 
     nonisolated private static func conditions(in status: KubernetesJSONValue?) -> [KubernetesConditionSummary] {
@@ -673,6 +741,20 @@ struct KubernetesIngressServiceBackendSummary: Equatable, Hashable, Identifiable
     var id: String {
         "\(name)/\(route)"
     }
+}
+
+struct KubernetesResourceReferenceSummary: Equatable, Hashable, Identifiable {
+    var name: String
+    var detail: String
+
+    var id: String {
+        "\(name)/\(detail)"
+    }
+}
+
+enum KubernetesReferencedResourceKind {
+    case configMap
+    case secret
 }
 
 struct KubernetesConditionSummary: Equatable, Identifiable {

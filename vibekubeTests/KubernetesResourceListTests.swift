@@ -1159,6 +1159,20 @@ struct KubernetesResourceListTests {
                           }
                         ]
                       }
+                    ],
+                    "volumes": [
+                      {
+                        "name": "config",
+                        "configMap": {
+                          "name": "web-volume-config"
+                        }
+                      },
+                      {
+                        "name": "credentials",
+                        "secret": {
+                          "secretName": "web-volume-secret"
+                        }
+                      }
                     ]
                   },
                   "status": {
@@ -1270,6 +1284,13 @@ struct KubernetesResourceListTests {
         #expect(summary.environment.first?.envFrom[1].kind == .secretRef)
         #expect(summary.environment.first?.envFrom[1].prefix == "EXTRA_")
         #expect(summary.environment.first?.envFrom[1].isOptional == true)
+        #expect(summary.configMapReferences.map(\.name) == ["web-config", "web-volume-config"])
+        #expect(summary.configMapReferences.first?.detail == "envFrom")
+        #expect(summary.configMapReferences.last?.detail == "volume config")
+        #expect(summary.secretReferences.map(\.name) == ["web-extra-secrets", "web-secrets", "web-volume-secret"])
+        #expect(summary.secretReferences.first?.detail == "envFrom")
+        #expect(summary.secretReferences[1].detail == "env DB_PASSWORD")
+        #expect(summary.secretReferences.last?.detail == "volume credentials")
     }
 
     @Test func redactsSecretDetailYAML() throws {

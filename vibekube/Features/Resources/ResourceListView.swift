@@ -2243,6 +2243,42 @@ private struct ResourceDetailOverviewView: View {
                     }
                 }
 
+                if !summary.configMapReferences.isEmpty {
+                    SectionSurface(title: "Related ConfigMaps", systemImage: "doc.text") {
+                        VStack(spacing: 0) {
+                            ForEach(summary.configMapReferences) { reference in
+                                ResourceRelatedNamedResourceRow(
+                                    title: "Open ConfigMap",
+                                    resource: .configMaps,
+                                    name: reference.name,
+                                    detail: reference.detail,
+                                    namespace: namespaceTextForOwner,
+                                    sourceTitle: sourceTitle,
+                                    openNamedResource: openNamedResource
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if !summary.secretReferences.isEmpty {
+                    SectionSurface(title: "Related Secrets", systemImage: "key") {
+                        VStack(spacing: 0) {
+                            ForEach(summary.secretReferences) { reference in
+                                ResourceRelatedNamedResourceRow(
+                                    title: "Open Secret",
+                                    resource: .secrets,
+                                    name: reference.name,
+                                    detail: reference.detail,
+                                    namespace: namespaceTextForOwner,
+                                    sourceTitle: sourceTitle,
+                                    openNamedResource: openNamedResource
+                                )
+                            }
+                        }
+                    }
+                }
+
                 if !summary.conditions.isEmpty {
                     SectionSurface(title: "Conditions", systemImage: "checklist") {
                         VStack(spacing: 10) {
