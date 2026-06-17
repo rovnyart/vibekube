@@ -1879,6 +1879,9 @@ private struct ResourceDetailView: View {
                         namespace: namespace,
                         sourceTitle: sourceTitle
                     )
+                },
+                selectPanel: { panel in
+                    selectedPanel = panel
                 }
             )
         case .events:
@@ -2182,6 +2185,7 @@ private struct ResourceDetailOverviewView: View {
     let openPods: (KubernetesLabelSelectorSummary, String?, String) -> Void
     let openOwnedResources: (KubernetesOwnerReferenceSummary, ResourceNavigationItem, String?, String) -> Void
     let openNamedResource: (ResourceNavigationItem, String, String?, String) -> Void
+    let selectPanel: (ResourceDetailPanel) -> Void
 
     private let columns = [
         GridItem(.adaptive(minimum: 170), spacing: 12)
@@ -2190,6 +2194,16 @@ private struct ResourceDetailOverviewView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if let debugSummary = summary.debugSummary {
+                    ResourceDebugSummaryView(
+                        summary: debugSummary,
+                        hasContainers: !summary.containers.isEmpty,
+                        hasEnvironment: !summary.environment.isEmpty,
+                        hasLogs: (summary.kind ?? row.displayKind) == "Pod",
+                        selectPanel: selectPanel
+                    )
+                }
+
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                     ResourceDetailFactTile(
                         title: "Status",
@@ -2427,6 +2441,184 @@ private struct ResourceDetailOverviewView: View {
             return .orange
         }
         return .secondary
+    }
+}
+
+private struct ResourceDebugSummaryView: View {
+    let summary: KubernetesResourceDebugSummary
+    let hasContainers: Bool
+    let hasEnvironment: Bool
+    let hasLogs: Bool
+    let selectPanel: (ResourceDetailPanel) -> Void
+
+    var body: some View {
+        SectionSurface(title: "Debug Summary", systemImage: summaryIcon) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Label(summary.title, systemImage: summaryIcon)
+                        .font(.headline)
+                        .foregroundStyle(tint)
+
+                    Spacer()
+
+                    Text(severityLabel)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(tint)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(tint.opacity(0.12), in: Capsule())
+                }
+
+                Text(summary.message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if summary.signals.isEmpty {
+                    Text("No failed conditions, blocked containers, replica gaps, or restart signals were found in the loaded manifest.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 2)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(summary.signals.prefix(5)) { signal in
+                            ResourceDebugSignalRow(signal: signal)
+                        }
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    ResourceDebugActionButton(title: "Events", systemImage: "calendar.badge.exclamationmark") {
+                        selectPanel(.events)
+                    }
+
+                    if hasLogs {
+                        ResourceDebugActionButton(title: "Logs", systemImage: "terminal") {
+                            selectPanel(.logs)
+                        }
+                    }
+
+                    if hasContainers {
+                        ResourceDebugActionButton(title: "Containers", systemImage: "cube") {
+                            selectPanel(.containers)
+                        }
+                    }
+
+                    if hasEnvironment {
+                        ResourceDebugActionButton(title: "Env", systemImage: "list.bullet.rectangle") {
+                            selectPanel(.environment)
+                        }
+                    }
+
+                    ResourceDebugActionButton(title: "YAML", systemImage: "doc.text") {
+                        selectPanel(.yaml)
+                    }
+                }
+            }
+        }
+    }
+
+    private var tint: Color {
+        switch summary.severity {
+        case .healthy:
+            .green
+        case .warning:
+            .orange
+        case .critical:
+            .red
+        }
+    }
+
+    private var summaryIcon: String {
+        switch summary.severity {
+        case .healthy:
+            "checkmark.seal"
+        case .warning:
+            "exclamationmark.triangle"
+        case .critical:
+            "xmark.octagon"
+        }
+    }
+
+    private var severityLabel: String {
+        switch summary.severity {
+        case .healthy:
+            "Healthy"
+        case .warning:
+            "Warning"
+        case .critical:
+            "Critical"
+        }
+    }
+}
+
+private struct ResourceDebugSignalRow: View {
+    let signal: KubernetesResourceDebugSignal
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .foregroundStyle(tint)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(signal.title)
+                    .font(.callout.weight(.semibold))
+                    .textSelection(.enabled)
+
+                Text(signal.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.65), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(tint.opacity(0.18))
+        }
+    }
+
+    private var tint: Color {
+        switch signal.severity {
+        case .healthy:
+            .green
+        case .warning:
+            .orange
+        case .critical:
+            .red
+        }
+    }
+
+    private var systemImage: String {
+        switch signal.severity {
+        case .healthy:
+            "checkmark.circle.fill"
+        case .warning:
+            "exclamationmark.circle.fill"
+        case .critical:
+            "xmark.circle.fill"
+        }
+    }
+}
+
+private struct ResourceDebugActionButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .help(title)
     }
 }
 

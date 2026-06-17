@@ -7,7 +7,7 @@ Goal: add practical debugging workflows: describe-style views, container details
 ## Current Progress
 
 - [x] Phase plan exists.
-- [ ] Describe-style view exists.
+- [x] Initial describe-style debug summary exists.
 - [x] Container details exist for Pod detail manifests.
 - [ ] Port-forwarding exists.
 - [ ] Exec session support exists.
@@ -17,6 +17,8 @@ Goal: add practical debugging workflows: describe-style views, container details
 
 ### 9.1 Describe-Style Views
 
+- [x] Pod/workload problem summary.
+- [x] Quick actions from debug summary to Events, Logs, Containers, Env, and YAML.
 - [ ] Pod scheduling summary.
 - [x] Container state summary for Pod detail manifests.
 - [x] Restart/termination reason details for Pod detail manifests.
@@ -52,13 +54,14 @@ Checkpoint: stop before choosing `kubectl` fallback vs native implementation if 
 
 ### 9.4 Debugging UX
 
-- [ ] Add actions from pod/workload detail.
+- [x] Add actions from pod/workload detail.
 - [ ] Keep cluster/namespace/pod/container visible in session UI.
 - [ ] Add clear active-session stop controls.
 - [ ] Add failure explanations for RBAC/unsupported protocol.
 
 ### 9.5 Tests
 
+- [x] Unit tests for workload debug summary signals.
 - [ ] Unit tests for session lifecycle.
 - [ ] Manual QA for port-forwarding demo service.
 - [ ] Manual QA for exec into demo pod.
@@ -66,7 +69,7 @@ Checkpoint: stop before choosing `kubectl` fallback vs native implementation if 
 
 ## Acceptance Criteria
 
-- [ ] User can understand why a pod is unhealthy from one detail screen.
+- [x] User can understand common unhealthy Pod/workload signals from one detail screen.
 - [ ] User can port-forward a demo service or pod.
 - [ ] User can start and stop a basic exec session.
 - [ ] Active sessions never become hidden or orphaned.

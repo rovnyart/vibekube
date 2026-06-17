@@ -113,6 +113,7 @@ struct KubernetesResourceDetailSummary: Equatable {
     var conditions: [KubernetesConditionSummary]
     var containers: [KubernetesContainerSummary]
     var environment: [KubernetesContainerEnvironmentSummary]
+    var debugSummary: KubernetesResourceDebugSummary?
 
     init(value: KubernetesJSONValue) {
         let metadata = value["metadata"]
@@ -128,7 +129,11 @@ struct KubernetesResourceDetailSummary: Equatable {
         self.resourceVersion = metadata?["resourceVersion"]?.stringValue
         self.creationTimestamp = metadata?["creationTimestamp"]?.stringValue
         self.deletionTimestamp = metadata?["deletionTimestamp"]?.stringValue
-        self.status = Self.statusText(value: value)
+        let status = Self.statusText(value: value)
+        let conditions = Self.conditions(in: statusObject)
+        let containers = Self.containers(in: spec, status: statusObject)
+
+        self.status = status
         self.type = value["type"]?.stringValue
         self.labels = Self.stringMap(metadata?["labels"], redactingValues: false, kind: kind)
         self.annotations = Self.stringMap(metadata?["annotations"], redactingValues: true, kind: kind)
@@ -138,9 +143,16 @@ struct KubernetesResourceDetailSummary: Equatable {
         self.persistentVolumeName = Self.persistentVolumeName(in: spec, kind: kind)
         self.configMapReferences = Self.resourceReferences(in: spec, kind: kind, referenceKind: .configMap)
         self.secretReferences = Self.resourceReferences(in: spec, kind: kind, referenceKind: .secret)
-        self.conditions = Self.conditions(in: statusObject)
-        self.containers = Self.containers(in: spec, status: statusObject)
+        self.conditions = conditions
+        self.containers = containers
         self.environment = Self.environment(in: spec)
+        self.debugSummary = Self.debugSummary(
+            value: value,
+            kind: kind,
+            status: status,
+            conditions: conditions,
+            containers: containers
+        )
     }
 
     nonisolated private static func statusText(value: KubernetesJSONValue) -> String? {
@@ -407,6 +419,283 @@ struct KubernetesResourceDetailSummary: Equatable {
         )
 
         return initContainers + containers + ephemeralContainers
+    }
+
+    nonisolated private static func debugSummary(
+        value: KubernetesJSONValue,
+        kind: String?,
+        status: String?,
+        conditions: [KubernetesConditionSummary],
+        containers: [KubernetesContainerSummary]
+    ) -> KubernetesResourceDebugSummary? {
+        guard let kind, debugSupportedKinds.contains(kind) else {
+            return nil
+        }
+
+        var signals: [KubernetesResourceDebugSignal] = []
+        let statusObject = value["status"]
+        let spec = value["spec"]
+
+        if value["metadata"]?["deletionTimestamp"]?.stringValue != nil {
+            signals.append(
+                KubernetesResourceDebugSignal(
+                    severity: .warning,
+                    title: "Resource is terminating",
+                    detail: "Kubernetes has set a deletion timestamp; cleanup or finalizers may still be running."
+                )
+            )
+        }
+
+        appendStatusSignals(status: status, kind: kind, signals: &signals)
+        appendContainerSignals(containers, signals: &signals)
+        appendConditionSignals(conditions, signals: &signals)
+        appendReplicaSignals(kind: kind, spec: spec, status: statusObject, signals: &signals)
+        appendJobSignals(kind: kind, status: statusObject, signals: &signals)
+
+        let deduplicatedSignals = deduplicatedDebugSignals(signals)
+        let severity = deduplicatedSignals.map(\.severity).max() ?? .healthy
+        return KubernetesResourceDebugSummary(
+            severity: severity,
+            title: debugTitle(for: severity, kind: kind),
+            message: debugMessage(for: severity, kind: kind, signalCount: deduplicatedSignals.count),
+            signals: deduplicatedSignals
+        )
+    }
+
+    nonisolated private static let debugSupportedKinds: Set<String> = [
+        "CronJob",
+        "DaemonSet",
+        "Deployment",
+        "Job",
+        "Pod",
+        "ReplicaSet",
+        "StatefulSet"
+    ]
+
+    nonisolated private static func appendStatusSignals(
+        status: String?,
+        kind: String,
+        signals: inout [KubernetesResourceDebugSignal]
+    ) {
+        guard let status, !status.isEmpty else {
+            return
+        }
+
+        let lowercasedStatus = status.lowercased()
+        if lowercasedStatus == "failed" {
+            signals.append(
+                KubernetesResourceDebugSignal(
+                    severity: .critical,
+                    title: "\(kind) status is Failed",
+                    detail: "Open Events and YAML to inspect the failure reason reported by Kubernetes."
+                )
+            )
+        } else if lowercasedStatus == "pending" {
+            signals.append(
+                KubernetesResourceDebugSignal(
+                    severity: .warning,
+                    title: "\(kind) status is Pending",
+                    detail: "Scheduling, image pull, volume mount, or init container work may still be blocking startup."
+                )
+            )
+        }
+    }
+
+    nonisolated private static func appendContainerSignals(
+        _ containers: [KubernetesContainerSummary],
+        signals: inout [KubernetesResourceDebugSignal]
+    ) {
+        for container in containers {
+            if let state = container.currentState {
+                switch state.kind {
+                case .waiting:
+                    signals.append(
+                        KubernetesResourceDebugSignal(
+                            severity: criticalWaitingReasons.contains(state.reason ?? "") ? .critical : .warning,
+                            title: "\(container.name) is waiting\(state.reason.map { ": \($0)" } ?? "")",
+                            detail: state.message ?? "Inspect container details, Events, and YAML for the blocked startup path."
+                        )
+                    )
+                case .terminated:
+                    let exitText = state.exitCode.map { "exit \($0)" } ?? "terminated"
+                    signals.append(
+                        KubernetesResourceDebugSignal(
+                            severity: state.exitCode == 0 ? .warning : .critical,
+                            title: "\(container.name) terminated (\(exitText))",
+                            detail: state.message ?? state.reason ?? "Open Logs or Previous Logs to inspect the terminated process."
+                        )
+                    )
+                case .running:
+                    break
+                }
+            }
+
+            if container.ready == false, container.kind == .container {
+                signals.append(
+                    KubernetesResourceDebugSignal(
+                        severity: .warning,
+                        title: "\(container.name) is not ready",
+                        detail: "Readiness probes, startup work, or dependency checks may still be failing."
+                    )
+                )
+            }
+
+            if let restartCount = container.restartCount, restartCount > 0 {
+                let lastState = container.lastState
+                let reason = lastState?.reason.map { " Last reason: \($0)." } ?? ""
+                let exitCode = lastState?.exitCode.map { " Exit code: \($0)." } ?? ""
+                signals.append(
+                    KubernetesResourceDebugSignal(
+                        severity: restartCount >= 3 ? .critical : .warning,
+                        title: "\(container.name) restarted \(restartCount) \(restartCount == 1 ? "time" : "times")",
+                        detail: "Check current and previous logs.\(reason)\(exitCode)"
+                    )
+                )
+            }
+        }
+    }
+
+    nonisolated private static let criticalWaitingReasons: Set<String> = [
+        "CrashLoopBackOff",
+        "CreateContainerConfigError",
+        "CreateContainerError",
+        "ErrImagePull",
+        "ImagePullBackOff",
+        "InvalidImageName",
+        "RunContainerError"
+    ]
+
+    nonisolated private static func appendConditionSignals(
+        _ conditions: [KubernetesConditionSummary],
+        signals: inout [KubernetesResourceDebugSignal]
+    ) {
+        for condition in conditions {
+            let status = condition.status.lowercased()
+            guard status == "false" || status == "unknown" else {
+                continue
+            }
+
+            let severity: KubernetesResourceDebugSeverity = criticalConditionReasons.contains(condition.reason ?? "")
+                ? .critical
+                : .warning
+            let reason = condition.reason.map { ": \($0)" } ?? ""
+            signals.append(
+                KubernetesResourceDebugSignal(
+                    severity: severity,
+                    title: "\(condition.type) is \(condition.status)\(reason)",
+                    detail: condition.message ?? "Open Conditions and Events for the detailed Kubernetes status."
+                )
+            )
+        }
+    }
+
+    nonisolated private static let criticalConditionReasons: Set<String> = [
+        "BackoffLimitExceeded",
+        "Failed",
+        "ProgressDeadlineExceeded"
+    ]
+
+    nonisolated private static func appendReplicaSignals(
+        kind: String,
+        spec: KubernetesJSONValue?,
+        status: KubernetesJSONValue?,
+        signals: inout [KubernetesResourceDebugSignal]
+    ) {
+        switch kind {
+        case "Deployment", "ReplicaSet", "StatefulSet":
+            let desired = spec?["replicas"]?.intValue ?? status?["replicas"]?.intValue
+            let ready = status?["readyReplicas"]?.intValue ?? status?["availableReplicas"]?.intValue ?? 0
+            let unavailable = status?["unavailableReplicas"]?.intValue
+            if let desired, desired > ready {
+                let unavailableText = unavailable.map { ", \($0) unavailable" } ?? ""
+                signals.append(
+                    KubernetesResourceDebugSignal(
+                        severity: .warning,
+                        title: "\(ready)/\(desired) replicas are ready",
+                        detail: "The workload has not reached its desired replica count\(unavailableText). Open Related Pods and Events next."
+                    )
+                )
+            }
+        case "DaemonSet":
+            let desired = status?["desiredNumberScheduled"]?.intValue
+            let ready = status?["numberReady"]?.intValue ?? 0
+            let unavailable = status?["numberUnavailable"]?.intValue
+            if let desired, desired > ready {
+                let unavailableText = unavailable.map { ", \($0) unavailable" } ?? ""
+                signals.append(
+                    KubernetesResourceDebugSignal(
+                        severity: .warning,
+                        title: "\(ready)/\(desired) daemon pods are ready",
+                        detail: "Some nodes do not have a ready pod yet\(unavailableText). Open Related Pods and Events next."
+                    )
+                )
+            }
+        default:
+            return
+        }
+    }
+
+    nonisolated private static func appendJobSignals(
+        kind: String,
+        status: KubernetesJSONValue?,
+        signals: inout [KubernetesResourceDebugSignal]
+    ) {
+        guard kind == "Job" else {
+            return
+        }
+
+        let failed = status?["failed"]?.intValue ?? 0
+        if failed > 0 {
+            signals.append(
+                KubernetesResourceDebugSignal(
+                    severity: .critical,
+                    title: "Job has \(failed) failed \(failed == 1 ? "pod" : "pods")",
+                    detail: "Open related Pods, Logs, and Events to inspect the failing attempt."
+                )
+            )
+        }
+    }
+
+    nonisolated private static func deduplicatedDebugSignals(
+        _ signals: [KubernetesResourceDebugSignal]
+    ) -> [KubernetesResourceDebugSignal] {
+        var seen: Set<String> = []
+        return signals.filter { signal in
+            seen.insert(signal.id).inserted
+        }
+    }
+
+    nonisolated private static func debugTitle(
+        for severity: KubernetesResourceDebugSeverity,
+        kind: String
+    ) -> String {
+        switch severity {
+        case .healthy:
+            return "No Obvious \(kind) Problems"
+        case .warning:
+            return "\(kind) Needs Attention"
+        case .critical:
+            return "\(kind) Looks Unhealthy"
+        }
+    }
+
+    nonisolated private static func debugMessage(
+        for severity: KubernetesResourceDebugSeverity,
+        kind: String,
+        signalCount: Int
+    ) -> String {
+        switch severity {
+        case .healthy:
+            return "Vibekube did not find failed conditions, blocked containers, replica gaps, or restart signals in this manifest."
+        case .warning:
+            return signalCount == 1
+                ? "One warning signal was found. Start with Events or the targeted detail tab below."
+                : "\(signalCount) warning signals were found. Start with Events or the targeted detail tabs below."
+        case .critical:
+            return signalCount == 1
+                ? "One high-priority failure signal was found. Logs, Events, and YAML are the fastest next checks."
+                : "\(signalCount) failure signals were found. Logs, Events, and YAML are the fastest next checks."
+        }
     }
 
     nonisolated private static func containerSummaries(
@@ -766,6 +1055,36 @@ struct KubernetesConditionSummary: Equatable, Identifiable {
 
     var id: String {
         "\(type)/\(status)/\(reason ?? "")/\(lastTransitionTime ?? "")"
+    }
+}
+
+struct KubernetesResourceDebugSummary: Equatable {
+    var severity: KubernetesResourceDebugSeverity
+    var title: String
+    var message: String
+    var signals: [KubernetesResourceDebugSignal]
+}
+
+struct KubernetesResourceDebugSignal: Equatable, Identifiable {
+    var severity: KubernetesResourceDebugSeverity
+    var title: String
+    var detail: String
+
+    var id: String {
+        "\(severity.rawValue)/\(title)/\(detail)"
+    }
+}
+
+enum KubernetesResourceDebugSeverity: Int, Comparable, Equatable {
+    case healthy = 0
+    case warning = 1
+    case critical = 2
+
+    static func < (
+        lhs: KubernetesResourceDebugSeverity,
+        rhs: KubernetesResourceDebugSeverity
+    ) -> Bool {
+        lhs.rawValue < rhs.rawValue
     }
 }
 

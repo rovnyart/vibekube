@@ -1293,6 +1293,106 @@ struct KubernetesResourceListTests {
         #expect(summary.secretReferences.last?.detail == "volume credentials")
     }
 
+    @Test func summarizesUnhealthyPodDebugSignals() throws {
+        let detail = try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "v1",
+                  "kind": "Pod",
+                  "metadata": {
+                    "name": "crashy",
+                    "namespace": "vibekube-demo"
+                  },
+                  "spec": {
+                    "containers": [
+                      {
+                        "name": "app",
+                        "image": "busybox:1.36"
+                      }
+                    ]
+                  },
+                  "status": {
+                    "phase": "Running",
+                    "conditions": [
+                      {
+                        "type": "Ready",
+                        "status": "False",
+                        "reason": "ContainersNotReady",
+                        "message": "containers with unready status: [app]"
+                      }
+                    ],
+                    "containerStatuses": [
+                      {
+                        "name": "app",
+                        "ready": false,
+                        "restartCount": 4,
+                        "state": {
+                          "waiting": {
+                            "reason": "CrashLoopBackOff",
+                            "message": "back-off restarting failed container"
+                          }
+                        },
+                        "lastState": {
+                          "terminated": {
+                            "reason": "Error",
+                            "exitCode": 1
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+                """.utf8
+            )
+        )
+
+        let debugSummary = try #require(detail.summary.debugSummary)
+        #expect(debugSummary.severity == .critical)
+        #expect(debugSummary.title == "Pod Looks Unhealthy")
+        #expect(debugSummary.signals.contains { $0.title == "app is waiting: CrashLoopBackOff" })
+        #expect(debugSummary.signals.contains { $0.title == "app restarted 4 times" })
+        #expect(debugSummary.signals.contains { $0.title == "Ready is False: ContainersNotReady" })
+    }
+
+    @Test func summarizesHealthyDeploymentDebugState() throws {
+        let detail = try JSONDecoder().decode(
+            KubernetesResourceDetail.self,
+            from: Data(
+                """
+                {
+                  "apiVersion": "apps/v1",
+                  "kind": "Deployment",
+                  "metadata": {
+                    "name": "echo-web",
+                    "namespace": "vibekube-demo"
+                  },
+                  "spec": {
+                    "replicas": 2
+                  },
+                  "status": {
+                    "readyReplicas": 2,
+                    "availableReplicas": 2,
+                    "conditions": [
+                      {
+                        "type": "Available",
+                        "status": "True",
+                        "reason": "MinimumReplicasAvailable"
+                      }
+                    ]
+                  }
+                }
+                """.utf8
+            )
+        )
+
+        let debugSummary = try #require(detail.summary.debugSummary)
+        #expect(debugSummary.severity == .healthy)
+        #expect(debugSummary.title == "No Obvious Deployment Problems")
+        #expect(debugSummary.signals.isEmpty)
+    }
+
     @Test func redactsSecretDetailYAML() throws {
         let detail = try JSONDecoder().decode(
             KubernetesResourceDetail.self,

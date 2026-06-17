@@ -15,7 +15,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, Containers, expanded Environment, searchable/copyable/saveable YAML, Metadata, Conditions, masked Secret env reveal, owner jumps, selector-based related Pod navigation, and version-aware refresh |
 | 7 | [Logs](PHASE7.md) | Review checkpoint | Pod detail inspector has rich logs: tail/since controls, live streaming with smart follow, timestamps, safe JSONL formatting, search, grep, copy, save, download-all, fullscreen, and previous-container logs |
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Review checkpoint | Active watchable resource lists have watch merging, durable reconnect/backoff, live/stale/failure status, burst coalescing, version-aware detail refresh, narrow selected-resource detail watches, interaction-stable table ordering, subtle updated-row feedback, and manual validation |
-| 9 | [Workload Debugging Basics](PHASE9.md) | Started | Pod detail manifests expose container state, restarts, probes, volume mounts, and requests/limits |
+| 9 | [Workload Debugging Basics](PHASE9.md) | Started | Workload Overview includes a debug summary for common unhealthy signals with quick jumps to Events, Logs, Containers, Env, and YAML |
 | 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
 | 11 | [Preferences, Security, Packaging](PHASE11.md) | Started | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, kubeconfig path, appearance, table density, log buffer, default namespace, resource watch, Secret reveal settings, reset preferences, privacy docs, and real Teleport/TLS validation exist |
 | 12 | [AI Foundations](PHASE12.md) | Not started | Waiting for stable resource context model |
@@ -53,6 +53,7 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Stream logs.
 - [x] Search, grep, tail/since filtering, smart live follow, safe JSONL formatting, copy, save, download, fullscreen, and previous-container Pod logs.
 - [x] Inspect Pod container state, restarts, probes, volume mounts, and resource requests/limits.
+- [x] See workload debug summaries for common unhealthy signals.
 - [x] Connect to real Teleport-backed corporate clusters through kubeconfig exec auth.
 - [x] Package signed/notarized DMG builds through `scripts/release`.
 - [x] Expand Pod `envFrom` ConfigMap and Secret keys in the Env inspector.
