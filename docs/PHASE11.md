@@ -8,7 +8,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 
 - [x] Phase plan exists.
 - [x] Settings view exists for diagnostics.
-- [ ] Secret handling audit complete.
+- [x] Secret handling audit complete.
 - [ ] Keychain strategy implemented where needed.
 - [x] Packaging/signing path documented.
 - [x] Release script exists.
@@ -48,15 +48,17 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 
 ### 11.2 Security Audit
 
-- [ ] Audit kubeconfig parsing logs.
-- [ ] Audit API client logs.
-- [ ] Audit error surfaces.
-- [ ] Audit YAML secret display.
+- [x] Audit kubeconfig parsing logs.
+- [x] Audit API client logs.
+- [x] Audit error surfaces.
+- [x] Audit YAML secret display.
 - [x] Keep Secret manifest payload fields redacted by default.
 - [x] Keep Secret-backed environment values masked by default.
-- [ ] Audit AI context redaction hooks.
+- [x] Confirm AI context redaction is future work; no AI context is built or sent yet, and Linear `ART-40` tracks the required redaction pipeline before Phase 12 enables AI context.
 - [x] Add diagnostics redaction utilities.
 - [x] Add diagnostics redaction tests.
+
+Audit result: kubeconfig parsing does not log raw kubeconfig content, bearer tokens, or client key/certificate payloads. API client authentication applies credentials only to ephemeral `URLRequest` headers. Secret list rows avoid indexing payload data, Secret YAML redacts top-level `data`, `stringData`, and `binaryData`, Secret annotations and Secret-backed environment values stay masked by default, and reveal actions log only hashed namespace/Secret/key identifiers. Diagnostics metadata already redacted sensitive keys and bearer-like values; this checkpoint also redacts free-form diagnostics messages, Kubernetes client error descriptions, Kubernetes status messages, transport errors, and exec-plugin stderr for bearer tokens, token/password/secret/key fields, command-line secret flags, and PEM private key/certificate blocks.
 
 ### 11.3 Credential Storage
 
@@ -89,7 +91,7 @@ Checkpoint: stop before changing sandbox/signing settings if they affect local d
 ## Acceptance Criteria
 
 - [ ] Settings cover the important app behaviors.
-- [ ] No secrets appear in logs, diagnostics, or normal UI errors.
+- [x] No secrets appear in logs, diagnostics, or normal UI errors.
 - [x] App can be signed and packaged.
 - [x] Fresh-machine setup is documented.
 

@@ -76,6 +76,56 @@ nonisolated enum DiagnosticsRedactor {
         return value
     }
 
+    static func redactedText(_ text: String) -> String {
+        guard !text.isEmpty else {
+            return text
+        }
+
+        var redacted = text
+        let rules: [(pattern: String, template: String, options: NSRegularExpression.Options)] = [
+            (
+                #"-----BEGIN [A-Z ]*(?:PRIVATE KEY|CERTIFICATE)-----.*?-----END [A-Z ]*(?:PRIVATE KEY|CERTIFICATE)-----"#,
+                "<redacted>",
+                [.caseInsensitive, .dotMatchesLineSeparators]
+            ),
+            (
+                #"\b(Bearer)\s+[A-Za-z0-9._~+/=-]+"#,
+                "$1 <redacted>",
+                [.caseInsensitive]
+            ),
+            (
+                #"\b(Authorization\s*[:=]\s*)(?!Bearer\s+)([^\s,;)}\]]+)"#,
+                "$1<redacted>",
+                [.caseInsensitive]
+            ),
+            (
+                #"(["']?(?:token|id-token|access-token|refresh-token|password|passphrase|secret|client-key-data|client-certificate-data|clientKeyData|clientCertificateData|client-key|private-key)["']?\s*[:=]\s*["']?)([^"',;\s}\]]+)(["']?)"#,
+                "$1<redacted>$3",
+                [.caseInsensitive]
+            ),
+            (
+                #"(--(?:token|password|secret|client-key|client-certificate)(?:=|\s+))([^\s]+)"#,
+                "$1<redacted>",
+                [.caseInsensitive]
+            )
+        ]
+
+        for rule in rules {
+            guard let expression = try? NSRegularExpression(pattern: rule.pattern, options: rule.options) else {
+                continue
+            }
+            let range = NSRange(redacted.startIndex..<redacted.endIndex, in: redacted)
+            redacted = expression.stringByReplacingMatches(
+                in: redacted,
+                options: [],
+                range: range,
+                withTemplate: rule.template
+            )
+        }
+
+        return redacted
+    }
+
     private static func isSensitiveKey(_ key: String) -> Bool {
         let fragments = [
             "authorization",

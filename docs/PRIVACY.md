@@ -38,7 +38,7 @@ The diagnostics export is generated on demand from an in-memory ring buffer plus
 
 Diagnostics hash cluster/context identifiers by default. Cluster names are included only if the user enables that setting.
 
-Diagnostics metadata redacts values that look like credentials, certificates, private keys, bearer tokens, passwords, or secrets. Resource names, namespaces, pod names, container names, Secret names, and Secret keys are logged as hashes where they are needed for debugging.
+Diagnostics metadata and diagnostics messages redact values that look like credentials, certificates, private keys, bearer tokens, passwords, or secrets. User-visible Kubernetes API and exec-auth error messages pass through the same free-form redaction before display. Resource names, namespaces, pod names, container names, Secret names, and Secret keys are logged as hashes where they are needed for debugging.
 
 ## Network Policy
 

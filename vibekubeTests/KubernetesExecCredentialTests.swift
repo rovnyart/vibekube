@@ -185,7 +185,7 @@ struct KubernetesExecCredentialTests {
             exec: KubeExecAuth(
                 apiVersion: "client.authentication.k8s.io/v1beta1",
                 command: "/bin/sh",
-                args: ["-c", "echo 'tsh: profile is not logged in' >&2; exit 1"],
+                args: ["-c", "echo 'tsh: profile is not logged in token=super-secret-token Authorization: Bearer bearer-secret' >&2; exit 1"],
                 env: [],
                 installHint: nil,
                 provideClusterInfo: false,
@@ -204,6 +204,10 @@ struct KubernetesExecCredentialTests {
         } catch let error as KubernetesClientError {
             #expect(error.localizedDescription.contains("failed with exit code 1"))
             #expect(error.localizedDescription.contains("tsh: profile is not logged in"))
+            #expect(error.localizedDescription.contains("token=<redacted>"))
+            #expect(error.localizedDescription.contains("Bearer <redacted>"))
+            #expect(!error.localizedDescription.contains("super-secret-token"))
+            #expect(!error.localizedDescription.contains("bearer-secret"))
         }
     }
 

@@ -14,27 +14,27 @@ enum KubernetesClientError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidConfiguration(let message):
-            "Invalid kubeconfig: \(message)"
+            "Invalid kubeconfig: \(Self.redacted(message))"
         case .unsupportedAuthentication(let message):
-            "Unsupported authentication: \(message)"
+            "Unsupported authentication: \(Self.redacted(message))"
         case .execCredential(let message):
-            message
+            Self.redacted(message)
         case .unauthorized(let message):
-            message.isEmpty ? "The cluster rejected the credentials." : message
+            message.isEmpty ? "The cluster rejected the credentials." : Self.redacted(message)
         case .unavailable(let message):
-            message
+            Self.redacted(message)
         case .certificateError(let message):
-            "TLS certificate error: \(message)"
+            "TLS certificate error: \(Self.redacted(message))"
         case .badResponse:
             "The Kubernetes API returned an unreadable response."
         case .statusCode(let code, let message):
             if let message, !message.isEmpty {
-                "Kubernetes API returned HTTP \(code): \(message)"
+                "Kubernetes API returned HTTP \(code): \(Self.redacted(message))"
             } else {
                 "Kubernetes API returned HTTP \(code)."
             }
         case .decoding(let message):
-            "Could not decode Kubernetes API response: \(message)"
+            "Could not decode Kubernetes API response: \(Self.redacted(message))"
         }
     }
 
@@ -49,5 +49,9 @@ enum KubernetesClientError: LocalizedError, Equatable {
         case .invalidConfiguration, .unavailable, .badResponse, .statusCode, .decoding:
             .unavailable
         }
+    }
+
+    private static func redacted(_ message: String) -> String {
+        DiagnosticsRedactor.redactedText(message)
     }
 }

@@ -137,7 +137,7 @@ struct DefaultKubernetesExecCredentialRunner: KubernetesExecCredentialRunning {
             .prefix(4)
             .joined(separator: " ")
 
-        return String(lines.prefix(1_000))
+        return DiagnosticsRedactor.redactedText(String(lines.prefix(1_000)))
     }
 
     private func executableURL(for command: String, installHint: String?) throws -> URL {

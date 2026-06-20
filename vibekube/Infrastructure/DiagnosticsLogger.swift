@@ -66,7 +66,7 @@ actor DiagnosticsLogger {
         let event = DiagnosticsEvent(
             level: level,
             category: category,
-            message: message,
+            message: DiagnosticsRedactor.redactedText(message),
             contextHash: DiagnosticsRedactor.hashIdentifier(contextID),
             contextName: settings.includeClusterNames ? contextName : nil,
             metadata: DiagnosticsRedactor.sanitizedMetadata(metadata)
@@ -159,7 +159,7 @@ actor DiagnosticsLogger {
                     level: .warning,
                     category: "diagnostics",
                     message: "Could not write diagnostics log file.",
-                    metadata: ["error": error.localizedDescription]
+                    metadata: DiagnosticsRedactor.sanitizedMetadata(["error": error.localizedDescription])
                 )
             )
         }
