@@ -2314,6 +2314,12 @@ private struct ResourceDetailOverviewView: View {
                     }
                 }
 
+                if appModel.canOpenPodExec(for: row) || !matchingExecLaunches.isEmpty {
+                    SectionSurface(title: "Exec", systemImage: "terminal") {
+                        ResourcePodExecView(row: row, launches: matchingExecLaunches)
+                    }
+                }
+
                 if !summary.containers.isEmpty {
                     SectionSurface(title: "Containers", systemImage: "cube") {
                         VStack(spacing: 0) {
@@ -2482,6 +2488,20 @@ private struct ResourceDetailOverviewView: View {
         "\(summary.kind ?? row.displayKind)/\(summary.name ?? row.displayName)"
     }
 
+    private var matchingExecLaunches: [ExecLaunchRecord] {
+        guard let contextID = appModel.selectedClusterID,
+              let namespace = row.metadata.namespace,
+              let podName = row.metadata.name else {
+            return []
+        }
+
+        return appModel.execLaunches.filter { launch in
+            launch.contextID == contextID &&
+                launch.namespace == namespace &&
+                launch.podName == podName
+        }
+    }
+
     private var relatedOwnedResourceActions: [ResourceOwnedRelationshipAction] {
         let name = summary.name ?? row.displayName
         guard !name.isEmpty else {
@@ -2545,6 +2565,126 @@ private struct ResourcePortForwardView: View {
                     }
                 )
             }
+        }
+    }
+}
+
+private struct ResourcePodExecView: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let row: KubernetesUnstructuredResource
+    let launches: [ExecLaunchRecord]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Menu {
+                    ForEach(KubernetesExecCommandChoice.allCases) { choice in
+                        Button(choice.title) {
+                            appModel.openPodExec(for: row, command: choice.command)
+                        }
+                    }
+                } label: {
+                    Label("Open Shell", systemImage: "terminal")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!appModel.canOpenPodExec(for: row))
+
+                Spacer()
+
+                if !launches.isEmpty {
+                    Button("Clear History") {
+                        appModel.clearExecLaunchHistory()
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                }
+            }
+
+            if launches.isEmpty {
+                Text("No exec launches for this pod.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(launches.enumerated()), id: \.element.id) { index, launch in
+                        ResourceExecLaunchRow(launch: launch)
+
+                        if index < launches.count - 1 {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ResourceExecLaunchRow: View {
+    let launch: ExecLaunchRecord
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: statusImage)
+                .foregroundStyle(statusTint)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(launch.displayCommand)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    if let containerName = launch.containerName, !containerName.isEmpty {
+                        Text(containerName)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Text(detailText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 8)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private var detailText: String {
+        switch launch.status {
+        case .opening:
+            "Opening in \(launch.terminalApp.title)"
+        case .opened:
+            "Opened in \(launch.terminalApp.title)"
+        case .failed(let message):
+            message
+        }
+    }
+
+    private var statusImage: String {
+        switch launch.status {
+        case .opening:
+            "hourglass"
+        case .opened:
+            "checkmark.circle.fill"
+        case .failed:
+            "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var statusTint: Color {
+        switch launch.status {
+        case .opening:
+            .orange
+        case .opened:
+            .green
+        case .failed:
+            .red
         }
     }
 }
