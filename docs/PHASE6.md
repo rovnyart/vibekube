@@ -137,7 +137,7 @@ Checkpoint: stop for feedback on YAML readability and secret display policy.
 - [x] YAML is readable, searchable, copyable, saveable, and safe for secrets.
 - [x] Pod env vars and Secret refs are visible without exposing secret values by default.
 - [x] Events and conditions explain resource state.
-- [ ] Related resources are navigable.
+- [x] Related resources are navigable.
 
 ## Validation Commands
 

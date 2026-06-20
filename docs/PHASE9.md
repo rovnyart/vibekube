@@ -1,6 +1,6 @@
 # Phase 9: Workload Debugging Basics
 
-Status: Started.
+Status: Complete.
 
 Goal: add practical debugging workflows: describe-style views, container details, port-forwarding, and basic exec.
 
@@ -15,7 +15,8 @@ Goal: add practical debugging workflows: describe-style views, container details
 - [x] Active port-forward sessions are stopped when the app terminates.
 - [x] Port-forward starts detect local port conflicts before launching `kubectl`.
 - [x] Pod exec actions have a shell picker for common shells.
-- [x] External exec launches are visible in lightweight in-app history.
+- [x] Pod exec actions are container-aware for multi-container Pods.
+- [x] External exec launches are visible in pod-local lightweight history.
 
 ## Implementation Slices
 
@@ -60,7 +61,7 @@ Checkpoint: keep `kubectl` isolated behind a service protocol. Native API stream
 - [x] Add terminal app preference.
 - [x] Add command/shell picker.
 - [x] Track external exec launches as lightweight history.
-- [ ] Cleanup on app quit/context switch if future native sessions are added.
+- [x] No native exec session cleanup is needed while exec uses external terminals.
 
 ### 9.4 Debugging UX
 
@@ -79,7 +80,7 @@ Checkpoint: keep `kubectl` isolated behind a service protocol. Native API stream
 - [x] Unit tests for external-terminal exec preference wiring.
 - [x] Manual QA for port-forwarding demo service.
 - [x] Manual QA for exec into demo pod.
-- [ ] Shutdown cleanup QA.
+- [x] Shutdown cleanup QA.
 
 ## Acceptance Criteria
 
@@ -95,5 +96,6 @@ Checkpoint: keep `kubectl` isolated behind a service protocol. Native API stream
 dev/k8s/scripts/start.sh
 kubectl -n vibekube-demo port-forward svc/echo-web 18080:80
 kubectl -n vibekube-demo exec deploy/echo-web -- sh -c 'hostname'
+lsof -nP -iTCP:10080 -sTCP:LISTEN
 xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test
 ```

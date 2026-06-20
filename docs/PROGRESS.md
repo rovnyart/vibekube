@@ -15,7 +15,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, Containers, expanded Environment, searchable/copyable/saveable YAML, Metadata, Conditions, masked Secret env reveal, owner jumps, selector-based related Pod navigation, and version-aware refresh |
 | 7 | [Logs](PHASE7.md) | Review checkpoint | Pod detail inspector has rich logs: tail/since controls, live streaming with smart follow, timestamps, safe JSONL formatting, search, grep, copy, save, download-all, fullscreen, and previous-container logs |
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Review checkpoint | Active watchable resource lists have watch merging, durable reconnect/backoff, live/stale/failure status, burst coalescing, version-aware detail refresh, narrow selected-resource detail watches, interaction-stable table ordering, subtle updated-row feedback, and manual validation |
-| 9 | [Workload Debugging Basics](PHASE9.md) | Started | Workload Overview includes event-aware debug summaries, `kubectl`-backed port-forward sessions, and external-terminal Pod exec actions with terminal preference |
+| 9 | [Workload Debugging Basics](PHASE9.md) | Complete | Workload Overview includes event-aware debug summaries, visible `kubectl`-backed port-forward sessions, container-aware external-terminal Pod exec actions, and pod-local exec launch history |
 | 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
 | 11 | [Preferences, Security, Packaging](PHASE11.md) | Started | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, kubeconfig path, appearance, table density, external terminal, log buffer, default namespace, resource watch, Secret reveal settings, reset preferences, privacy docs, and real Teleport/TLS validation exist |
 | 12 | [AI Foundations](PHASE12.md) | Not started | Waiting for stable resource context model |
@@ -29,9 +29,9 @@ The current product milestone is Vibekube 0.1.x: a fast, read-only, distributabl
 
 Recommended next focus:
 
-1. Continue Phase 9 by polishing exec/port-forward ergonomics: shell picker, local-port conflict detection, and lightweight exec history.
-2. Use diagnostics on the work Mac during the next real-cluster validation pass and expand the logged categories only where gaps appear.
-3. Finish release readiness with the clean-machine checklist after the current debug surfaces settle.
+1. Finish Phase 11 release/security hardening for the read-only milestone: clean-machine validation, secret-surface audit, sandbox/credential-storage decisions, and released-DMG verification.
+2. Revisit Phase 4 dashboard architecture with a dashboard-specific non-blocking store before restoring richer workload/event/storage panels.
+3. Start Phase 10 safe mutations only after the read-only release path is trustworthy, because writes change the app's risk profile.
 
 Current stop rule: after any visible UI slice, stop for manual review before moving to the next feature family.
 
@@ -55,8 +55,10 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Inspect Pod container state, restarts, probes, volume mounts, and resource requests/limits.
 - [x] See event-aware workload debug summaries with scheduling/QoS context for common unhealthy signals.
 - [x] Start and stop visible `kubectl`-backed port-forward sessions from resource detail.
-- [x] Open external-terminal `kubectl exec` shells from Pod context menus and container detail.
+- [x] Open container-aware external-terminal `kubectl exec` shells from Pod context menus, Pod overview, and container detail.
 - [x] Choose the preferred external terminal app for exec shells.
+- [x] Keep Pod exec launch history visible in Pod detail.
+- [x] Stop active port-forward sessions on app quit.
 - [x] Connect to real Teleport-backed corporate clusters through kubeconfig exec auth.
 - [x] Package signed/notarized DMG builds through `scripts/release`.
 - [x] Expand Pod `envFrom` ConfigMap and Secret keys in the Env inspector.

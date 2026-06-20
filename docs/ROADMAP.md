@@ -558,13 +558,13 @@ Goal: cover common debugging workflows beyond read-only inspection.
 
 ### Engineering Tasks
 
-- Add SPDY/WebSocket support strategy for exec and port-forward depending on Kubernetes API requirements and available Swift libraries.
+- Decide native WebSocket/SPDY vs isolated `kubectl` adapters for exec and port-forward.
 - Build process/session models:
-  - active exec sessions
   - active port forwards
+  - external exec launch history
   - cancellation
   - error states
-- Add terminal-like view or native text session view for exec.
+- Launch basic Pod exec shells in the user's preferred external terminal.
 - Add local port allocation and conflict handling.
 
 ### UX Notes
@@ -580,7 +580,7 @@ Goal: cover common debugging workflows beyond read-only inspection.
 ### Exit Criteria
 
 - User can port-forward a service/pod in the demo cluster.
-- User can start and stop a simple exec session.
+- User can start a simple Pod exec shell and see the launch in pod-local history.
 
 ## Phase 10: Safe Mutations
 
