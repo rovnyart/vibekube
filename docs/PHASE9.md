@@ -77,8 +77,8 @@ Checkpoint: keep `kubectl` isolated behind a service protocol. Native API stream
 - [x] Unit tests for port-forward session lifecycle.
 - [x] Unit tests for external-terminal exec command construction.
 - [x] Unit tests for external-terminal exec preference wiring.
-- [ ] Manual QA for port-forwarding demo service.
-- [ ] Manual QA for exec into demo pod.
+- [x] Manual QA for port-forwarding demo service.
+- [x] Manual QA for exec into demo pod.
 - [ ] Shutdown cleanup QA.
 
 ## Acceptance Criteria
