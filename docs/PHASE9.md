@@ -12,6 +12,7 @@ Goal: add practical debugging workflows: describe-style views, container details
 - [x] Basic `kubectl`-backed port-forwarding exists for Pods, Services, and Deployments.
 - [x] Basic external-terminal Pod exec support exists.
 - [x] Active port-forward sessions can be stopped safely.
+- [x] Active port-forward sessions are stopped when the app terminates.
 
 ## Implementation Slices
 
@@ -42,7 +43,7 @@ Goal: add practical debugging workflows: describe-style views, container details
 - [x] Stop session.
 - [x] Show active sessions.
 - [x] Cleanup on context switch/disconnect.
-- [ ] Cleanup on app quit.
+- [x] Cleanup on app quit.
 
 Checkpoint: keep `kubectl` isolated behind a service protocol. Native API streaming can replace the adapter later without changing the app model/UI flow.
 

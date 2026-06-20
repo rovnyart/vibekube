@@ -285,6 +285,52 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelStopsAllPortForwardSessionsForAppTermination() async throws {
+        let portForwardService = RecordingPortForwardService()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            portForwardService: portForwardService,
+            loadedKubeconfig: kubeconfig()
+        )
+        let firstTarget = KubernetesPortForwardTargetSummary(
+            resourceKind: "service",
+            resourceName: "echo-web",
+            namespace: "vibekube-demo",
+            portName: "http",
+            localPort: 10080,
+            remotePort: 80,
+            protocolName: "TCP"
+        )
+        let secondTarget = KubernetesPortForwardTargetSummary(
+            resourceKind: "pod",
+            resourceName: "echo-web-abc",
+            namespace: "vibekube-demo",
+            portName: "http",
+            localPort: 18080,
+            remotePort: 8080,
+            protocolName: "TCP"
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.startPortForward(target: firstTarget)
+        model.startPortForward(target: secondTarget)
+        try await waitUntil("two port-forward sessions running") {
+            portForwardService.handles.count == 2 &&
+                model.portForwardSessions.filter(\.isActive).count == 2
+        }
+
+        model.stopAllPortForwardSessions()
+
+        for handle in portForwardService.handles {
+            #expect(handle.stopped)
+        }
+        #expect(model.portForwardSessions.allSatisfy { $0.status == .stopped })
+    }
+
+    @MainActor
     @Test func appModelKeepsFailedPortForwardSessionVisible() async throws {
         let portForwardService = TerminatingPortForwardService(
             termination: KubernetesPortForwardTermination(

@@ -902,6 +902,10 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func stopAllPortForwardSessions() {
+        stopPortForwardSessions { _ in true }
+    }
+
     func clearInactivePortForwardSessions() {
         let inactiveIDs = Set(portForwardSessions.filter { !$0.isActive }.map(\.id))
         portForwardSessions.removeAll { inactiveIDs.contains($0.id) }
