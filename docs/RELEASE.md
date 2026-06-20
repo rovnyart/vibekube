@@ -16,7 +16,7 @@ This document describes how to build a signed DMG for direct macOS distribution.
 
 ## Current Build
 
-The project is currently set to `0.1.6` with build `7`.
+The project is currently set to `0.4.0` with build `11`.
 
 ```sh
 NOTARY_PROFILE=vibekube-notary scripts/release current
@@ -75,6 +75,8 @@ Direct online distribution requires Apple Developer ID signing and notarization.
 6. Run the release script with `NOTARY_PROFILE=vibekube-notary`.
 
 The app target already has hardened runtime enabled, which Apple requires for notarization.
+
+The current direct-distribution build intentionally keeps App Sandbox disabled. Vibekube reads kubeconfig files and referenced certificate/key paths from user-controlled locations, opens outbound Kubernetes API connections, runs kubeconfig exec credential plugins, and launches local `kubectl` processes for port-forward and external-terminal exec workflows. Revisit sandboxing only with a dedicated helper/file-access design pass.
 
 ## Verification
 

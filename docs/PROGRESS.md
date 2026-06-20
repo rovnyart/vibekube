@@ -17,7 +17,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Review checkpoint | Active watchable resource lists have watch merging, durable reconnect/backoff, live/stale/failure status, burst coalescing, version-aware detail refresh, narrow selected-resource detail watches, interaction-stable table ordering, subtle updated-row feedback, and manual validation |
 | 9 | [Workload Debugging Basics](PHASE9.md) | Complete | Workload Overview includes event-aware debug summaries, visible `kubectl`-backed port-forward sessions, container-aware external-terminal Pod exec actions, and pod-local exec launch history |
 | 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
-| 11 | [Preferences, Security, Packaging](PHASE11.md) | Started | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, kubeconfig path, appearance, table density, external terminal, log buffer, default namespace, resource watch, Secret reveal settings, reset preferences, privacy docs, secret-surface audit, clean-machine validation, and real Teleport/TLS validation exist |
+| 11 | [Preferences, Security, Packaging](PHASE11.md) | Started | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, kubeconfig path, appearance, table density, external terminal, log buffer, default namespace, resource watch, Secret reveal settings, reset preferences, privacy docs, secret-surface audit, clean-machine validation, sandbox/credential-storage decisions, and real Teleport/TLS validation exist |
 | 12 | [AI Foundations](PHASE12.md) | Not started | Waiting for stable resource context model |
 | 13 | [Advanced AI Operations](PHASE13.md) | Not started | Waiting for AI foundation |
 
@@ -29,7 +29,7 @@ The current product milestone is Vibekube 0.1.x: a fast, read-only, distributabl
 
 Recommended next focus:
 
-1. Finish Phase 11 release/security hardening for the read-only milestone: sandbox/credential-storage decisions, exec-auth/API-client confidence, and remaining release/privacy policy decisions.
+1. Finish Phase 11 release/security hardening for the read-only milestone: exec-auth/API-client confidence and remaining release/privacy policy decisions.
 2. Revisit Phase 4 dashboard architecture with a dashboard-specific non-blocking store before restoring richer workload/event/storage panels.
 3. Start Phase 10 safe mutations only after the read-only release path is trustworthy, because writes change the app's risk profile.
 
@@ -76,6 +76,7 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Add 0.1.x clean-machine release checklist and privacy note.
 - [x] Complete the read-only secret-surface audit across kubeconfig parsing, API/client errors, diagnostics, Secret YAML, and Secret reveal logging.
 - [x] Validate daily use on a non-development work Mac since version 0.3.0.
+- [x] Decide credential storage and sandbox strategy for the current direct-distribution release.
 - [ ] Add safe mutations.
 - [ ] Add AI explain/summarize flows.
 

@@ -21,7 +21,7 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - The app now connects to the selected context through a native `URLSession` client and calls `/version`.
 - The demo `kind-vibekube-dev` context has been validated through an opt-in integration test using the local kubeconfig.
 - Client certificate auth is implemented by importing the PEM certificate/key into a temporary keychain to create a `SecIdentity` for URLSession mTLS. The keychain is deleted when the request delegate is deallocated.
-- `SecKeychain` APIs are deprecated but still available on macOS; revisit a cleaner long-term identity strategy during Phase 11 hardening.
+- `SecKeychain` APIs are deprecated but still available on macOS; Phase 11 keeps the temporary-keychain identity strategy for the current direct-distribution release because Vibekube does not persist app-owned secrets.
 - Exec credential plugins now run from kubeconfig, decode `ExecCredential`, and cache returned credentials until expiry.
 - Teleport-backed contexts invoke `tsh` through the standard exec path and can let `tsh` open browser SSO/MFA. This has been manually validated on real corporate Teleport kubeconfigs.
 - The dashboard now shows connected Kubernetes version plus discovered API group/resource/namespace counts.

@@ -9,7 +9,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] Phase plan exists.
 - [x] Settings view exists for diagnostics.
 - [x] Secret handling audit complete.
-- [ ] Keychain strategy implemented where needed.
+- [x] Keychain strategy implemented where needed.
 - [x] Packaging/signing path documented.
 - [x] Release script exists.
 - [x] App version/build appears in About Vibekube.
@@ -62,14 +62,16 @@ Audit result: kubeconfig parsing does not log raw kubeconfig content, bearer tok
 
 ### 11.3 Credential Storage
 
-- [ ] Decide what must be stored, if anything.
-- [ ] Use Keychain for persisted secrets.
-- [ ] Avoid duplicating kubeconfig credentials unnecessarily.
+- [x] Decide what must be stored, if anything.
+- [x] Use Keychain for persisted secrets where needed.
+- [x] Avoid duplicating kubeconfig credentials unnecessarily.
 - [x] Document where data lives.
+
+Credential storage decision: Vibekube does not currently store app-owned secrets. Kubeconfig credentials are read from kubeconfig files or path references as needed, exec credentials are cached in memory only until their Kubernetes `expirationTimestamp`, and decoded Secret values are revealed in memory only for the selected UI session. Client certificate/key material is imported into a temporary keychain only to create the `SecIdentity` required by `URLSession` mTLS; that temporary keychain is deleted when the session delegate is deallocated and is not a persistent credential store. Because there are no persisted Vibekube-owned secrets today, no login-keychain storage is required for the current read-only release. If future AI providers, hosted services, mutation credentials, or user-entered tokens require persistence, storing them in Keychain is mandatory before shipping that feature.
 
 ### 11.4 Packaging
 
-- [ ] Decide sandbox entitlement strategy.
+- [x] Decide sandbox entitlement strategy.
 - [x] Configure signing.
 - [x] Configure notarization path.
 - [x] Create release build script.
@@ -78,6 +80,8 @@ Audit result: kubeconfig parsing does not log raw kubeconfig content, bearer tok
 - [x] Confirm released DMG against at least one non-development Mac.
 
 Validation note: the app has been used daily on a separate work Mac since version 0.3.0, including real-cluster workflows. This closes the Phase 11 clean-machine/non-development-machine validation item as of 2026-06-20. Keep `docs/RELEASE_CHECKLIST.md` as a per-release checklist for future DMG builds.
+
+Sandbox decision: keep App Sandbox disabled for the current direct Developer ID distribution. Vibekube needs to read kubeconfig files and referenced certificate/key files from user-controlled locations, open outbound Kubernetes API connections, run kubeconfig exec credential plugins such as `tsh`, launch external-terminal `kubectl exec`, and run `kubectl port-forward`. A sandboxed build would require a broader file-access/bookmark, process-execution, and helper-tool design pass, and would likely break common kubeconfig exec-auth workflows. Hardened runtime, signing, notarization, local-first behavior, redaction, and the no-persistent-secret policy are the current release hardening boundary.
 
 Checkpoint: stop before changing sandbox/signing settings if they affect local development.
 
@@ -92,7 +96,7 @@ Checkpoint: stop before changing sandbox/signing settings if they affect local d
 
 ## Acceptance Criteria
 
-- [ ] Settings cover the important app behaviors.
+- [x] Settings cover the important app behaviors.
 - [x] No secrets appear in logs, diagnostics, or normal UI errors.
 - [x] App can be signed and packaged.
 - [x] Fresh-machine setup is documented.

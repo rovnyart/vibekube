@@ -40,13 +40,11 @@ Implemented:
 - connected/connecting/error UI states
 - opt-in kind integration test through `VIBEKUBE_RUN_KIND_INTEGRATION=1`
 
-Not implemented yet:
+Remaining polish:
 
-- pagination follow-up requests for large resource lists
 - dedicated signing-in UI for long-running exec auth
-- broader watch/streaming updates beyond the active Pods list
 
-Client certificate note: URLSession needs a `SecIdentity` for mTLS. The current implementation imports the PEM certificate/key into a temporary keychain, uses the identity for the session challenge, and deletes the keychain afterward. This avoids polluting the login keychain, but it uses deprecated `SecKeychain` APIs; revisit the long-term packaging/security approach in Phase 11.
+Client certificate note: URLSession needs a `SecIdentity` for mTLS. The current implementation imports the PEM certificate/key into a temporary keychain, uses the identity for the session challenge, and deletes the keychain afterward. This avoids polluting the login keychain. The Phase 11 credential-storage decision keeps this temporary-keychain approach for the current direct-distribution release because Vibekube does not persist app-owned secrets.
 
 ## Exec Credential Plugins
 
@@ -70,7 +68,7 @@ Phase 2 implementation behavior:
 - Redact stdout/stderr and decoded credentials from logs and UI errors.
 - Allow cancellation when the user switches context or disconnects.
 
-Implementation note: raw exec stdout is only decoded as `ExecCredential`; stderr is discarded and not shown in UI errors because providers can accidentally write sensitive material there. User-facing errors name the command and failure class without echoing command output.
+Implementation note: raw exec stdout is only decoded as `ExecCredential`; decoded credential material is not shown. Exec stderr may appear as a short user-facing failure hint, but it passes through the shared free-form redactor before display or diagnostics because providers can accidentally write sensitive material there.
 
 ## Teleport Behavior
 

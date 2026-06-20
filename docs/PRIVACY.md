@@ -15,6 +15,10 @@ Vibekube uses kubeconfig credentials as provided by Kubernetes tooling. For exec
 
 Vibekube stores local preferences such as the selected context, selected route, namespace selection, and diagnostics settings.
 
+These preferences are stored in macOS app defaults. The current preference set includes selected context/route/resource, namespace selections, diagnostics settings, kubeconfig path override, log buffer size, Secret reveal confirmation behavior, default namespace behavior, resource watch behavior, table density, appearance, and external terminal preference. Vibekube does not store kubeconfig contents, bearer tokens, client private keys, exec-auth returned credentials, decoded Secret values, Pod log text, or full resource YAML in app defaults.
+
+Vibekube does not currently store app-owned secrets in Keychain because it does not persist app-owned secrets. Client certificate/key material may be imported into a temporary keychain to create a `URLSession` client identity for mTLS, but that keychain is deleted when the session ends and is not a persistent credential store. Any future feature that persists user-entered API keys, provider credentials, or other app-owned secrets must use Keychain before shipping.
+
 Optional diagnostics file logging is disabled by default. When enabled, diagnostics are written as redacted JSONL files to:
 
 ```text
@@ -43,5 +47,7 @@ Diagnostics metadata and diagnostics messages redact values that look like crede
 ## Network Policy
 
 Vibekube connects to Kubernetes API servers from the user kubeconfig. It does not currently contain telemetry, crash reporting, automatic update checks, or AI network requests.
+
+The current direct-distribution build is signed and notarized with hardened runtime, but App Sandbox remains disabled. The app needs normal user-file access to kubeconfig files and referenced certificate/key paths, outbound Kubernetes API network access, kubeconfig exec credential plugins, external-terminal `kubectl exec`, and `kubectl port-forward`. A sandboxed build would require a separate helper/file-access design and is not the current release target.
 
 If AI features are added later, they must be explicitly documented and must not send cluster data outside the machine without a separate user-controlled path.
