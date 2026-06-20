@@ -8,7 +8,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | --- | --- | --- | --- |
 | 0 | [Project Foundation](PHASE0.md) | Review checkpoint | Native shell foundation builds; focused non-UI tests pass with preview fixtures |
 | 1 | [Kubeconfig Discovery](PHASE1.md) | Review checkpoint | App loads kubeconfig contexts, including exec/Teleport metadata; parser and model tests pass |
-| 2 | [Kubernetes API Connectivity](PHASE2.md) | Review checkpoint | Native client connects, runs exec auth, discovers API resources, and loads namespaces |
+| 2 | [Kubernetes API Connectivity](PHASE2.md) | Review checkpoint | Native client connects, runs exec auth with signing-in progress, discovers API resources, loads namespaces, and has focused API-client transport tests |
 | 3 | [Main App Shell](PHASE3.md) | Review checkpoint | NavigationSplitView shell has persisted top-level route state, grouped nav, searchable namespace switching, route-aware commands, detail/YAML shortcuts, and basic keyboard navigation |
 | 4 | [Dashboard And Cluster Stats](PHASE4.md) | Started | Dashboard is simplified to a fast nodes/pods/discovery/metrics overview while workload, event, and storage summaries wait for a non-blocking design |
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
@@ -29,8 +29,8 @@ The current product milestone is Vibekube 0.1.x: a fast, read-only, distributabl
 
 Recommended next focus:
 
-1. Finish Phase 11 release/security hardening for the read-only milestone: exec-auth/API-client confidence and remaining release/privacy policy decisions.
-2. Revisit Phase 4 dashboard architecture with a dashboard-specific non-blocking store before restoring richer workload/event/storage panels.
+1. Revisit Phase 4 dashboard architecture with a dashboard-specific non-blocking store before restoring richer workload/event/storage panels.
+2. Finish the remaining Phase 11 release checklist polish around distribution QA and public-facing release notes.
 3. Start Phase 10 safe mutations only after the read-only release path is trustworthy, because writes change the app's risk profile.
 
 Current stop rule: after any visible UI slice, stop for manual review before moving to the next feature family.

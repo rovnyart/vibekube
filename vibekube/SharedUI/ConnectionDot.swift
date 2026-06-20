@@ -14,7 +14,7 @@ struct ConnectionDot: View {
         switch state {
         case .connected:
             .green
-        case .connecting:
+        case .connecting, .authenticating:
             .blue
         case .unauthorized, .certificateError, .unsupportedAuth:
             .orange

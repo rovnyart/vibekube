@@ -37,12 +37,13 @@ Implemented:
 - native read-only resource tables for common built-ins
 - native read-only manifest inspector for selected resource rows
 - basic HTTP status and Kubernetes `Status` error mapping
-- connected/connecting/error UI states
+- connected/connecting/signing-in/error UI states
+- mock `URLProtocol` coverage for `/version` success, auth failure, timeout/unavailable, cancellation, and malformed JSON
 - opt-in kind integration test through `VIBEKUBE_RUN_KIND_INTEGRATION=1`
 
 Remaining polish:
 
-- dedicated signing-in UI for long-running exec auth
+- mock discovery tests for multi-group edge cases
 
 Client certificate note: URLSession needs a `SecIdentity` for mTLS. The current implementation imports the PEM certificate/key into a temporary keychain, uses the identity for the session challenge, and deletes the keychain afterward. This avoids polluting the login keychain. The Phase 11 credential-storage decision keeps this temporary-keychain approach for the current direct-distribution release because Vibekube does not persist app-owned secrets.
 
@@ -78,11 +79,11 @@ Expected UX:
 
 - Context list shows Teleport-backed contexts as `Teleport exec auth (tsh)`.
 - Connecting a Teleport context may open the browser through `tsh` when credentials are missing or expired.
-- While the exec plugin is running, the app currently shows `Connecting`; add a dedicated signing-in state in a later UX polish slice.
+- While the exec plugin is running, the app shows `Signing In`; when the plugin finishes, the app returns to `Connecting` while contacting the API and loading discovery.
 - If the user cancels, the app returns to disconnected.
 - If `tsh` is missing, show the kubeconfig `installHint` or a concise install message.
 
-Manual validation completed: Vibekube can connect to real Teleport-backed dev and prod clusters from a separate work Mac through kubeconfig exec auth. Remaining UX work is to show a clearer signing-in/credential-refresh state while the exec plugin is running.
+Manual validation completed: Vibekube can connect to real Teleport-backed dev and prod clusters from a separate work Mac through kubeconfig exec auth.
 
 ## API Discovery
 

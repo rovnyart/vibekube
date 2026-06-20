@@ -289,7 +289,8 @@ private struct ClusterPicker: View {
 
             Button {
                 if appModel.selectedConnectionState == .connected ||
-                    appModel.selectedConnectionState == .connecting {
+                    appModel.selectedConnectionState == .connecting ||
+                    appModel.selectedConnectionState == .authenticating {
                     appModel.disconnectSelectedCluster()
                 } else {
                     appModel.connectSelectedCluster()
@@ -309,7 +310,7 @@ private struct ClusterPicker: View {
         switch appModel.selectedConnectionState {
         case .connected:
             "Disconnect"
-        case .connecting:
+        case .connecting, .authenticating:
             "Cancel Connection"
         default:
             "Connect"
@@ -320,7 +321,7 @@ private struct ClusterPicker: View {
         switch appModel.selectedConnectionState {
         case .connected:
             "xmark.circle"
-        case .connecting:
+        case .connecting, .authenticating:
             "stop.circle"
         default:
             "bolt.horizontal.circle"
@@ -330,6 +331,7 @@ private struct ClusterPicker: View {
     private var canUseConnectionButton: Bool {
         appModel.selectedConnectionState == .connected ||
             appModel.selectedConnectionState == .connecting ||
+            appModel.selectedConnectionState == .authenticating ||
             appModel.canConnectSelectedCluster
     }
 

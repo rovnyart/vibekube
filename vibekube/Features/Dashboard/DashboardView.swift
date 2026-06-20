@@ -180,6 +180,16 @@ struct DashboardView: View {
                 .background(.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
                 .textSelection(.enabled)
                 .accessibilityIdentifier("dashboard.connectionError")
+        } else if let message = appModel.connectionProgressMessage, !message.isEmpty {
+            Label(message, systemImage: appModel.selectedConnectionState.systemImage)
+                .font(.callout)
+                .foregroundStyle(.blue)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                .textSelection(.enabled)
+                .accessibilityIdentifier("dashboard.connectionProgress")
         }
     }
 }

@@ -11,6 +11,7 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - [x] TLS/auth from kubeconfig works for CA data/path, bearer token, and client certificate/key data/path.
 - [x] Kubernetes exec credential plugins run and resolve into native credentials.
 - [x] `/version` request works.
+- [x] `/version` transport and API-status behavior has mock `URLProtocol` coverage.
 - [x] API discovery works.
 - [x] Namespaces load.
 - [x] Connection errors are mapped to user-facing states.
@@ -24,6 +25,8 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - `SecKeychain` APIs are deprecated but still available on macOS; Phase 11 keeps the temporary-keychain identity strategy for the current direct-distribution release because Vibekube does not persist app-owned secrets.
 - Exec credential plugins now run from kubeconfig, decode `ExecCredential`, and cache returned credentials until expiry.
 - Teleport-backed contexts invoke `tsh` through the standard exec path and can let `tsh` open browser SSO/MFA. This has been manually validated on real corporate Teleport kubeconfigs.
+- Exec-auth connections now report a cancellable `Signing In` state while the credential plugin runs, then return to `Connecting` while the Kubernetes API is contacted and discovery loads.
+- The native API client has mock `URLProtocol` coverage for `/version` success, Kubernetes `Status` auth failure, timeout/unavailable mapping, cancellation, and malformed JSON.
 - The dashboard now shows connected Kubernetes version plus discovered API group/resource/namespace counts.
 - Custom Resources opens a grouped API resource catalog backed by discovery metadata.
 - Static resource navigation items now show whether their API resource is namespaced or cluster-scoped after discovery.
@@ -71,7 +74,7 @@ Checkpoint: stop before adding any complex auth helper dependency.
 - [x] Cache exec credentials until `expirationTimestamp`.
 - [x] Re-run exec auth on expiry or `401 Unauthorized`.
 - [x] Let Teleport `tsh` open browser SSO/MFA when credentials are missing or expired.
-- [ ] Show signing-in/cancel/error UI for exec-auth flows.
+- [x] Show signing-in/cancel/error UI for exec-auth flows.
 - [x] Redact exec stdout/stderr and decoded credential material.
 
 ### 2.3 Discovery APIs
@@ -96,6 +99,7 @@ Checkpoint: stop before adding any complex auth helper dependency.
 
 - [x] Connect on selected context.
 - [x] Show connecting state.
+- [x] Show exec-auth signing-in state.
 - [x] Show connected state with cluster version.
 - [x] Show unauthorized state.
 - [x] Show unavailable state.
@@ -107,9 +111,10 @@ Checkpoint: stop before adding any complex auth helper dependency.
 
 - [x] Request URL unit tests.
 - [x] Exec credential decoding, process runner, cache, and config tests.
-- [ ] Kubernetes `Status` decoding tests.
+- [x] Kubernetes `Status` decoding tests.
 - [x] Discovery decoding and navigation mapping tests.
-- [ ] Mock server tests for `/version` and discovery.
+- [x] Mock `URLProtocol` tests for `/version` success, auth failure, timeout/cancel, and malformed responses.
+- [ ] Mock discovery tests for multi-group discovery edge cases.
 - [x] Integration test against kind where practical.
 
 ## Acceptance Criteria

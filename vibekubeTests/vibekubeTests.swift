@@ -956,6 +956,25 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelShowsExecAuthProgressWhileConnecting() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: ProgressReportingConnectionService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .authenticating)
+
+        #expect(model.connectionProgressMessage == "Signing in with tsh.")
+        #expect(model.connectionErrorMessage == nil)
+
+        try await waitForConnectionState(model, .connected)
+
+        #expect(model.connectionProgressMessage == nil)
+    }
+
+    @MainActor
     @Test func appModelMapsConnectionFailures() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -2099,7 +2118,11 @@ private func waitUntil(
 }
 
 private struct SucceedingConnectionService: KubernetesConnectionServicing {
-    func connect(contextName: String, kubeconfig: Kubeconfig) async throws -> KubernetesConnectionSnapshot {
+    func connect(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        progress: @escaping @Sendable (KubernetesConnectionProgress) async -> Void
+    ) async throws -> KubernetesConnectionSnapshot {
         KubernetesConnectionSnapshot(
             version: KubernetesVersion(
                 major: "1",
@@ -2126,6 +2149,26 @@ private struct SucceedingConnectionService: KubernetesConnectionServicing {
                     KubernetesNamespaceSummary(name: "default", phase: "Active"),
                     KubernetesNamespaceSummary(name: "vibekube-demo", phase: "Active")
                 ])
+            )
+        )
+    }
+}
+
+private struct ProgressReportingConnectionService: KubernetesConnectionServicing {
+    func connect(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        progress: @escaping @Sendable (KubernetesConnectionProgress) async -> Void
+    ) async throws -> KubernetesConnectionSnapshot {
+        await progress(.resolvingExecCredential(command: "tsh"))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        return KubernetesConnectionSnapshot(
+            version: KubernetesVersion(
+                major: "1",
+                minor: "30",
+                gitVersion: "v1.30.0",
+                gitCommit: nil,
+                platform: nil
             )
         )
     }
@@ -2225,7 +2268,11 @@ private struct ExecLaunchTestError: LocalizedError {
 }
 
 private struct WatchableWorkloadsConnectionService: KubernetesConnectionServicing {
-    func connect(contextName: String, kubeconfig: Kubeconfig) async throws -> KubernetesConnectionSnapshot {
+    func connect(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        progress: @escaping @Sendable (KubernetesConnectionProgress) async -> Void
+    ) async throws -> KubernetesConnectionSnapshot {
         KubernetesConnectionSnapshot(
             version: KubernetesVersion(
                 major: "1",
@@ -2298,7 +2345,11 @@ private struct WatchableWorkloadsConnectionService: KubernetesConnectionServicin
 }
 
 private struct DashboardConnectionService: KubernetesConnectionServicing {
-    func connect(contextName: String, kubeconfig: Kubeconfig) async throws -> KubernetesConnectionSnapshot {
+    func connect(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        progress: @escaping @Sendable (KubernetesConnectionProgress) async -> Void
+    ) async throws -> KubernetesConnectionSnapshot {
         KubernetesConnectionSnapshot(
             version: KubernetesVersion(
                 major: "1",
@@ -3664,7 +3715,11 @@ private struct AllPreviousLogService: KubernetesLogServicing {
 }
 
 private struct FailingConnectionService: KubernetesConnectionServicing {
-    func connect(contextName: String, kubeconfig: Kubeconfig) async throws -> KubernetesConnectionSnapshot {
+    func connect(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        progress: @escaping @Sendable (KubernetesConnectionProgress) async -> Void
+    ) async throws -> KubernetesConnectionSnapshot {
         throw KubernetesClientError.unauthorized("Nope")
     }
 }

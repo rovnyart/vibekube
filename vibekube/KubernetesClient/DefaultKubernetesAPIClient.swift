@@ -7,7 +7,10 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
     private let delegate: KubernetesURLSessionDelegate
     private let session: URLSession
 
-    init(configuration: KubernetesClientConfiguration) throws {
+    init(
+        configuration: KubernetesClientConfiguration,
+        sessionConfiguration: URLSessionConfiguration = .ephemeral
+    ) throws {
         guard !configuration.credential.requiresExecResolution else {
             throw KubernetesClientError.unsupportedAuthentication("Exec credentials must be resolved before creating a Kubernetes API client.")
         }
@@ -15,7 +18,6 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         self.configuration = configuration
 
         self.delegate = try KubernetesURLSessionDelegate(configuration: configuration)
-        let sessionConfiguration = URLSessionConfiguration.ephemeral
         sessionConfiguration.timeoutIntervalForRequest = 60
         sessionConfiguration.timeoutIntervalForResource = 3_600
 
@@ -280,6 +282,9 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            if Task.isCancelled {
+                throw CancellationError()
+            }
             throw mappedTransportError(error)
         }
     }
@@ -307,6 +312,9 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            if Task.isCancelled {
+                throw CancellationError()
+            }
             throw mappedTransportError(error)
         }
     }

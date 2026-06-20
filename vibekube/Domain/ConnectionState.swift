@@ -3,6 +3,7 @@ import Foundation
 enum ConnectionState: String, CaseIterable, Hashable {
     case disconnected
     case connecting
+    case authenticating
     case connected
     case unauthorized
     case unavailable
@@ -15,6 +16,8 @@ enum ConnectionState: String, CaseIterable, Hashable {
             "Disconnected"
         case .connecting:
             "Connecting"
+        case .authenticating:
+            "Signing In"
         case .connected:
             "Connected"
         case .unauthorized:
@@ -34,6 +37,8 @@ enum ConnectionState: String, CaseIterable, Hashable {
             "circle"
         case .connecting:
             "arrow.triangle.2.circlepath"
+        case .authenticating:
+            "person.crop.circle.badge.clock"
         case .connected:
             "checkmark.circle.fill"
         case .unauthorized:
@@ -51,7 +56,7 @@ enum ConnectionState: String, CaseIterable, Hashable {
         switch self {
         case .disconnected, .unavailable, .certificateError, .unauthorized:
             true
-        case .connecting, .connected, .unsupportedAuth:
+        case .connecting, .authenticating, .connected, .unsupportedAuth:
             false
         }
     }

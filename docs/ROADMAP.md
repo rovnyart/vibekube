@@ -218,8 +218,8 @@ Goal: connect to a selected cluster and discover available API resources.
 
 ### UX Notes
 
-- Show connection progress in the toolbar.
-- Show a signing-in state when an exec credential plugin is running, especially for Teleport/browser auth.
+- Show connection progress in the toolbar and dashboard status surfaces.
+- Show a `Signing In` state when an exec credential plugin is running, especially for Teleport/browser auth.
 - Display cluster version and active namespace near the dashboard header.
 - Surface permission errors inline per resource group.
 

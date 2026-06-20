@@ -67,6 +67,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var kubeconfigState: KubeconfigDiscoveryState
     @Published private(set) var lastRefreshedAt: Date?
     @Published private(set) var connectionErrorMessage: String?
+    @Published private(set) var connectionProgressMessage: String?
     @Published private(set) var discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot]
     @Published private(set) var resourceListStateByQuery: [ResourceListQuery: ResourceListLoadState]
     @Published private(set) var resourceWatchStatusByQuery: [ResourceListQuery: ResourceWatchStatus]
@@ -239,6 +240,7 @@ final class AppModel: ObservableObject {
         self.portForwardSessions = []
         self.execLaunches = []
         self.execLaunchErrorMessage = nil
+        self.connectionProgressMessage = nil
         self.diagnosticsFileLoggingEnabled = userPreferences.diagnosticsFileLoggingEnabled
         self.diagnosticsIncludeClusterNames = userPreferences.diagnosticsIncludeClusterNames
         self.diagnosticsRetentionDays = userPreferences.diagnosticsRetentionDays
@@ -404,6 +406,7 @@ final class AppModel: ObservableObject {
         cancelEnvSecretValueTasks()
         navigate(clusterID: id, resource: .dashboard)
         connectionErrorMessage = nil
+        connectionProgressMessage = nil
     }
 
     func selectResource(_ resource: ResourceNavigationItem) {
@@ -1091,6 +1094,7 @@ final class AppModel: ObservableObject {
         loadedKubeconfig = result.kubeconfig
         clusters = discoveredClusters
         connectionErrorMessage = nil
+        connectionProgressMessage = nil
         let validContextIDs = Set(discoveredClusters.map(\.id))
         stopPortForwardSessions { !validContextIDs.contains($0.contextID) }
         discoveryByContextID = discoveryByContextID.filter { validContextIDs.contains($0.key) }
@@ -1175,6 +1179,7 @@ final class AppModel: ObservableObject {
         cancelEnvSecretValueTasks()
         stopPortForwardSessions { $0.contextID == selectedClusterID }
         connectionErrorMessage = nil
+        connectionProgressMessage = nil
         recordDiagnostic(
             .info,
             category: "connection",
@@ -1223,7 +1228,10 @@ final class AppModel: ObservableObject {
             do {
                 let snapshot = try await connectionService.connect(
                     contextName: selectedClusterID,
-                    kubeconfig: kubeconfig
+                    kubeconfig: kubeconfig,
+                    progress: { progress in
+                        await self?.updateConnectionProgress(contextID: selectedClusterID, progress: progress)
+                    }
                 )
 
                 try Task.checkCancellation()
@@ -1254,6 +1262,7 @@ final class AppModel: ObservableObject {
         dashboardMetricsTask = nil
         podLogTask = nil
         connectionErrorMessage = nil
+        connectionProgressMessage = nil
         recordDiagnostic(
             .info,
             category: "connection",
@@ -1949,9 +1958,12 @@ final class AppModel: ObservableObject {
 
     private func cancelConnection(contextID: ClusterSummary.ID) {
         updateCluster(id: contextID) { cluster in
-            if cluster.connectionState == .connecting {
+            if cluster.connectionState == .connecting || cluster.connectionState == .authenticating {
                 cluster.connectionState = .disconnected
             }
+        }
+        if selectedClusterID == contextID {
+            connectionProgressMessage = nil
         }
         recordDiagnostic(
             .info,
@@ -1983,6 +1995,7 @@ final class AppModel: ObservableObject {
 
         if selectedClusterID == contextID {
             connectionErrorMessage = nil
+            connectionProgressMessage = nil
         }
 
         if selectedClusterID == contextID, selectedResource == .dashboard {
@@ -2003,6 +2016,7 @@ final class AppModel: ObservableObject {
 
         if selectedClusterID == contextID {
             connectionErrorMessage = error.localizedDescription
+            connectionProgressMessage = nil
         }
         recordDiagnostic(
             .error,
@@ -2018,6 +2032,18 @@ final class AppModel: ObservableObject {
         envSecretValueStateByQuery = envSecretValueStateByQuery.filter { $0.key.contextID != contextID }
         dashboardMetricsStateByQuery = dashboardMetricsStateByQuery.filter { $0.key.contextID != contextID }
         podLogStateByQuery = podLogStateByQuery.filter { $0.key.contextID != contextID }
+    }
+
+    private func updateConnectionProgress(
+        contextID: ClusterSummary.ID,
+        progress: KubernetesConnectionProgress
+    ) {
+        updateCluster(id: contextID) { cluster in
+            cluster.connectionState = progress.connectionState
+        }
+        if selectedClusterID == contextID {
+            connectionProgressMessage = progress.message
+        }
     }
 
     private func finishResourceList(
@@ -3765,7 +3791,11 @@ final class AppModel: ObservableObject {
 }
 
 private struct PreviewKubernetesConnectionService: KubernetesConnectionServicing {
-    func connect(contextName: String, kubeconfig: Kubeconfig) async throws -> KubernetesConnectionSnapshot {
+    func connect(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        progress: @escaping @Sendable (KubernetesConnectionProgress) async -> Void
+    ) async throws -> KubernetesConnectionSnapshot {
         KubernetesConnectionSnapshot(
             version: KubernetesVersion(
                 major: "1",
