@@ -10,6 +10,32 @@ struct KubernetesExecLaunchRequest: Equatable, Sendable {
     var terminalApp: ExternalTerminalApp
 }
 
+enum KubernetesExecCommandChoice: String, CaseIterable, Identifiable {
+    case sh
+    case bash
+    case ash
+    case zsh
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .sh:
+            "/bin/sh"
+        case .bash:
+            "/bin/bash"
+        case .ash:
+            "/bin/ash"
+        case .zsh:
+            "/bin/zsh"
+        }
+    }
+
+    var command: [String] {
+        [title]
+    }
+}
+
 protocol KubernetesExecLaunching {
     nonisolated func launchExec(request: KubernetesExecLaunchRequest) async throws
 }

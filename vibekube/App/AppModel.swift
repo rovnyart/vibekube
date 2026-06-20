@@ -932,7 +932,7 @@ final class AppModel: ObservableObject {
     func openPodExec(
         for pod: KubernetesUnstructuredResource,
         containerName: String? = nil,
-        command: [String] = ["/bin/sh"]
+        command: [String] = KubernetesExecCommandChoice.sh.command
     ) {
         guard let selectedClusterID,
               canOpenPodExec(for: pod),

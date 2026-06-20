@@ -453,6 +453,38 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelLaunchesSelectedPodExecShell() async throws {
+        let execLauncher = RecordingExecLauncher()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            execLauncher: execLauncher,
+            loadedKubeconfig: kubeconfig()
+        )
+        let pod = try podResource(name: "echo-web-abc", namespace: "vibekube-demo")
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.openPodExec(for: pod, containerName: "web", command: KubernetesExecCommandChoice.bash.command)
+        try await waitUntil("exec launch request") {
+            execLauncher.requests.count == 1
+        }
+
+        #expect(execLauncher.requests.first?.command == ["/bin/bash"])
+    }
+
+    @Test func kubernetesExecCommandChoicesExposeCommonShells() {
+        #expect(KubernetesExecCommandChoice.allCases.map(\.title) == [
+            "/bin/sh",
+            "/bin/bash",
+            "/bin/ash",
+            "/bin/zsh"
+        ])
+        #expect(KubernetesExecCommandChoice.sh.command == ["/bin/sh"])
+    }
+
+    @MainActor
     @Test func appModelUsesPreferredTerminalAppForPodExec() async throws {
         let execLauncher = RecordingExecLauncher()
         let model = AppModel(

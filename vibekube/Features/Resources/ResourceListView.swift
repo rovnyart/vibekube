@@ -853,8 +853,12 @@ private struct PodResourceContextMenu: View {
     let openDetail: () -> Void
 
     var body: some View {
-        Button {
-            appModel.openPodExec(for: pod)
+        Menu {
+            ForEach(KubernetesExecCommandChoice.allCases) { choice in
+                Button(choice.title) {
+                    appModel.openPodExec(for: pod, command: choice.command)
+                }
+            }
         } label: {
             Label("Exec Shell", systemImage: "terminal")
         }
@@ -4504,8 +4508,12 @@ private struct ResourceDetailContainersView: View {
                             ResourceContainerDebugSection(
                                 container: container,
                                 canExec: appModel.canOpenPodExec(for: row),
-                                exec: {
-                                    appModel.openPodExec(for: row, containerName: container.name)
+                                exec: { choice in
+                                    appModel.openPodExec(
+                                        for: row,
+                                        containerName: container.name,
+                                        command: choice.command
+                                    )
                                 }
                             )
                         }
@@ -4523,7 +4531,7 @@ private struct ResourceDetailContainersView: View {
 private struct ResourceContainerDebugSection: View {
     let container: KubernetesContainerSummary
     let canExec: Bool
-    let exec: () -> Void
+    let exec: (KubernetesExecCommandChoice) -> Void
 
     var body: some View {
         SectionSurface(title: container.name, systemImage: "shippingbox") {
@@ -4614,7 +4622,13 @@ private struct ResourceContainerDebugSection: View {
                     .foregroundStyle(container.ready == false ? .red : .secondary)
             }
 
-            Button(action: exec) {
+            Menu {
+                ForEach(KubernetesExecCommandChoice.allCases) { choice in
+                    Button(choice.title) {
+                        exec(choice)
+                    }
+                }
+            } label: {
                 Label("Exec", systemImage: "terminal")
             }
             .buttonStyle(.bordered)
