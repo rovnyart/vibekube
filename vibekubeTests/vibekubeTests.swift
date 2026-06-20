@@ -528,6 +528,38 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelClearsPodExecLaunchHistoryForOnePod() async throws {
+        let execLauncher = RecordingExecLauncher()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            execLauncher: execLauncher,
+            loadedKubeconfig: kubeconfig()
+        )
+        let firstPod = try podResource(name: "echo-web-abc", namespace: "vibekube-demo")
+        let secondPod = try podResource(name: "echo-web-def", namespace: "vibekube-demo")
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.openPodExec(for: firstPod, containerName: "web")
+        model.openPodExec(for: secondPod, containerName: "web")
+        try await waitUntil("two exec launches opened") {
+            model.execLaunches.count == 2 &&
+                model.execLaunches.allSatisfy { launch in
+                    if case .opened = launch.status {
+                        return true
+                    }
+                    return false
+                }
+        }
+
+        model.clearExecLaunchHistory(for: firstPod)
+
+        #expect(model.execLaunches.map(\.podName) == ["echo-web-def"])
+    }
+
+    @MainActor
     @Test func appModelRecordsFailedPodExecLaunchHistory() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,

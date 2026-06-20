@@ -846,6 +846,18 @@ private struct ResourceNameCell: View {
     }
 }
 
+private extension KubernetesUnstructuredResource {
+    var podExecContainerNames: [String] {
+        guard displayKind == "Pod" else {
+            return []
+        }
+
+        return spec?["containers"]?.arrayValue?.compactMap { container in
+            container["name"]?.stringValue
+        } ?? []
+    }
+}
+
 private struct PodResourceContextMenu: View {
     @EnvironmentObject private var appModel: AppModel
 
@@ -853,16 +865,12 @@ private struct PodResourceContextMenu: View {
     let openDetail: () -> Void
 
     var body: some View {
-        Menu {
-            ForEach(KubernetesExecCommandChoice.allCases) { choice in
-                Button(choice.title) {
-                    appModel.openPodExec(for: pod, command: choice.command)
-                }
-            }
-        } label: {
-            Label("Exec Shell", systemImage: "terminal")
-        }
-        .disabled(!appModel.canOpenPodExec(for: pod))
+        ResourcePodExecMenu(
+            title: "Open Shell",
+            pod: pod,
+            containerNames: pod.podExecContainerNames,
+            isEnabled: appModel.canOpenPodExec(for: pod)
+        )
 
         Button {
             openDetail()
@@ -2316,7 +2324,11 @@ private struct ResourceDetailOverviewView: View {
 
                 if appModel.canOpenPodExec(for: row) || !matchingExecLaunches.isEmpty {
                     SectionSurface(title: "Exec", systemImage: "terminal") {
-                        ResourcePodExecView(row: row, launches: matchingExecLaunches)
+                        ResourcePodExecView(
+                            row: row,
+                            containerNames: execContainerNames,
+                            launches: matchingExecLaunches
+                        )
                     }
                 }
 
@@ -2502,6 +2514,12 @@ private struct ResourceDetailOverviewView: View {
         }
     }
 
+    private var execContainerNames: [String] {
+        summary.containers
+            .filter { $0.kind == .container }
+            .map(\.name)
+    }
+
     private var relatedOwnedResourceActions: [ResourceOwnedRelationshipAction] {
         let name = summary.name ?? row.displayName
         guard !name.isEmpty else {
@@ -2573,28 +2591,25 @@ private struct ResourcePodExecView: View {
     @EnvironmentObject private var appModel: AppModel
 
     let row: KubernetesUnstructuredResource
+    let containerNames: [String]
     let launches: [ExecLaunchRecord]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                Menu {
-                    ForEach(KubernetesExecCommandChoice.allCases) { choice in
-                        Button(choice.title) {
-                            appModel.openPodExec(for: row, command: choice.command)
-                        }
-                    }
-                } label: {
-                    Label("Open Shell", systemImage: "terminal")
-                }
+                ResourcePodExecMenu(
+                    title: "Open Shell",
+                    pod: row,
+                    containerNames: containerNames,
+                    isEnabled: appModel.canOpenPodExec(for: row)
+                )
                 .buttonStyle(.bordered)
-                .disabled(!appModel.canOpenPodExec(for: row))
 
                 Spacer()
 
                 if !launches.isEmpty {
-                    Button("Clear History") {
-                        appModel.clearExecLaunchHistory()
+                    Button("Clear") {
+                        appModel.clearExecLaunchHistory(for: row)
                     }
                     .buttonStyle(.borderless)
                     .controlSize(.small)
@@ -2615,6 +2630,45 @@ private struct ResourcePodExecView: View {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+private struct ResourcePodExecMenu: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let title: String
+    let pod: KubernetesUnstructuredResource
+    let containerNames: [String]
+    let isEnabled: Bool
+
+    var body: some View {
+        Menu {
+            if containerNames.count > 1 {
+                ForEach(containerNames, id: \.self) { containerName in
+                    Menu(containerName) {
+                        shellButtons(containerName: containerName)
+                    }
+                }
+            } else {
+                shellButtons(containerName: containerNames.first)
+            }
+        } label: {
+            Label(title, systemImage: "terminal")
+        }
+        .disabled(!isEnabled)
+    }
+
+    @ViewBuilder
+    private func shellButtons(containerName: String?) -> some View {
+        ForEach(KubernetesExecCommandChoice.allCases) { choice in
+            Button(choice.title) {
+                appModel.openPodExec(
+                    for: pod,
+                    containerName: containerName,
+                    command: choice.command
+                )
             }
         }
     }
@@ -4769,7 +4823,7 @@ private struct ResourceContainerDebugSection: View {
                     }
                 }
             } label: {
-                Label("Exec", systemImage: "terminal")
+                Label("Open Shell", systemImage: "terminal")
             }
             .buttonStyle(.bordered)
             .controlSize(.small)

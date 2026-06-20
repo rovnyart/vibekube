@@ -1047,6 +1047,20 @@ final class AppModel: ObservableObject {
         execLaunches.removeAll()
     }
 
+    func clearExecLaunchHistory(for pod: KubernetesUnstructuredResource) {
+        guard let selectedClusterID,
+              let namespace = pod.metadata.namespace,
+              let podName = pod.metadata.name else {
+            return
+        }
+
+        execLaunches.removeAll { launch in
+            launch.contextID == selectedClusterID &&
+                launch.namespace == namespace &&
+                launch.podName == podName
+        }
+    }
+
     func clearExecLaunchError() {
         execLaunchErrorMessage = nil
     }
