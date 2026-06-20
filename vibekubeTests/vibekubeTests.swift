@@ -453,6 +453,65 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelRecordsPodExecLaunchHistory() async throws {
+        let execLauncher = RecordingExecLauncher()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            execLauncher: execLauncher,
+            loadedKubeconfig: kubeconfig()
+        )
+        let pod = try podResource(name: "echo-web-abc", namespace: "vibekube-demo")
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.openPodExec(for: pod, containerName: "web", command: KubernetesExecCommandChoice.ash.command)
+        try await waitUntil("exec launch history opened") {
+            if case .opened = model.execLaunches.first?.status {
+                return true
+            }
+            return false
+        }
+
+        let launch = try #require(model.execLaunches.first)
+        #expect(launch.contextID == "kind-vibekube-dev")
+        #expect(launch.namespace == "vibekube-demo")
+        #expect(launch.podName == "echo-web-abc")
+        #expect(launch.containerName == "web")
+        #expect(launch.command == ["/bin/ash"])
+        #expect(launch.displayTarget == "echo-web-abc / web")
+        #expect(launch.displayCommand == "/bin/ash")
+
+        model.clearExecLaunchHistory()
+        #expect(model.execLaunches.isEmpty)
+    }
+
+    @MainActor
+    @Test func appModelRecordsFailedPodExecLaunchHistory() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            execLauncher: FailingExecLauncher(error: ExecLaunchTestError(message: "terminal denied automation")),
+            loadedKubeconfig: kubeconfig()
+        )
+        let pod = try podResource(name: "echo-web-abc", namespace: "vibekube-demo")
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.openPodExec(for: pod, containerName: "web")
+        try await waitUntil("failed exec launch history") {
+            if case .failed("terminal denied automation") = model.execLaunches.first?.status {
+                return true
+            }
+            return false
+        }
+
+        #expect(model.execLaunchErrorMessage == "terminal denied automation")
+    }
+
+    @MainActor
     @Test func appModelLaunchesSelectedPodExecShell() async throws {
         let execLauncher = RecordingExecLauncher()
         let model = AppModel(
@@ -2044,6 +2103,22 @@ private final class RecordingExecLauncher: KubernetesExecLaunching {
         await MainActor.run {
             requests.append(request)
         }
+    }
+}
+
+private struct FailingExecLauncher: KubernetesExecLaunching {
+    var error: Error
+
+    nonisolated func launchExec(request: KubernetesExecLaunchRequest) async throws {
+        throw error
+    }
+}
+
+private struct ExecLaunchTestError: LocalizedError {
+    var message: String
+
+    var errorDescription: String? {
+        message
     }
 }
 

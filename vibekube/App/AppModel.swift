@@ -23,6 +23,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var dashboardMetricsStateByQuery: [DashboardMetricsQuery: DashboardMetricsLoadState]
     @Published private(set) var podLogStateByQuery: [PodLogQuery: PodLogLoadState]
     @Published private(set) var portForwardSessions: [PortForwardSession]
+    @Published private(set) var execLaunches: [ExecLaunchRecord]
     @Published private(set) var execLaunchErrorMessage: String?
     @Published private(set) var searchFocusRequestID = 0
     @Published private(set) var diagnosticsFileLoggingEnabled: Bool
@@ -183,6 +184,7 @@ final class AppModel: ObservableObject {
         self.dashboardMetricsStateByQuery = dashboardMetricsStateByQuery ?? [:]
         self.podLogStateByQuery = podLogStateByQuery ?? [:]
         self.portForwardSessions = []
+        self.execLaunches = []
         self.execLaunchErrorMessage = nil
         self.diagnosticsFileLoggingEnabled = userPreferences.diagnosticsFileLoggingEnabled
         self.diagnosticsIncludeClusterNames = userPreferences.diagnosticsIncludeClusterNames
@@ -946,6 +948,22 @@ final class AppModel: ObservableObject {
             return
         }
 
+        let launchID = UUID()
+        execLaunches.insert(
+            ExecLaunchRecord(
+                id: launchID,
+                contextID: selectedClusterID,
+                namespace: namespace,
+                podName: podName,
+                containerName: containerName,
+                command: command,
+                terminalApp: externalTerminalApp,
+                launchedAt: Date(),
+                status: .opening
+            ),
+            at: 0
+        )
+
         let request = KubernetesExecLaunchRequest(
             contextName: selectedClusterID,
             namespace: namespace,
@@ -959,10 +977,20 @@ final class AppModel: ObservableObject {
         Task { [weak self, execLauncher] in
             do {
                 try await execLauncher.launchExec(request: request)
+                self?.updateExecLaunch(launchID) { launch in
+                    launch.status = .opened
+                }
             } catch {
+                self?.updateExecLaunch(launchID) { launch in
+                    launch.status = .failed(error.localizedDescription)
+                }
                 self?.execLaunchErrorMessage = error.localizedDescription
             }
         }
+    }
+
+    func clearExecLaunchHistory() {
+        execLaunches.removeAll()
     }
 
     func clearExecLaunchError() {
@@ -3249,6 +3277,17 @@ final class AppModel: ObservableObject {
         }
 
         update(&portForwardSessions[index])
+    }
+
+    private func updateExecLaunch(
+        _ launchID: ExecLaunchRecord.ID,
+        _ update: (inout ExecLaunchRecord) -> Void
+    ) {
+        guard let index = execLaunches.firstIndex(where: { $0.id == launchID }) else {
+            return
+        }
+
+        update(&execLaunches[index])
     }
 
     private func navigate(

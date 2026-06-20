@@ -15,6 +15,7 @@ Goal: add practical debugging workflows: describe-style views, container details
 - [x] Active port-forward sessions are stopped when the app terminates.
 - [x] Port-forward starts detect local port conflicts before launching `kubectl`.
 - [x] Pod exec actions have a shell picker for common shells.
+- [x] External exec launches are visible in lightweight in-app history.
 
 ## Implementation Slices
 
@@ -58,7 +59,7 @@ Checkpoint: keep `kubectl` isolated behind a service protocol. Native API stream
 - [x] Select default shell command.
 - [x] Add terminal app preference.
 - [x] Add command/shell picker.
-- [ ] Track external exec launches as lightweight history.
+- [x] Track external exec launches as lightweight history.
 - [ ] Cleanup on app quit/context switch if future native sessions are added.
 
 ### 9.4 Debugging UX
@@ -86,7 +87,7 @@ Checkpoint: keep `kubectl` isolated behind a service protocol. Native API stream
 - [x] User can port-forward a service, deployment, or pod with declared ports.
 - [x] User can open a basic Pod exec shell in an external Terminal window.
 - [x] Active port-forward sessions are visible from the toolbar and detail overview.
-- [ ] External exec launches have a visible in-app history or native sessions never become hidden/orphaned.
+- [x] External exec launches have a visible in-app history or native sessions never become hidden/orphaned.
 
 ## Validation Commands
 

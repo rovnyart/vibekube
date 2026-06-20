@@ -10,6 +10,39 @@ struct KubernetesExecLaunchRequest: Equatable, Sendable {
     var terminalApp: ExternalTerminalApp
 }
 
+struct ExecLaunchRecord: Identifiable, Equatable {
+    enum Status: Equatable {
+        case opening
+        case opened
+        case failed(String)
+    }
+
+    var id: UUID
+    var contextID: String
+    var namespace: String
+    var podName: String
+    var containerName: String?
+    var command: [String]
+    var terminalApp: ExternalTerminalApp
+    var launchedAt: Date
+    var status: Status
+
+    var displayTarget: String {
+        if let containerName, !containerName.isEmpty {
+            return "\(podName) / \(containerName)"
+        }
+        return podName
+    }
+
+    var displayNamespace: String {
+        namespace
+    }
+
+    var displayCommand: String {
+        command.isEmpty ? "/bin/sh" : command.joined(separator: " ")
+    }
+}
+
 enum KubernetesExecCommandChoice: String, CaseIterable, Identifiable {
     case sh
     case bash
