@@ -4,7 +4,7 @@ This is a tiny disposable Kubernetes cluster for developing Vibekube against a r
 
 It uses [kind](https://kind.sigs.k8s.io/) on top of Docker and creates:
 
-- `vibekube-demo/echo-web`: two small nginx pods behind a service, with nginx access logs disabled to avoid noisy readiness-probe logs.
+- `vibekube-demo/echo-web`: two small nginx pods behind a service, serving a static browser-check page with nginx access logs disabled to avoid noisy readiness-probe logs.
 - `vibekube-demo/log-counter`: a pod that writes a controlled log line every two seconds.
 - `vibekube-demo/broken-rollout`: an intentionally unavailable Deployment for rollout/status testing.
 - `vibekube-demo/stateful-cache` and `vibekube-demo/broken-stateful-cache`: healthy and unavailable StatefulSets for ordered workload/status testing.
@@ -33,6 +33,8 @@ The demo web service is exposed at:
 http://localhost:18080
 ```
 
+It should render a small "Vibekube echo-web" page in the browser.
+
 ## Try It
 
 ```sh
@@ -46,6 +48,7 @@ kubectl -n vibekube-demo get statefulsets
 kubectl -n vibekube-demo get daemonsets
 kubectl -n vibekube-demo get cronjobs
 kubectl -n vibekube-demo describe svc echo-web
+curl http://localhost:18080
 kubectl -n vibekube-demo describe pod -l app.kubernetes.io/name=echo-web
 kubectl -n vibekube-demo get configmap,secret
 kubectl -n vibekube-demo get jobs
