@@ -2,6 +2,8 @@
 
 Use this checklist before publishing a DMG outside the development machine.
 
+Historical validation: Vibekube has been used daily on a separate work Mac since version 0.3.0, including real-cluster workflows. That closes the Phase 11 clean-machine validation milestone as of 2026-06-20. Keep the checklist below as a fresh per-release pass for each new DMG.
+
 ## Build
 
 - [ ] Confirm `docs/PROGRESS.md` has no missing must-fix item for the release.

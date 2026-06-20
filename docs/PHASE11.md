@@ -14,7 +14,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] Release script exists.
 - [x] App version/build appears in About Vibekube.
 - [x] Signed/notarized DMG path has been exercised on the development machine.
-- [ ] Clean-machine release validation complete.
+- [x] Clean-machine release validation complete.
 - [x] Diagnostics export exists.
 - [x] Optional local JSONL file logging exists and is disabled by default.
 - [x] Diagnostics retention and cluster-name inclusion settings exist.
@@ -73,9 +73,11 @@ Audit result: kubeconfig parsing does not log raw kubeconfig content, bearer tok
 - [x] Configure signing.
 - [x] Configure notarization path.
 - [x] Create release build script.
-- [ ] Test app on a clean macOS user profile.
+- [x] Test app on a clean macOS user profile or non-development Mac.
 - [x] Add release checklist.
-- [ ] Confirm released DMG against at least one non-development Mac.
+- [x] Confirm released DMG against at least one non-development Mac.
+
+Validation note: the app has been used daily on a separate work Mac since version 0.3.0, including real-cluster workflows. This closes the Phase 11 clean-machine/non-development-machine validation item as of 2026-06-20. Keep `docs/RELEASE_CHECKLIST.md` as a per-release checklist for future DMG builds.
 
 Checkpoint: stop before changing sandbox/signing settings if they affect local development.
 
