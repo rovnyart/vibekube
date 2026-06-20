@@ -236,6 +236,7 @@ struct vibekubeTests {
             clusters: ClusterSummary.preview,
             connectionService: SucceedingConnectionService(),
             portForwardService: portForwardService,
+            localPortChecker: RecordingLocalPortChecker(),
             loadedKubeconfig: kubeconfig()
         )
         let target = KubernetesPortForwardTargetSummary(
@@ -291,6 +292,7 @@ struct vibekubeTests {
             clusters: ClusterSummary.preview,
             connectionService: SucceedingConnectionService(),
             portForwardService: portForwardService,
+            localPortChecker: RecordingLocalPortChecker(),
             loadedKubeconfig: kubeconfig()
         )
         let firstTarget = KubernetesPortForwardTargetSummary(
@@ -343,6 +345,7 @@ struct vibekubeTests {
             clusters: ClusterSummary.preview,
             connectionService: SucceedingConnectionService(),
             portForwardService: portForwardService,
+            localPortChecker: RecordingLocalPortChecker(),
             loadedKubeconfig: kubeconfig()
         )
         let target = KubernetesPortForwardTargetSummary(
@@ -365,6 +368,37 @@ struct vibekubeTests {
         )
 
         #expect(model.portForwardSession(for: target)?.isActive == false)
+    }
+
+    @MainActor
+    @Test func appModelFailsPortForwardWhenLocalPortIsInUse() async throws {
+        let portForwardService = RecordingPortForwardService()
+        let localPortChecker = RecordingLocalPortChecker(unavailablePorts: [10080])
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            portForwardService: portForwardService,
+            localPortChecker: localPortChecker,
+            loadedKubeconfig: kubeconfig()
+        )
+        let target = KubernetesPortForwardTargetSummary(
+            resourceKind: "service",
+            resourceName: "echo-web",
+            namespace: "vibekube-demo",
+            portName: "http",
+            localPort: 10080,
+            remotePort: 80,
+            protocolName: "TCP"
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.startPortForward(target: target)
+
+        #expect(localPortChecker.checkedPorts == [10080])
+        #expect(portForwardService.requests.isEmpty)
+        #expect(model.portForwardSession(for: target)?.status == .failed("Local port 10080 is already in use."))
     }
 
     @Test func kubectlPortForwardEnvironmentIncludesCommonHomebrewPaths() {
@@ -1901,6 +1935,20 @@ private struct SucceedingConnectionService: KubernetesConnectionServicing {
                 ])
             )
         )
+    }
+}
+
+private final class RecordingLocalPortChecker: LocalPortChecking {
+    private let unavailablePorts: Set<Int>
+    var checkedPorts: [Int] = []
+
+    init(unavailablePorts: Set<Int> = []) {
+        self.unavailablePorts = unavailablePorts
+    }
+
+    func isLocalPortAvailable(_ port: Int) -> Bool {
+        checkedPorts.append(port)
+        return !unavailablePorts.contains(port)
     }
 }
 

@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 struct KubernetesPortForwardRequest: Equatable, Sendable {
@@ -26,6 +27,60 @@ protocol KubernetesPortForwardServicing {
         request: KubernetesPortForwardRequest,
         onTermination: @escaping @Sendable (KubernetesPortForwardTermination) -> Void
     ) async throws -> KubernetesPortForwardHandle
+}
+
+protocol LocalPortChecking {
+    func isLocalPortAvailable(_ port: Int) -> Bool
+}
+
+struct SocketLocalPortChecker: LocalPortChecking {
+    func isLocalPortAvailable(_ port: Int) -> Bool {
+        guard (1...65_535).contains(port) else {
+            return false
+        }
+
+        return canBindIPv4(port: port) && canBindIPv6(port: port)
+    }
+
+    private func canBindIPv4(port: Int) -> Bool {
+        let descriptor = socket(AF_INET, SOCK_STREAM, 0)
+        guard descriptor >= 0 else {
+            return false
+        }
+        defer { close(descriptor) }
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = UInt16(port).bigEndian
+        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+
+        return withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { socketAddress in
+                bind(descriptor, socketAddress, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
+            }
+        }
+    }
+
+    private func canBindIPv6(port: Int) -> Bool {
+        let descriptor = socket(AF_INET6, SOCK_STREAM, 0)
+        guard descriptor >= 0 else {
+            return false
+        }
+        defer { close(descriptor) }
+
+        var address = sockaddr_in6()
+        address.sin6_len = UInt8(MemoryLayout<sockaddr_in6>.size)
+        address.sin6_family = sa_family_t(AF_INET6)
+        address.sin6_port = UInt16(port).bigEndian
+        address.sin6_addr = in6addr_loopback
+
+        return withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { socketAddress in
+                bind(descriptor, socketAddress, socklen_t(MemoryLayout<sockaddr_in6>.size)) == 0
+            }
+        }
+    }
 }
 
 struct KubectlPortForwardService: KubernetesPortForwardServicing {

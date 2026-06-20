@@ -50,6 +50,7 @@ final class AppModel: ObservableObject {
     private let metricsService: KubernetesMetricsServicing?
     private let logService: KubernetesLogServicing?
     private let portForwardService: KubernetesPortForwardServicing?
+    private let localPortChecker: LocalPortChecking
     private let execLauncher: KubernetesExecLaunching?
     private let diagnosticsLogger: DiagnosticsLogger
     private var userPreferences: UserPreferencesProviding
@@ -132,6 +133,7 @@ final class AppModel: ObservableObject {
         metricsService: KubernetesMetricsServicing? = nil,
         logService: KubernetesLogServicing? = nil,
         portForwardService: KubernetesPortForwardServicing? = nil,
+        localPortChecker: LocalPortChecking = SocketLocalPortChecker(),
         execLauncher: KubernetesExecLaunching? = nil,
         userPreferences: UserPreferencesProviding? = nil,
         loadedKubeconfig: Kubeconfig? = nil,
@@ -167,6 +169,7 @@ final class AppModel: ObservableObject {
         self.metricsService = metricsService
         self.logService = logService
         self.portForwardService = portForwardService
+        self.localPortChecker = localPortChecker
         self.execLauncher = execLauncher
         self.diagnosticsLogger = diagnosticsLogger
         self.userPreferences = userPreferences
@@ -865,6 +868,14 @@ final class AppModel: ObservableObject {
 
         guard let portForwardService else {
             failPortForwardSession(sessionID, message: "Port forwarding is not available in preview mode.")
+            return
+        }
+
+        guard localPortChecker.isLocalPortAvailable(target.localPort) else {
+            failPortForwardSession(
+                sessionID,
+                message: "Local port \(target.localPort) is already in use."
+            )
             return
         }
 

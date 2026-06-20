@@ -13,6 +13,7 @@ Goal: add practical debugging workflows: describe-style views, container details
 - [x] Basic external-terminal Pod exec support exists.
 - [x] Active port-forward sessions can be stopped safely.
 - [x] Active port-forward sessions are stopped when the app terminates.
+- [x] Port-forward starts detect local port conflicts before launching `kubectl`.
 
 ## Implementation Slices
 
@@ -38,7 +39,7 @@ Goal: add practical debugging workflows: describe-style views, container details
 - [x] Use isolated `kubectl` adapter for the first slice.
 - [x] Add `PortForwardSession` model.
 - [x] Add deterministic local port defaults.
-- [ ] Detect local port conflicts.
+- [x] Detect local port conflicts.
 - [x] Start session.
 - [x] Stop session.
 - [x] Show active sessions.
