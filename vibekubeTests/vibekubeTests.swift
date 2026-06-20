@@ -371,6 +371,46 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelExplainsPortForwardStreamingProtocolFailures() async throws {
+        let portForwardService = TerminatingPortForwardService(
+            termination: KubernetesPortForwardTermination(
+                exitCode: 1,
+                userStopped: false,
+                message: "error upgrading connection: websocket: bad handshake"
+            )
+        )
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            portForwardService: portForwardService,
+            localPortChecker: RecordingLocalPortChecker(),
+            loadedKubeconfig: kubeconfig()
+        )
+        let target = KubernetesPortForwardTargetSummary(
+            resourceKind: "service",
+            resourceName: "echo-web",
+            namespace: "vibekube-demo",
+            portName: "http",
+            localPort: 10080,
+            remotePort: 80,
+            protocolName: "TCP"
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.startPortForward(target: target)
+        try await waitUntil("port-forward streaming explanation") {
+            guard case .failed(let message) = model.portForwardSession(for: target)?.status else {
+                return false
+            }
+            return message.contains("Streaming connection failed.") &&
+                message.contains("WebSocket/SPDY upgrades") &&
+                message.contains("websocket: bad handshake")
+        }
+    }
+
+    @MainActor
     @Test func appModelFailsPortForwardWhenLocalPortIsInUse() async throws {
         let portForwardService = RecordingPortForwardService()
         let localPortChecker = RecordingLocalPortChecker(unavailablePorts: [10080])
@@ -509,6 +549,36 @@ struct vibekubeTests {
         }
 
         #expect(model.execLaunchErrorMessage == "terminal denied automation")
+    }
+
+    @MainActor
+    @Test func appModelExplainsExecRBACFailures() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            execLauncher: FailingExecLauncher(
+                error: ExecLaunchTestError(
+                    message: "Error from server (Forbidden): pods \"echo-web-abc\" is forbidden: User \"dev\" cannot create resource \"pods/exec\""
+                )
+            ),
+            loadedKubeconfig: kubeconfig()
+        )
+        let pod = try podResource(name: "echo-web-abc", namespace: "vibekube-demo")
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        model.openPodExec(for: pod, containerName: "web")
+        try await waitUntil("exec rbac explanation") {
+            guard case .failed(let message) = model.execLaunches.first?.status else {
+                return false
+            }
+            return message.contains("RBAC denied exec.") &&
+                message.contains("pods/exec") &&
+                message.contains("Error from server (Forbidden)")
+        }
+
+        #expect(model.execLaunchErrorMessage?.contains("RBAC denied exec.") == true)
     }
 
     @MainActor

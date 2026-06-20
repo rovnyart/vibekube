@@ -69,7 +69,7 @@ Checkpoint: keep `kubectl` isolated behind a service protocol. Native API stream
 - [x] Add clear active port-forward stop controls.
 - [x] Add Pod context menu action for exec.
 - [x] Add per-container exec actions outside the Overview tab.
-- [ ] Add failure explanations for RBAC/unsupported protocol.
+- [x] Add failure explanations for RBAC/unsupported protocol.
 
 ### 9.5 Tests
 

@@ -6,6 +6,59 @@ private struct ResourceWatchEventBatch {
     var lastEventAt: Date = Date()
 }
 
+private enum DebugActionFailureExplanation {
+    enum Action {
+        case exec
+        case portForward
+    }
+
+    static func explain(_ message: String, action: Action) -> String {
+        if let rbacExplanation = rbacExplanation(for: message, action: action) {
+            return "\(rbacExplanation) \(message)"
+        }
+
+        if isStreamingProtocolFailure(message) {
+            return "Streaming connection failed. Kubernetes \(action.name) requires an upgraded API connection; check that the API server or proxy supports WebSocket/SPDY upgrades. \(message)"
+        }
+
+        return message
+    }
+
+    private static func rbacExplanation(for message: String, action: Action) -> String? {
+        let normalized = message.lowercased()
+        guard normalized.contains("forbidden") else {
+            return nil
+        }
+
+        switch action {
+        case .exec:
+            return "RBAC denied exec. Grant create on pods/exec in this namespace."
+        case .portForward:
+            return "RBAC denied port-forwarding. Grant create on pods/portforward in this namespace."
+        }
+    }
+
+    private static func isStreamingProtocolFailure(_ message: String) -> Bool {
+        let normalized = message.lowercased()
+        return normalized.contains("unable to upgrade connection") ||
+            normalized.contains("error upgrading connection") ||
+            normalized.contains("upgrade request required") ||
+            normalized.contains("spdy") ||
+            (normalized.contains("websocket") && normalized.contains("upgrade"))
+    }
+}
+
+private extension DebugActionFailureExplanation.Action {
+    var name: String {
+        switch self {
+        case .exec:
+            "exec"
+        case .portForward:
+            "port-forward"
+        }
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var clusters: [ClusterSummary]
@@ -981,10 +1034,11 @@ final class AppModel: ObservableObject {
                     launch.status = .opened
                 }
             } catch {
+                let message = self?.explainedExecFailureMessage(error.localizedDescription) ?? error.localizedDescription
                 self?.updateExecLaunch(launchID) { launch in
-                    launch.status = .failed(error.localizedDescription)
+                    launch.status = .failed(message)
                 }
-                self?.execLaunchErrorMessage = error.localizedDescription
+                self?.execLaunchErrorMessage = message
             }
         }
     }
@@ -3256,7 +3310,9 @@ final class AppModel: ObservableObject {
                 session.status = .stopped
             } else {
                 let message = termination.message.map { ": \($0)" } ?? ""
-                session.status = .failed("kubectl exited with code \(termination.exitCode)\(message)")
+                session.status = .failed(
+                    explainedPortForwardFailureMessage("kubectl exited with code \(termination.exitCode)\(message)")
+                )
             }
         }
     }
@@ -3264,7 +3320,7 @@ final class AppModel: ObservableObject {
     private func failPortForwardSession(_ sessionID: PortForwardSession.ID, message: String) {
         portForwardHandlesBySessionID[sessionID] = nil
         updatePortForwardSession(sessionID) { session in
-            session.status = .failed(message)
+            session.status = .failed(explainedPortForwardFailureMessage(message))
         }
     }
 
@@ -3288,6 +3344,14 @@ final class AppModel: ObservableObject {
         }
 
         update(&execLaunches[index])
+    }
+
+    private func explainedPortForwardFailureMessage(_ message: String) -> String {
+        DebugActionFailureExplanation.explain(message, action: .portForward)
+    }
+
+    private func explainedExecFailureMessage(_ message: String) -> String {
+        DebugActionFailureExplanation.explain(message, action: .exec)
     }
 
     private func navigate(
