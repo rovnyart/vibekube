@@ -344,6 +344,8 @@ private extension SimpleYAMLValue {
             return .array(sequence.map(\.kubernetesJSONValue))
         case .scalar(let value):
             return Self.scalarJSONValue(value)
+        case .quotedScalar(let value):
+            return .string(value)
         case .null:
             return .null
         }

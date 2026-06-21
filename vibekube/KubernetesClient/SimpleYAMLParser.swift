@@ -4,6 +4,7 @@ enum SimpleYAMLValue: Equatable {
     case mapping([String: SimpleYAMLValue])
     case sequence([SimpleYAMLValue])
     case scalar(String)
+    case quotedScalar(String)
     case null
 
     var mapping: [String: SimpleYAMLValue]? {
@@ -16,7 +17,7 @@ enum SimpleYAMLValue: Equatable {
 
     var string: String? {
         switch self {
-        case .scalar(let value):
+        case .scalar(let value), .quotedScalar(let value):
             value
         case .null:
             nil
@@ -26,7 +27,7 @@ enum SimpleYAMLValue: Equatable {
     }
 
     var bool: Bool? {
-        guard let string else { return nil }
+        guard case .scalar(let string) = self else { return nil }
         switch string.lowercased() {
         case "true", "yes":
             return true
@@ -43,6 +44,11 @@ struct SimpleYAMLParser {
         var indent: Int
         var content: String
         var number: Int
+    }
+
+    private struct BlockScalarStyle {
+        var folded: Bool
+        var appendsTrailingNewline: Bool
     }
 
     private var lines: [Line] = []
@@ -100,6 +106,8 @@ struct SimpleYAMLParser {
                 } else {
                     mapping[keyValue.key] = .null
                 }
+            } else if let style = blockScalarStyle(keyValue.value) {
+                mapping[keyValue.key] = consumeBlockScalar(parentIndent: indent, style: style)
             } else {
                 mapping[keyValue.key] = parseScalar(keyValue.value)
             }
@@ -131,6 +139,11 @@ struct SimpleYAMLParser {
                 continue
             }
 
+            if let style = blockScalarStyle(String(itemContent)) {
+                values.append(consumeBlockScalar(parentIndent: indent, style: style))
+                continue
+            }
+
             if let keyValue = parseKeyValue(itemContent) {
                 var item: [String: SimpleYAMLValue] = [:]
                 if keyValue.value.isEmpty {
@@ -139,6 +152,8 @@ struct SimpleYAMLParser {
                     } else {
                         item[keyValue.key] = .null
                     }
+                } else if let style = blockScalarStyle(keyValue.value) {
+                    item[keyValue.key] = consumeBlockScalar(parentIndent: indent, style: style)
                 } else {
                     item[keyValue.key] = parseScalar(keyValue.value)
                 }
@@ -164,6 +179,35 @@ struct SimpleYAMLParser {
 
         let next = lines[index]
         return next.indent > indent || (next.indent == indent && next.content.hasPrefix("-"))
+    }
+
+    private mutating func consumeBlockScalar(parentIndent: Int, style: BlockScalarStyle) -> SimpleYAMLValue {
+        var values: [String] = []
+        while index < lines.count, lines[index].indent > parentIndent {
+            values.append(lines[index].content)
+            index += 1
+        }
+
+        let separator = style.folded ? " " : "\n"
+        let suffix = values.isEmpty || !style.appendsTrailingNewline ? "" : "\n"
+        return .quotedScalar(values.joined(separator: separator) + suffix)
+    }
+
+    private func blockScalarStyle(_ value: String) -> BlockScalarStyle? {
+        guard let indicator = value.first, indicator == "|" || indicator == ">" else { return nil }
+
+        var appendsTrailingNewline = true
+        for character in value.dropFirst() {
+            if character == "-" {
+                appendsTrailingNewline = false
+            } else if character == "+" {
+                appendsTrailingNewline = true
+            } else if !character.isNumber {
+                return nil
+            }
+        }
+
+        return BlockScalarStyle(folded: indicator == ">", appendsTrailingNewline: appendsTrailingNewline)
     }
 
     private func preprocess(_ rawYAML: String) -> [Line] {
@@ -231,7 +275,13 @@ struct SimpleYAMLParser {
         if value == "[]" {
             return .sequence([])
         }
-        return .scalar(unquote(value))
+        if value.count >= 2, value.first == "\"", value.last == "\"" {
+            return .quotedScalar(unescapeDoubleQuoted(String(value.dropFirst().dropLast())))
+        }
+        if value.count >= 2, value.first == "'", value.last == "'" {
+            return .quotedScalar(String(value.dropFirst().dropLast()))
+        }
+        return .scalar(value)
     }
 
     private func isStandaloneInlineCollection(_ value: String) -> Bool {

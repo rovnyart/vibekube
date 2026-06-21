@@ -1640,11 +1640,15 @@ enum KubernetesYAMLRenderer {
         let reserved = ["false", "null", "true", "~"]
         let simplePattern = #"^[A-Za-z0-9_./:@-]+$"#
         let isSimple = value.range(of: simplePattern, options: .regularExpression) != nil
-        if isSimple, !reserved.contains(value.lowercased()) {
+        if isSimple, !reserved.contains(value.lowercased()), !isPlainNumber(value) {
             return value
         }
 
         return "\"\(value.map(escapedCharacter).joined())\""
+    }
+
+    private static func isPlainNumber(_ value: String) -> Bool {
+        value.range(of: #"^-?(0|[1-9][0-9]*)(\.[0-9]+)?$"#, options: .regularExpression) != nil
     }
 
     private static func escapedKey(_ key: String) -> String {

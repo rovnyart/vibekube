@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import WebKit
 
 struct ManifestYAMLView: View {
     @State private var searchText = ""
@@ -683,362 +684,393 @@ private struct ManifestYAMLEditorView: NSViewRepresentable {
         Coordinator(text: $text)
     }
 
-    func makeNSView(context: Context) -> ManifestYAMLEditorContainerView {
-        let container = ManifestYAMLEditorContainerView()
-        let scrollView = ManifestYAMLEditorScrollView()
-        scrollView.borderType = .noBorder
-        scrollView.drawsBackground = true
-        scrollView.backgroundColor = .textBackgroundColor
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.hasVerticalRuler = true
-        scrollView.rulersVisible = true
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
+    func makeNSView(context: Context) -> WKWebView {
+        let userContentController = WKUserContentController()
+        userContentController.add(context.coordinator, name: "editor")
 
-        let textView = ManifestYAMLEditingTextView(frame: .zero)
-        textView.delegate = context.coordinator
-        textView.isEditable = true
-        textView.isSelectable = true
-        textView.isRichText = false
-        textView.importsGraphics = false
-        textView.allowsUndo = true
-        textView.drawsBackground = true
-        textView.backgroundColor = .textBackgroundColor
-        textView.insertionPointColor = .labelColor
-        textView.textContainerInset = NSSize(width: 12, height: 10)
-        textView.font = ManifestYAMLAttributedRenderer.font
-        textView.textColor = .labelColor
-        textView.usesFindBar = true
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticTextReplacementEnabled = false
-        textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.isContinuousSpellCheckingEnabled = false
-        textView.minSize = NSSize(width: 0, height: scrollView.contentSize.height)
-        textView.maxSize = NSSize(
-            width: CGFloat.greatestFiniteMagnitude,
-            height: CGFloat.greatestFiniteMagnitude
-        )
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = true
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.containerSize = NSSize(
-            width: CGFloat.greatestFiniteMagnitude,
-            height: CGFloat.greatestFiniteMagnitude
-        )
-        textView.textContainer?.widthTracksTextView = false
-        textView.textContainer?.lineFragmentPadding = 0
-        textView.typingAttributes = ManifestYAMLAttributedRenderer.editorTypingAttributes
-        textView.setAccessibilityIdentifier("resource.detail.yaml.editor.text")
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController = userContentController
 
-        scrollView.documentView = textView
-        let rulerView = ManifestYAMLLineNumberRulerView(textView: textView)
-        scrollView.verticalRulerView = rulerView
-        container.addSubview(scrollView)
-        NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
-        ])
-        context.coordinator.textView = textView
-        context.coordinator.rulerView = rulerView
-        context.coordinator.scrollView = scrollView
-        context.coordinator.apply(text, scrollToTop: true)
-        return container
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.navigationDelegate = context.coordinator
+        webView.setValue(false, forKey: "drawsBackground")
+        webView.loadHTMLString(Self.htmlDocument(initialText: text), baseURL: nil)
+        context.coordinator.webView = webView
+        return webView
     }
 
-    func updateNSView(_ container: ManifestYAMLEditorContainerView, context: Context) {
-        guard let textView = context.coordinator.textView,
-              let scrollView = context.coordinator.scrollView else {
-            return
-        }
-
-        if textView.string != text {
-            context.coordinator.apply(text, scrollToTop: true)
-        } else {
-            context.coordinator.highlightVisibleLine()
-        }
-
-        context.coordinator.rulerView?.needsDisplay = true
-        Self.resizeDocumentView(textView, in: scrollView)
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        context.coordinator.setText(text, in: webView)
     }
 
-    private static func resizeDocumentView(_ textView: NSTextView, in scrollView: NSScrollView) {
-        guard let layoutManager = textView.layoutManager,
-              let textContainer = textView.textContainer else {
-            return
+    private static func htmlDocument(initialText: String) -> String {
+        let initialJSON = jsonStringLiteral(initialText)
+        return #"""
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+:root {
+    color-scheme: light dark;
+    --background: Canvas;
+    --foreground: CanvasText;
+    --gutter: color-mix(in srgb, CanvasText 35%, Canvas);
+    --gutter-bg: color-mix(in srgb, CanvasText 4%, Canvas);
+    --divider: color-mix(in srgb, CanvasText 14%, Canvas);
+    --current-line: color-mix(in srgb, Highlight 12%, transparent);
+    --key: #0891b2;
+    --punctuation: color-mix(in srgb, CanvasText 48%, Canvas);
+    --string: #16a34a;
+    --number: #d97706;
+    --boolean: #9333ea;
+    --null: color-mix(in srgb, CanvasText 52%, Canvas);
+    --danger: #dc2626;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--background);
+}
+
+body {
+    font: 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    color: var(--foreground);
+}
+
+#shell {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    width: 100%;
+    height: 100%;
+    background: var(--background);
+}
+
+#gutter {
+    overflow: hidden;
+    padding: 10px 8px 10px 0;
+    box-sizing: border-box;
+    border-right: 1px solid var(--divider);
+    background: var(--gutter-bg);
+    color: var(--gutter);
+    text-align: right;
+    line-height: 17px;
+    user-select: none;
+}
+
+#editorLayer {
+    position: relative;
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--background);
+}
+
+#highlight,
+#editor {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    margin: 0;
+    border: 0;
+    padding: 10px 12px;
+    font: inherit;
+    line-height: 17px;
+    tab-size: 2;
+    white-space: pre;
+}
+
+#highlight {
+    z-index: 1;
+    pointer-events: none;
+    min-width: 100%;
+    min-height: 100%;
+    color: var(--foreground);
+}
+
+#currentLine {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 17px;
+    background: var(--current-line);
+    pointer-events: none;
+    z-index: 0;
+}
+
+#editor {
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    resize: none;
+    outline: none;
+    overflow: auto;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.01);
+    caret-color: var(--foreground);
+    -webkit-text-fill-color: rgba(0, 0, 0, 0.01);
+}
+
+#editor::selection {
+    background: color-mix(in srgb, Highlight 38%, transparent);
+}
+
+.key { color: var(--key); }
+.punctuation { color: var(--punctuation); }
+.string { color: var(--string); }
+.number { color: var(--number); }
+.boolean { color: var(--boolean); }
+.null { color: var(--null); }
+.danger { color: var(--danger); }
+</style>
+</head>
+<body>
+<div id="shell">
+    <div id="gutter" aria-hidden="true"></div>
+    <div id="editorLayer">
+        <div id="currentLine" aria-hidden="true"></div>
+        <pre id="highlight" aria-hidden="true"></pre>
+        <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="off" wrap="off" aria-label="YAML editor"></textarea>
+    </div>
+</div>
+<script>
+const editor = document.getElementById("editor");
+const highlight = document.getElementById("highlight");
+const gutter = document.getElementById("gutter");
+const currentLine = document.getElementById("currentLine");
+let isApplyingNativeText = false;
+
+function escapeHTML(value) {
+    return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+}
+
+function classForScalar(value) {
+    const trimmed = value.trim();
+    if (trimmed === "&lt;redacted&gt;") return "danger";
+    if (/^".*"$/.test(trimmed) || /^'.*'$/.test(trimmed)) return "string";
+    if (/^(true|false)$/i.test(trimmed)) return "boolean";
+    if (/^(null|\{\}|\[\])$/i.test(trimmed)) return "null";
+    if (/^-?\d+(\.\d+)?$/.test(trimmed)) return "number";
+    return "string";
+}
+
+function firstSeparator(line) {
+    let quoted = false;
+    let escaped = false;
+    for (let index = 0; index < line.length; index += 1) {
+        const character = line[index];
+        if (escaped) {
+            escaped = false;
+            continue;
         }
+        if (character === "\\") {
+            escaped = true;
+            continue;
+        }
+        if (character === "\"") {
+            quoted = !quoted;
+            continue;
+        }
+        if (character === ":" && !quoted) {
+            const next = line[index + 1];
+            if (next === undefined || /\s/.test(next)) return index;
+        }
+    }
+    return -1;
+}
 
-        layoutManager.ensureLayout(for: textContainer)
-        let usedRect = layoutManager.usedRect(for: textContainer)
-        let inset = textView.textContainerInset
-        let width = max(scrollView.contentSize.width, ceil(usedRect.width + inset.width * 2 + 24))
-        let height = max(scrollView.contentSize.height, ceil(usedRect.height + inset.height * 2 + 24))
-        let size = NSSize(width: max(1, width), height: max(1, height))
+function highlightLine(rawLine) {
+    const line = escapeHTML(rawLine);
+    const firstText = line.search(/\S/);
+    if (firstText < 0) return line;
 
-        if textView.frame.size != size {
-            textView.setFrameSize(size)
+    let prefix = "";
+    let contentStart = firstText;
+    if (line[firstText] === "-") {
+        prefix = line.slice(0, firstText) + '<span class="punctuation">-</span>';
+        contentStart = firstText + 1;
+        while (contentStart < line.length && /\s/.test(line[contentStart])) {
+            prefix += line[contentStart];
+            contentStart += 1;
         }
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    const colon = firstSeparator(line);
+    if (colon > contentStart) {
+        const beforeKey = prefix ? "" : line.slice(0, contentStart);
+        const key = line.slice(contentStart, colon);
+        const afterColon = line.slice(colon + 1);
+        const valueStart = afterColon.search(/\S/);
+        if (valueStart < 0) {
+            return beforeKey + prefix + '<span class="key">' + key + '</span><span class="punctuation">:</span>' + afterColon;
+        }
+        const spacing = afterColon.slice(0, valueStart);
+        const value = afterColon.slice(valueStart);
+        return beforeKey + prefix + '<span class="key">' + key + '</span><span class="punctuation">:</span>' + spacing + '<span class="' + classForScalar(value) + '">' + value + '</span>';
+    }
+
+    if (prefix) {
+        const value = line.slice(contentStart);
+        return prefix + '<span class="' + classForScalar(value) + '">' + value + '</span>';
+    }
+
+    return line;
+}
+
+function lineIndent(text, location) {
+    const lineStart = text.lastIndexOf("\n", Math.max(0, location - 1)) + 1;
+    const line = text.slice(lineStart, location);
+    const base = (line.match(/^\s*/) || [""])[0];
+    const trimmed = line.trim();
+    return base + ((trimmed.endsWith(":") || trimmed === "-") ? "  " : "");
+}
+
+function replaceSelection(value) {
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    editor.setRangeText(value, start, end, "end");
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function currentLineNumber() {
+    return editor.value.slice(0, editor.selectionStart).split("\n").length;
+}
+
+function render() {
+    const lines = editor.value.length === 0 ? [""] : editor.value.split("\n");
+    highlight.innerHTML = lines.map(highlightLine).join("\n");
+    gutter.innerHTML = lines.map((_, index) => '<div>' + (index + 1) + '</div>').join("");
+    syncScroll();
+    updateCurrentLine();
+}
+
+function syncScroll() {
+    highlight.style.transform = 'translate(' + (-editor.scrollLeft) + 'px, ' + (-editor.scrollTop) + 'px)';
+    gutter.style.transform = 'translateY(' + (-editor.scrollTop) + 'px)';
+}
+
+function updateCurrentLine() {
+    const line = currentLineNumber() - 1;
+    currentLine.style.transform = 'translateY(' + (10 + line * 17 - editor.scrollTop) + 'px)';
+}
+
+function postChange() {
+    if (isApplyingNativeText) return;
+    window.webkit.messageHandlers.editor.postMessage({ type: "change", text: editor.value });
+}
+
+window.vibekubeSetText = function(value) {
+    if (editor.value === value) return;
+    isApplyingNativeText = true;
+    editor.value = value;
+    editor.selectionStart = 0;
+    editor.selectionEnd = 0;
+    editor.scrollTop = 0;
+    editor.scrollLeft = 0;
+    render();
+    isApplyingNativeText = false;
+};
+
+editor.addEventListener("input", () => {
+    render();
+    postChange();
+});
+
+editor.addEventListener("scroll", syncScroll);
+editor.addEventListener("keyup", updateCurrentLine);
+editor.addEventListener("click", updateCurrentLine);
+editor.addEventListener("select", updateCurrentLine);
+
+editor.addEventListener("keydown", event => {
+    if (event.key === "Tab") {
+        event.preventDefault();
+        replaceSelection("  ");
+    } else if (event.key === "Enter") {
+        event.preventDefault();
+        replaceSelection("\n" + lineIndent(editor.value, editor.selectionStart));
+    }
+});
+
+editor.value = __INITIAL_TEXT__;
+editor.selectionStart = 0;
+editor.selectionEnd = 0;
+editor.scrollTop = 0;
+editor.scrollLeft = 0;
+render();
+editor.focus();
+window.webkit.messageHandlers.editor.postMessage({ type: "ready" });
+</script>
+</body>
+</html>
+"""#.replacingOccurrences(of: "__INITIAL_TEXT__", with: initialJSON)
+    }
+
+    private static func jsonStringLiteral(_ value: String) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: [value]),
+              let json = String(data: data, encoding: .utf8),
+              json.hasPrefix("["),
+              json.hasSuffix("]") else {
+            return "\"\""
+        }
+        return String(json.dropFirst().dropLast())
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         @Binding private var text: String
-        weak var textView: NSTextView?
-        weak var rulerView: ManifestYAMLLineNumberRulerView?
-        weak var scrollView: NSScrollView?
-        private var isApplying = false
+        weak var webView: WKWebView?
+        private var isLoaded = false
+        private var pendingText: String?
+        private var renderedText: String?
 
         init(text: Binding<String>) {
             _text = text
         }
 
-        func apply(_ value: String, scrollToTop: Bool = false) {
-            guard let textView else { return }
-
-            isApplying = true
-            let selectedRange = textView.selectedRange()
-            textView.textStorage?.setAttributedString(
-                ManifestYAMLAttributedRenderer.editorAttributedString(yaml: value)
-            )
-            textView.selectedRange = selectedRange.clamped(to: textView.string.utf16.count)
-            textView.typingAttributes = ManifestYAMLAttributedRenderer.editorTypingAttributes
-            highlightVisibleLine()
-            rulerView?.needsDisplay = true
-            if scrollToTop {
-                textView.scrollRangeToVisible(NSRange(location: 0, length: 0))
+        func setText(_ value: String, in webView: WKWebView) {
+            guard isLoaded else {
+                pendingText = value
+                return
             }
-            isApplying = false
-        }
-
-        func textDidChange(_ notification: Notification) {
-            guard !isApplying, let textView else {
+            guard renderedText != value || pendingText != nil else {
                 return
             }
 
-            text = textView.string
-            applySyntaxPreservingSelection()
+            pendingText = nil
+            renderedText = value
+            webView.evaluateJavaScript("window.vibekubeSetText(\(ManifestYAMLEditorView.jsonStringLiteral(value)));")
         }
 
-        func textViewDidChangeSelection(_ notification: Notification) {
-            highlightVisibleLine()
-        }
-
-        func textView(
-            _ textView: NSTextView,
-            shouldChangeTextIn affectedCharRange: NSRange,
-            replacementString: String?
-        ) -> Bool {
-            guard let replacementString else {
-                return true
-            }
-
-            if replacementString == "\t" {
-                textView.insertText("  ", replacementRange: affectedCharRange)
-                return false
-            }
-
-            if replacementString == "\n" {
-                textView.insertText("\n\(currentLineIndent(in: textView, range: affectedCharRange))", replacementRange: affectedCharRange)
-                return false
-            }
-
-            return true
-        }
-
-        func highlightVisibleLine() {
-            guard let textView,
-                  let textStorage = textView.textStorage else {
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard let body = message.body as? [String: Any],
+                  let type = body["type"] as? String else {
                 return
             }
 
-            textStorage.removeAttribute(
-                .backgroundColor,
-                range: NSRange(location: 0, length: textStorage.length)
-            )
-            let lineRange = (textView.string as NSString).lineRange(for: textView.selectedRange())
-            guard lineRange.length > 0 else {
-                return
-            }
-
-            textStorage.addAttribute(
-                .backgroundColor,
-                value: NSColor.controlAccentColor.withAlphaComponent(0.08),
-                range: lineRange.clamped(to: textStorage.length)
-            )
-        }
-
-        private func applySyntaxPreservingSelection() {
-            guard let textView else { return }
-
-            let selectedRange = textView.selectedRange()
-            isApplying = true
-            textView.textStorage?.setAttributedString(
-                ManifestYAMLAttributedRenderer.editorAttributedString(yaml: textView.string)
-            )
-            textView.selectedRange = selectedRange.clamped(to: textView.string.utf16.count)
-            textView.typingAttributes = ManifestYAMLAttributedRenderer.editorTypingAttributes
-            highlightVisibleLine()
-            rulerView?.needsDisplay = true
-            isApplying = false
-        }
-
-        private func currentLineIndent(in textView: NSTextView, range: NSRange) -> String {
-            let nsText = textView.string as NSString
-            let location = min(range.location, nsText.length)
-            let lineRange = nsText.lineRange(for: NSRange(location: location, length: 0))
-            let line = nsText.substring(with: lineRange)
-
-            var indent = ""
-            for character in line {
-                if character == " " {
-                    indent.append(character)
+            if type == "ready" {
+                isLoaded = true
+                if let pendingText, let webView {
+                    setText(pendingText, in: webView)
                 } else {
-                    break
+                    renderedText = text
                 }
-            }
-
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.hasSuffix(":") || trimmed == "-" {
-                indent += "  "
-            }
-
-            return indent
-        }
-    }
-}
-
-private final class ManifestYAMLEditorContainerView: NSView {
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
-    }
-
-    override var fittingSize: NSSize {
-        .zero
-    }
-}
-
-private final class ManifestYAMLEditorScrollView: NSScrollView {
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
-    }
-
-    override var fittingSize: NSSize {
-        .zero
-    }
-}
-
-private final class ManifestYAMLEditingTextView: NSTextView {
-    override var acceptsFirstResponder: Bool {
-        true
-    }
-
-    override func paste(_ sender: Any?) {
-        guard let pasted = NSPasteboard.general.string(forType: .string) else {
-            super.paste(sender)
-            return
-        }
-
-        insertText(pasted.replacingOccurrences(of: "\t", with: "  "), replacementRange: selectedRange())
-    }
-}
-
-private final class ManifestYAMLLineNumberRulerView: NSRulerView {
-    private weak var textView: NSTextView?
-    private let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-    private let textColor = NSColor.tertiaryLabelColor
-
-    init(textView: NSTextView) {
-        self.textView = textView
-        super.init(scrollView: textView.enclosingScrollView, orientation: .verticalRuler)
-        clientView = textView
-        ruleThickness = 48
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(invalidateDisplay),
-            name: NSView.boundsDidChangeNotification,
-            object: textView.enclosingScrollView?.contentView
-        )
-    }
-
-    required init(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
-
-    override func drawHashMarksAndLabels(in rect: NSRect) {
-        guard let textView,
-              let layoutManager = textView.layoutManager,
-              let textContainer = textView.textContainer else {
-            return
-        }
-
-        NSColor.controlBackgroundColor.setFill()
-        rect.fill()
-
-        let visibleRect = textView.visibleRect
-        let glyphRange = layoutManager.glyphRange(
-            forBoundingRect: visibleRect,
-            in: textContainer
-        )
-        let lineNumberAttributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: textColor
-        ]
-        var lineNumber = lineNumberForGlyph(at: glyphRange.location, layoutManager: layoutManager)
-
-        layoutManager.enumerateLineFragments(
-            forGlyphRange: glyphRange
-        ) { _, usedRect, _, glyphRange, _ in
-            let characterRange = layoutManager.characterRange(
-                forGlyphRange: glyphRange,
-                actualGlyphRange: nil
-            )
-            guard characterRange.length > 0 else {
                 return
             }
 
-            let label = "\(lineNumber)" as NSString
-            let labelSize = label.size(withAttributes: lineNumberAttributes)
-            let y = usedRect.minY + textView.textContainerOrigin.y + (usedRect.height - labelSize.height) / 2
-            let x = self.ruleThickness - labelSize.width - 8
-            label.draw(
-                at: NSPoint(x: x, y: y),
-                withAttributes: lineNumberAttributes
-            )
-            lineNumber += 1
-        }
-    }
+            guard type == "change",
+                  let changedText = body["text"] as? String else {
+                return
+            }
 
-    @objc private func invalidateDisplay() {
-        needsDisplay = true
-    }
-
-    private func lineNumberForGlyph(
-        at glyphIndex: Int,
-        layoutManager: NSLayoutManager
-    ) -> Int {
-        guard let textView else {
-            return 1
-        }
-
-        let glyphCount = layoutManager.numberOfGlyphs
-        guard glyphCount > 0 else {
-            return 1
-        }
-
-        let safeGlyphIndex = min(max(glyphIndex, 0), glyphCount - 1)
-        let characterIndex = layoutManager.characterIndexForGlyph(at: safeGlyphIndex)
-        let prefix = (textView.string as NSString).substring(
-            to: min(characterIndex, textView.string.utf16.count)
-        )
-        return prefix.reduce(1) { count, character in
-            character == "\n" ? count + 1 : count
+            DispatchQueue.main.async {
+                self.renderedText = changedText
+                self.text = changedText
+            }
         }
     }
 }

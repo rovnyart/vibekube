@@ -1122,6 +1122,7 @@ struct KubernetesResourceListTests {
                   "metadata": {
                     "name": "web-0",
                     "namespace": "vibekube-demo",
+                    "resourceVersion": "42",
                     "labels": {
                       "app": "web"
                     }
@@ -1151,6 +1152,7 @@ struct KubernetesResourceListTests {
         #expect(detail.yaml.contains("kind: Pod"))
         #expect(detail.yaml.contains("name: web-0"))
         #expect(detail.yaml.contains("namespace: vibekube-demo"))
+        #expect(detail.yaml.contains(#"resourceVersion: "42""#))
         #expect(detail.yaml.contains("containers:"))
         #expect(detail.yaml.contains("image: nginx:1.27"))
         #expect(detail.yaml.contains("containerPort: 8080"))

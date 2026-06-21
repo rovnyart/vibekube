@@ -359,6 +359,7 @@ struct KubernetesMutationPreviewTests {
         let proposedYAML = live.yaml
             .replacingOccurrences(of: "cpu: 64m", with: "cpu: 128m")
             .replacingOccurrences(of: "memory: 64Mi", with: "memory: 128Mi")
+        #expect(proposedYAML.contains(#"resourceVersion: "10""#))
         #expect(proposedYAML.contains(#""k:{\"name\":\"web\"}":"#))
         #expect(proposedYAML.contains("cpu: 128m"))
         #expect(proposedYAML.contains("memory: 128Mi"))
@@ -402,6 +403,91 @@ struct KubernetesMutationPreviewTests {
             .mapping
         #expect(containerFields?["k:{\"name\":\"web\"}"] != nil)
         #expect(containerFields?["k:{\"name\":\"web\"}"]?.mapping?["."] == .mapping([:]))
+    }
+
+    @Test func parserPreservesQuotedScalarTypes() throws {
+        var parser = SimpleYAMLParser()
+
+        let value = try parser.parse(
+            """
+            metadata:
+              resourceVersion: "162027"
+            status:
+              conditions:
+                -
+                  status: "True"
+            spec:
+              divisor: "0"
+              replicas: 2
+            """
+        )
+
+        let root = try #require(value.mapping)
+        #expect(root["metadata"]?.mapping?["resourceVersion"] == .quotedScalar("162027"))
+        let condition = root["status"]?
+            .mapping?["conditions"]?
+            .sequence?
+            .first?
+            .mapping
+        #expect(condition?["status"] == .quotedScalar("True"))
+        #expect(root["spec"]?.mapping?["divisor"] == .quotedScalar("0"))
+        #expect(root["spec"]?.mapping?["replicas"] == .scalar("2"))
+    }
+
+    @Test func parserHandlesBlockScalarsFromKubectlYAML() throws {
+        var parser = SimpleYAMLParser()
+
+        let value = try parser.parse(
+            """
+            metadata:
+              annotations:
+                kubectl.kubernetes.io/last-applied-configuration: |
+                  {"kind":"Deployment"}
+            spec:
+              initContainers:
+                -
+                  command:
+                    - /bin/sh
+                    - -c
+                    - |
+                      echo prepared
+                      echo done
+            """
+        )
+
+        let root = try #require(value.mapping)
+        let annotation = root["metadata"]?
+            .mapping?["annotations"]?
+            .mapping?["kubectl.kubernetes.io/last-applied-configuration"]
+        #expect(annotation == .quotedScalar(#"{"kind":"Deployment"}"# + "\n"))
+
+        let command = root["spec"]?
+            .mapping?["initContainers"]?
+            .sequence?
+            .first?
+            .mapping?["command"]?
+            .sequence
+        #expect(command?[2] == .quotedScalar("echo prepared\necho done\n"))
+    }
+
+    @Test func parserHandlesBlockScalarChompingIndicators() throws {
+        var parser = SimpleYAMLParser()
+
+        let value = try parser.parse(
+            """
+            data:
+              script: |-
+                echo prepared
+                echo done
+              summary: >-
+                deployment
+                updated
+            """
+        )
+
+        let data = try #require(value.mapping?["data"]?.mapping)
+        #expect(data["script"] == .quotedScalar("echo prepared\necho done"))
+        #expect(data["summary"] == .quotedScalar("deployment updated"))
     }
 
     private func deploymentResource() -> KubernetesDiscoveredResource {
