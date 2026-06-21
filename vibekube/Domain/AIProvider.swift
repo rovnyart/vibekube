@@ -167,6 +167,12 @@ struct AIChatResponse: Equatable {
     var modelID: String
 }
 
+struct AIChatStreamChunk: Equatable {
+    var textDelta: String
+    var modelID: String?
+    var isFinished: Bool
+}
+
 struct AIContextBundle: Equatable {
     var title: String
     var identity: String

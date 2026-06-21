@@ -1124,6 +1124,24 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func streamAIChat(context: AIContextBundle?, userPrompt: String) throws -> AsyncThrowingStream<AIChatStreamChunk, Error> {
+        guard aiIsConfigured else {
+            throw AIProviderClientError.missingModel
+        }
+
+        let request = AIChatRequest(
+            systemPrompt: Self.aiSystemPrompt,
+            userPrompt: userPrompt,
+            context: context
+        )
+
+        return aiProviderService.streamComplete(
+            settings: aiProviderSettings,
+            secrets: aiProviderSecrets,
+            request: request
+        )
+    }
+
     func resetLocalPreferences() {
         let previousKubeconfigPathOverride = kubeconfigPathOverride
         userPreferences.resetLocalPreferences()

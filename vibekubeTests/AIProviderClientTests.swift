@@ -142,6 +142,53 @@ struct AIProviderClientTests {
         #expect(response == AIChatResponse(text: "It is healthy.", modelID: "gpt-demo"))
     }
 
+    @Test func openAIStreamingChatYieldsTextDeltas() async throws {
+        let client = makeClient { request in
+            #expect(request.httpMethod == "POST")
+            #expect(request.url?.path == "/v1/chat/completions")
+            #expect(request.value(forHTTPHeaderField: "Accept") == "text/event-stream")
+
+            let body = try #require(JSONSerialization.jsonObject(with: Self.requestBodyData(from: request)) as? [String: Any])
+            #expect(body["model"] as? String == "gpt-stream")
+            #expect(body["stream"] as? Bool == true)
+            #expect(body["max_tokens"] == nil)
+            #expect(body["max_completion_tokens"] as? Int == 1_200)
+
+            return .response(
+                statusCode: 200,
+                body: """
+                data: {"model":"gpt-stream","choices":[{"delta":{"content":"Hello"}}]}
+
+                data: {"model":"gpt-stream","choices":[{"delta":{"content":" world"}}]}
+
+                data: [DONE]
+
+                """
+            )
+        }
+
+        var collected = ""
+        var finished = false
+        let stream = client.streamComplete(
+            settings: AIProviderSettings(
+                shape: .openAICompatible,
+                preset: .openAI,
+                baseURLString: "https://api.openai.com/v1",
+                selectedModelID: "gpt-stream"
+            ),
+            secrets: AIProviderSecrets(apiKey: "openai-token", headers: []),
+            request: AIChatRequest(systemPrompt: "Stay careful.", userPrompt: "Explain", context: nil)
+        )
+
+        for try await chunk in stream {
+            collected += chunk.textDelta
+            finished = finished || chunk.isFinished
+        }
+
+        #expect(collected == "Hello world")
+        #expect(finished)
+    }
+
     @MainActor
     @Test func appModelRequiresURLSecretAndModelAndPreservesAnthropicCustomShape() {
         var preferences = InMemoryUserPreferences()

@@ -14,6 +14,9 @@ Goal: add safe AI explain/summarize capabilities on top of local Kubernetes cont
 - [x] Redaction pipeline exists.
 - [x] AI panel exists.
 - [x] Top-level AI status page exists.
+- [x] Resizable AI assistant window exists.
+- [x] AI answers render Markdown and highlighted code blocks.
+- [x] OpenAI-compatible streaming chat transport exists.
 - [x] Read-only explain flows exist.
 - [x] AI foundation evaluation checklist exists.
 
@@ -32,6 +35,7 @@ Goal: add safe AI explain/summarize capabilities on top of local Kubernetes cont
 - [x] Discover models from provider APIs before model selection is enabled.
 - [x] Add provider request tests for endpoint construction, auth headers, custom headers, chat payloads, and configuration gating.
 - [x] Use `max_completion_tokens` for OpenAI-compatible chat requests and omit optional sampling parameters for newer OpenAI models.
+- [x] Stream AI answer deltas from provider SSE responses.
 
 Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compatible key auth with model discovery. Stop before sending Kubernetes context to any provider.
 
@@ -67,6 +71,10 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 - [x] Add a top-level AI page showing provider readiness, selected model, Keychain status, and setup/test actions.
 - [x] Keep stored API keys out of the input field while preserving the saved key when editing headers.
 - [x] Show the saved selected model after relaunch even before refetching the model list.
+- [x] Replace the attached sheet with a resizable standalone assistant window.
+- [x] Replace raw context wall with section navigation and highlighted code surfaces.
+- [x] Render AI answers as Markdown with code-block copy controls.
+- [x] Show live streaming answer state with animated provider activity.
 
 ### 12.5 Guardrails
 

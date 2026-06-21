@@ -1846,7 +1846,6 @@ private struct ResourceDetailView: View {
     @Binding var selectedPanel: ResourceDetailPanel
     @State private var yamlSaveErrorMessage: String?
     @State private var isActionsSheetPresented = false
-    @State private var isAISheetPresented = false
 
     let item: ResourceNavigationItem
     let row: KubernetesUnstructuredResource
@@ -1919,12 +1918,14 @@ private struct ResourceDetailView: View {
                 .accessibilityIdentifier("resource.detail.actions.open")
 
                 Button {
-                    isAISheetPresented = true
+                    if let loadedSnapshot {
+                        AIResourceAssistantWindow.open(detail: loadedSnapshot, appModel: appModel)
+                    }
                 } label: {
                     Label("AI", systemImage: "sparkles")
                 }
                 .buttonStyle(.bordered)
-                .disabled(!isLoaded)
+                .disabled(loadedSnapshot == nil)
                 .help(isLoaded ? "Ask AI about this resource" : "Load the manifest before asking AI")
                 .accessibilityIdentifier("resource.detail.ai.open")
 
@@ -1949,9 +1950,6 @@ private struct ResourceDetailView: View {
         .background(.bar)
         .sheet(isPresented: $isActionsSheetPresented) {
             actionsSheet
-        }
-        .sheet(isPresented: $isAISheetPresented) {
-            aiSheet
         }
     }
 
@@ -2077,22 +2075,6 @@ private struct ResourceDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private var aiSheet: some View {
-        switch appModel.resourceDetailState(for: item, row: row) {
-        case .loaded(let snapshot):
-            AIResourceAssistantView(detail: snapshot)
-                .environmentObject(appModel)
-        default:
-            EmptyStateView(
-                title: "AI Unavailable",
-                subtitle: "Load the resource manifest before asking AI.",
-                systemImage: "sparkles"
-            )
-            .frame(width: 520, height: 300)
-        }
-    }
-
     private func yamlMutationTarget(_ snapshot: ResourceDetailSnapshot) -> ManifestYAMLMutationTarget? {
         guard appModel.canPreviewMutations else {
             return nil
@@ -2140,6 +2122,13 @@ private struct ResourceDetailView: View {
             return true
         }
         return false
+    }
+
+    private var loadedSnapshot: ResourceDetailSnapshot? {
+        if case .loaded(let snapshot) = appModel.resourceDetailState(for: item, row: row) {
+            return snapshot
+        }
+        return nil
     }
 
     private var detailStatusText: String? {

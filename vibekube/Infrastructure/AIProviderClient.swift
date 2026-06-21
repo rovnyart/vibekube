@@ -4,6 +4,11 @@ protocol AIProviderServicing {
     func listModels(settings: AIProviderSettings, secrets: AIProviderSecrets) async throws -> [AIModelInfo]
     func testConnection(settings: AIProviderSettings, secrets: AIProviderSecrets) async throws -> String
     func complete(settings: AIProviderSettings, secrets: AIProviderSecrets, request: AIChatRequest) async throws -> AIChatResponse
+    func streamComplete(
+        settings: AIProviderSettings,
+        secrets: AIProviderSecrets,
+        request: AIChatRequest
+    ) -> AsyncThrowingStream<AIChatStreamChunk, Error>
 }
 
 enum AIProviderClientError: LocalizedError {
@@ -71,6 +76,27 @@ struct AIProviderClient: AIProviderServicing {
             return try await completeOpenAI(settings: settings, secrets: secrets, request: request)
         case .anthropicCompatible:
             return try await completeAnthropic(settings: settings, secrets: secrets, request: request)
+        }
+    }
+
+    func streamComplete(
+        settings: AIProviderSettings,
+        secrets: AIProviderSecrets,
+        request chatRequest: AIChatRequest
+    ) -> AsyncThrowingStream<AIChatStreamChunk, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    switch settings.shape {
+                    case .openAICompatible:
+                        try await streamOpenAI(settings: settings, secrets: secrets, request: chatRequest, continuation: continuation)
+                    case .anthropicCompatible:
+                        try await streamAnthropic(settings: settings, secrets: secrets, request: chatRequest, continuation: continuation)
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
         }
     }
 
@@ -152,6 +178,72 @@ struct AIProviderClient: AIProviderServicing {
         return AIChatResponse(text: text, modelID: response.model ?? modelID)
     }
 
+    private func streamOpenAI(
+        settings: AIProviderSettings,
+        secrets: AIProviderSecrets,
+        request chatRequest: AIChatRequest,
+        continuation: AsyncThrowingStream<AIChatStreamChunk, Error>.Continuation
+    ) async throws {
+        guard let modelID = settings.selectedModelID, !modelID.isEmpty else {
+            throw AIProviderClientError.missingModel
+        }
+
+        let messages = [
+            OpenAIChatMessage(role: "system", content: chatRequest.systemPrompt),
+            OpenAIChatMessage(role: "user", content: userPrompt(chatRequest))
+        ]
+        let payload = OpenAIChatRequest(
+            model: modelID,
+            messages: messages,
+            maxCompletionTokens: 1_200,
+            stream: true
+        )
+
+        var request = try URLRequest(url: endpoint("/chat/completions", settings: settings))
+        request.httpMethod = "POST"
+        request.httpBody = try JSONEncoder().encode(payload)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        try applyOpenAIHeaders(to: &request, secrets: secrets)
+
+        let (bytes, response) = try await urlSession.bytes(for: request)
+        try validateStreamResponse(response, bytes: bytes)
+
+        var emittedText = false
+        try await streamServerSentEvents(from: bytes) { event in
+            for data in event.data {
+                if data == "[DONE]" {
+                    continuation.yield(AIChatStreamChunk(textDelta: "", modelID: modelID, isFinished: true))
+                    continuation.finish()
+                    return
+                }
+
+                guard let eventData = data.data(using: .utf8) else {
+                    continue
+                }
+                let chunk = try JSONDecoder().decode(OpenAIChatStreamResponse.self, from: eventData)
+                for choice in chunk.choices {
+                    if let content = choice.delta.content, !content.isEmpty {
+                        emittedText = true
+                        continuation.yield(
+                            AIChatStreamChunk(
+                                textDelta: content,
+                                modelID: chunk.model ?? modelID,
+                                isFinished: false
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        guard emittedText else {
+            throw AIProviderClientError.noText
+        }
+        continuation.yield(AIChatStreamChunk(textDelta: "", modelID: modelID, isFinished: true))
+        continuation.finish()
+    }
+
     private func completeAnthropic(
         settings: AIProviderSettings,
         secrets: AIProviderSecrets,
@@ -186,6 +278,68 @@ struct AIProviderClient: AIProviderServicing {
             throw AIProviderClientError.noText
         }
         return AIChatResponse(text: text, modelID: response.model ?? modelID)
+    }
+
+    private func streamAnthropic(
+        settings: AIProviderSettings,
+        secrets: AIProviderSecrets,
+        request chatRequest: AIChatRequest,
+        continuation: AsyncThrowingStream<AIChatStreamChunk, Error>.Continuation
+    ) async throws {
+        guard let modelID = settings.selectedModelID, !modelID.isEmpty else {
+            throw AIProviderClientError.missingModel
+        }
+
+        let payload = AnthropicMessageRequest(
+            model: modelID,
+            maxTokens: 1_200,
+            system: chatRequest.systemPrompt,
+            messages: [
+                AnthropicMessage(role: "user", content: userPrompt(chatRequest))
+            ],
+            stream: true
+        )
+
+        var request = try URLRequest(url: endpoint("/v1/messages", settings: settings, stripVersionPath: true))
+        request.httpMethod = "POST"
+        request.httpBody = try JSONEncoder().encode(payload)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        try applyAnthropicHeaders(to: &request, secrets: secrets)
+
+        let (bytes, response) = try await urlSession.bytes(for: request)
+        try validateStreamResponse(response, bytes: bytes)
+
+        var emittedText = false
+        try await streamServerSentEvents(from: bytes) { event in
+            for data in event.data {
+                guard let eventData = data.data(using: .utf8) else {
+                    continue
+                }
+                let chunk = try JSONDecoder().decode(AnthropicStreamEvent.self, from: eventData)
+                if chunk.type == "message_stop" {
+                    continuation.yield(AIChatStreamChunk(textDelta: "", modelID: chunk.message?.model ?? modelID, isFinished: true))
+                    continuation.finish()
+                    return
+                }
+                if let text = chunk.delta?.text, !text.isEmpty {
+                    emittedText = true
+                    continuation.yield(
+                        AIChatStreamChunk(
+                            textDelta: text,
+                            modelID: chunk.message?.model ?? modelID,
+                            isFinished: false
+                        )
+                    )
+                }
+            }
+        }
+
+        guard emittedText else {
+            throw AIProviderClientError.noText
+        }
+        continuation.yield(AIChatStreamChunk(textDelta: "", modelID: modelID, isFinished: true))
+        continuation.finish()
     }
 
     private func userPrompt(_ request: AIChatRequest) -> String {
@@ -264,6 +418,51 @@ struct AIProviderClient: AIProviderServicing {
 
         return data
     }
+
+    private func validateStreamResponse(
+        _ response: URLResponse,
+        bytes: URLSession.AsyncBytes
+    ) throws {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AIProviderClientError.invalidResponse
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw AIProviderClientError.httpStatus(httpResponse.statusCode, "Streaming request failed.")
+        }
+    }
+
+    private func streamServerSentEvents(
+        from bytes: URLSession.AsyncBytes,
+        handle: (ServerSentEvent) throws -> Void
+    ) async throws {
+        var currentEvent = ServerSentEvent()
+        for try await rawLine in bytes.lines {
+            let line = rawLine.trimmingCharacters(in: .newlines)
+            if line.isEmpty {
+                if !currentEvent.data.isEmpty || currentEvent.event != nil {
+                    try handle(currentEvent)
+                    currentEvent = ServerSentEvent()
+                }
+                continue
+            }
+
+            if line.hasPrefix("event:") {
+                currentEvent.event = String(line.dropFirst("event:".count)).trimmingCharacters(in: .whitespaces)
+            } else if line.hasPrefix("data:") {
+                currentEvent.data.append(String(line.dropFirst("data:".count)).trimmingCharacters(in: .whitespaces))
+            }
+        }
+
+        if !currentEvent.data.isEmpty || currentEvent.event != nil {
+            try handle(currentEvent)
+        }
+    }
+}
+
+private struct ServerSentEvent {
+    var event: String?
+    var data: [String] = []
 }
 
 private struct OpenAIModelsResponse: Decodable {
@@ -304,11 +503,13 @@ private struct OpenAIChatRequest: Encodable {
     var model: String
     var messages: [OpenAIChatMessage]
     var maxCompletionTokens: Int
+    var stream: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case model
         case messages
         case maxCompletionTokens = "max_completion_tokens"
+        case stream
     }
 }
 
@@ -330,17 +531,32 @@ private struct OpenAIChatResponseMessage: Decodable {
     var content: String
 }
 
+private struct OpenAIChatStreamResponse: Decodable {
+    var model: String?
+    var choices: [OpenAIChatStreamChoice]
+}
+
+private struct OpenAIChatStreamChoice: Decodable {
+    var delta: OpenAIChatStreamDelta
+}
+
+private struct OpenAIChatStreamDelta: Decodable {
+    var content: String?
+}
+
 private struct AnthropicMessageRequest: Encodable {
     var model: String
     var maxTokens: Int
     var system: String
     var messages: [AnthropicMessage]
+    var stream: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case model
         case maxTokens = "max_tokens"
         case system
         case messages
+        case stream
     }
 }
 
@@ -357,4 +573,18 @@ private struct AnthropicMessageResponse: Decodable {
 private struct AnthropicContent: Decodable {
     var type: String
     var text: String?
+}
+
+private struct AnthropicStreamEvent: Decodable {
+    var type: String
+    var delta: AnthropicStreamDelta?
+    var message: AnthropicStreamMessage?
+}
+
+private struct AnthropicStreamDelta: Decodable {
+    var text: String?
+}
+
+private struct AnthropicStreamMessage: Decodable {
+    var model: String?
 }

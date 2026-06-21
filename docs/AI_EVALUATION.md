@@ -8,8 +8,11 @@ Use this checklist when changing AI prompts, provider behavior, context building
 - For OpenAI-compatible providers, chat requests should use `max_completion_tokens` and should not send legacy `max_tokens`.
 - Use the demo cluster from `dev/k8s/scripts/start.sh`.
 - Open the selected resource's AI assistant from resource detail, not the Settings screen.
+- The assistant should open as a standalone resizable window, not a fixed attached sheet.
 - The top-level AI page should show provider readiness, selected model, and Keychain status without exposing the API key.
 - Review the redacted context preview before sending each prompt.
+- Confirm streamed answers appear incrementally and render Markdown headings, lists, emphasis, and code blocks cleanly.
+- Confirm code blocks have syntax highlighting and a copy control.
 
 ## Scenarios
 
@@ -93,3 +96,4 @@ Expected:
 - Provider/model failure surfaces an error in the assistant without changing the cluster.
 - Oversized YAML/log context is truncated with `<truncated by Vibekube before AI request>`.
 - AI responses never trigger mutation services directly.
+- OpenAI-compatible chat requests should stream over provider SSE responses, use `max_completion_tokens`, and never send legacy `max_tokens`.
