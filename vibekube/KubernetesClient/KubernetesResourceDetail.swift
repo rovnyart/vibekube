@@ -3,6 +3,10 @@ import Foundation
 struct KubernetesResourceDetail: Decodable, Equatable {
     var value: KubernetesJSONValue
 
+    init(value: KubernetesJSONValue) {
+        self.value = value
+    }
+
     init(from decoder: Decoder) throws {
         self.value = try KubernetesJSONValue(from: decoder)
     }

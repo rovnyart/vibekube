@@ -1209,7 +1209,7 @@ struct KubernetesUnstructuredResource: Decodable, Identifiable, Equatable, Hasha
     }
 }
 
-enum KubernetesJSONValue: Decodable, Equatable, Hashable {
+enum KubernetesJSONValue: Codable, Equatable, Hashable {
     case string(String)
     case number(Double)
     case bool(Bool)
@@ -1236,6 +1236,24 @@ enum KubernetesJSONValue: Decodable, Equatable, Hashable {
             self = .array(array)
         } else {
             self = .null
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value):
+            try container.encode(value)
+        case .number(let value):
+            try container.encode(value)
+        case .bool(let value):
+            try container.encode(value)
+        case .object(let object):
+            try container.encode(object)
+        case .array(let array):
+            try container.encode(array)
+        case .null:
+            try container.encodeNil()
         }
     }
 
