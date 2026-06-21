@@ -346,14 +346,14 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
 
                         VStack(alignment: .leading, spacing: 8) {
-                            SecureField("Saved to Keychain", text: $aiAPIKeyDraft)
+                            SecureField(aiAPIKeyPlaceholder, text: $aiAPIKeyDraft)
                                 .textFieldStyle(.roundedBorder)
 
                             HStack(spacing: 8) {
                                 Button {
                                     saveAISecrets()
                                 } label: {
-                                    Label("Save Secrets", systemImage: "key")
+                                    Label(aiSaveSecretsTitle, systemImage: "key")
                                 }
                                 .disabled(!hasAISecretDraft)
 
@@ -365,7 +365,7 @@ struct SettingsView: View {
                                 .disabled(!appModel.aiProviderSecrets.hasAPIKey && aiHeadersDraft.isEmpty && aiAPIKeyDraft.isEmpty)
 
                                 if appModel.aiProviderSecrets.hasAPIKey {
-                                    Label("Stored in Keychain", systemImage: "checkmark.circle.fill")
+                                    Label("API key stored in Keychain", systemImage: "checkmark.circle.fill")
                                         .font(.caption)
                                         .foregroundStyle(.green)
                                 }
@@ -455,6 +455,10 @@ struct SettingsView: View {
 
                             Picker("Model", selection: aiModelBinding) {
                                 Text(modelPlaceholderTitle).tag("")
+                                if let selectedAIModelID,
+                                   !aiModels.contains(where: { $0.id == selectedAIModelID }) {
+                                    Text(selectedAIModelID).tag(selectedAIModelID)
+                                }
                                 ForEach(aiModels) { model in
                                     Text(model.displayName).tag(model.id)
                                 }
@@ -462,7 +466,7 @@ struct SettingsView: View {
                             .labelsHidden()
                             .pickerStyle(.menu)
                             .frame(width: 360, alignment: .leading)
-                            .disabled(aiModels.isEmpty)
+                            .disabled(aiModels.isEmpty && selectedAIModelID == nil)
                         }
 
                         GridRow {
@@ -546,6 +550,14 @@ struct SettingsView: View {
         return []
     }
 
+    private var selectedAIModelID: String? {
+        guard let modelID = appModel.aiProviderSettings.selectedModelID,
+              !modelID.isEmpty else {
+            return nil
+        }
+        return modelID
+    }
+
     private var modelPlaceholderTitle: String {
         switch appModel.aiModelDiscoveryState {
         case .idle:
@@ -557,6 +569,14 @@ struct SettingsView: View {
         case .failed:
             "Model list unavailable"
         }
+    }
+
+    private var aiAPIKeyPlaceholder: String {
+        appModel.aiProviderSecrets.hasAPIKey ? "Paste a new API key to replace the stored key" : "Paste API key"
+    }
+
+    private var aiSaveSecretsTitle: String {
+        appModel.aiProviderSecrets.hasAPIKey ? "Update Secrets" : "Save Secrets"
     }
 
     private var hasAISecretDraft: Bool {
@@ -737,17 +757,20 @@ struct SettingsView: View {
     }
 
     private func syncAISecretDrafts() {
-        aiAPIKeyDraft = appModel.aiProviderSecrets.apiKey
+        aiAPIKeyDraft = ""
         aiHeadersDraft = appModel.aiProviderSecrets.headers
     }
 
     private func saveAISecrets() {
+        let apiKeyDraft = aiAPIKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let apiKey = apiKeyDraft.isEmpty ? appModel.aiProviderSecrets.apiKey : aiAPIKeyDraft
         appModel.saveAIProviderSecrets(
-            apiKey: aiAPIKeyDraft,
+            apiKey: apiKey,
             headers: aiHeadersDraft.filter {
                 !$0.normalizedName.isEmpty || !$0.normalizedValue.isEmpty
             }
         )
+        aiAPIKeyDraft = ""
         aiSecretStatus = "Saved"
     }
 

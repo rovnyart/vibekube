@@ -62,6 +62,8 @@ struct VibekubeShellView: View {
             DashboardView()
         case .settings:
             SettingsView()
+        case .aiAssistant:
+            AIOverviewView()
         case .customResources:
             ResourceCatalogView()
         case let resource where resource.discoveredResource(in: appModel.selectedDiscovery) != nil:

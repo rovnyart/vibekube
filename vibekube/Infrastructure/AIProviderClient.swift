@@ -134,8 +134,7 @@ struct AIProviderClient: AIProviderServicing {
         let payload = OpenAIChatRequest(
             model: modelID,
             messages: messages,
-            temperature: 0.2,
-            maxTokens: 1_200
+            maxCompletionTokens: 1_200
         )
 
         var request = try URLRequest(url: endpoint("/chat/completions", settings: settings))
@@ -304,14 +303,12 @@ private struct AnthropicModel: Decodable {
 private struct OpenAIChatRequest: Encodable {
     var model: String
     var messages: [OpenAIChatMessage]
-    var temperature: Double
-    var maxTokens: Int
+    var maxCompletionTokens: Int
 
     private enum CodingKeys: String, CodingKey {
         case model
         case messages
-        case temperature
-        case maxTokens = "max_tokens"
+        case maxCompletionTokens = "max_completion_tokens"
     }
 }
 

@@ -90,8 +90,9 @@ struct AIProviderClientTests {
 
             let body = try #require(JSONSerialization.jsonObject(with: Self.requestBodyData(from: request)) as? [String: Any])
             #expect(body["model"] as? String == "gpt-demo")
-            #expect(body["temperature"] as? Double == 0.2)
-            #expect(body["max_tokens"] as? Int == 1_200)
+            #expect(body["temperature"] == nil)
+            #expect(body["max_tokens"] == nil)
+            #expect(body["max_completion_tokens"] as? Int == 1_200)
 
             let messages = try #require(body["messages"] as? [[String: String]])
             #expect(messages.count == 2)

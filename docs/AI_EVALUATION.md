@@ -5,8 +5,10 @@ Use this checklist when changing AI prompts, provider behavior, context building
 ## Required Setup
 
 - Configure AI Settings with a test provider key and fetched model.
+- For OpenAI-compatible providers, chat requests should use `max_completion_tokens` and should not send legacy `max_tokens`.
 - Use the demo cluster from `dev/k8s/scripts/start.sh`.
 - Open the selected resource's AI assistant from resource detail, not the Settings screen.
+- The top-level AI page should show provider readiness, selected model, and Keychain status without exposing the API key.
 - Review the redacted context preview before sending each prompt.
 
 ## Scenarios
