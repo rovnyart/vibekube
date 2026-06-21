@@ -195,10 +195,13 @@ struct AIResourceAssistantView: View {
             Text("Ask about this resource")
                 .font(.headline)
 
-            HStack(spacing: 8) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 8)], alignment: .leading, spacing: 8) {
                 suggestionButton("Explain what is happening")
-                suggestionButton("Find likely root causes")
-                suggestionButton("Suggest read-only checks")
+                suggestionButton("Summarize warning events")
+                suggestionButton("Explain pod readiness failure")
+                suggestionButton("Summarize selected logs")
+                suggestionButton("Suggest copy-only kubectl checks")
+                suggestionButton("Draft YAML remediation without applying it")
             }
         }
     }

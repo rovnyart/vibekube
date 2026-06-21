@@ -111,7 +111,8 @@ struct KubernetesAPIClientTests {
             #expect(request.url?.query == "dryRun=All")
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer demo-token")
             #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/merge-patch+json")
-            #expect(String(data: request.httpBody ?? Data(), encoding: .utf8) == #"{"spec":{"replicas":3}}"#)
+            let body = Self.requestBodyData(from: request)
+            #expect(String(data: body, encoding: .utf8) == #"{"spec":{"replicas":3}}"#)
             return .response(
                 statusCode: 200,
                 body: """
@@ -315,6 +316,29 @@ struct KubernetesAPIClientTests {
           "code": \(code)
         }
         """
+    }
+
+    private nonisolated static func requestBodyData(from request: URLRequest) -> Data {
+        if let httpBody = request.httpBody {
+            return httpBody
+        }
+        guard let stream = request.httpBodyStream else {
+            return Data()
+        }
+
+        stream.open()
+        defer { stream.close() }
+
+        var body = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count <= 0 {
+                break
+            }
+            body.append(buffer, count: count)
+        }
+        return body
     }
 }
 

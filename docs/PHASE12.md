@@ -14,6 +14,7 @@ Goal: add safe AI explain/summarize capabilities on top of local Kubernetes cont
 - [x] Redaction pipeline exists.
 - [x] AI panel exists.
 - [x] Read-only explain flows exist.
+- [x] AI foundation evaluation checklist exists.
 
 ## Implementation Slices
 
@@ -37,7 +38,7 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 - [x] Include relevant events.
 - [x] Include relevant conditions.
 - [x] Include selected log snippets.
-- [ ] Include related resource summaries.
+- [x] Include related resource summaries.
 - [x] Include cluster context and namespace.
 - [x] Enforce size limits.
 
@@ -45,7 +46,7 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 
 - [x] Redact Secret data.
 - [x] Redact tokens.
-- [ ] Redact likely passwords/API keys in env vars.
+- [x] Redact likely passwords/API keys in env vars.
 - [x] Redact kubeconfig-style credentials through the shared diagnostics redactor.
 - [x] Show context preview before external resource explain requests.
 - [x] Keep provider calls user-initiated.
@@ -55,11 +56,11 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 
 - [x] Add AI side panel.
 - [x] Explain selected resource.
-- [ ] Summarize warning events.
-- [ ] Explain pod readiness failure.
-- [ ] Summarize selected logs.
-- [ ] Generate kubectl command suggestions.
-- [ ] Draft YAML changes without applying them.
+- [x] Summarize warning events.
+- [x] Explain pod readiness failure.
+- [x] Summarize selected logs.
+- [x] Generate kubectl command suggestions.
+- [x] Draft YAML changes without applying them.
 
 ### 12.5 Guardrails
 
@@ -71,7 +72,7 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 ## Acceptance Criteria
 
 - [x] User can ask AI to explain a selected demo resource.
-- [ ] User can summarize demo logs.
+- [x] User can summarize demo logs.
 - [x] Sensitive values are redacted before provider calls.
 - [x] AI-generated actions are never executed automatically.
 
@@ -81,3 +82,5 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 dev/k8s/scripts/start.sh
 xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test
 ```
+
+Manual provider/model evaluation: [`AI_EVALUATION.md`](AI_EVALUATION.md).

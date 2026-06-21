@@ -106,6 +106,20 @@ enum AIContextBuilder {
             )
         }
 
+        let relatedText = relatedResourcesText(summary)
+        if !relatedText.isEmpty {
+            sections.append(AIContextSection(title: "Related Resources", content: relatedText))
+        }
+
+        if !summary.environment.isEmpty {
+            sections.append(
+                AIContextSection(
+                    title: "Environment",
+                    content: summary.environment.prefix(8).map(environmentText).joined(separator: "\n")
+                )
+            )
+        }
+
         if case .loaded(let events) = eventState, !events.events.isEmpty {
             sections.append(
                 AIContextSection(
@@ -179,6 +193,85 @@ enum AIContextBuilder {
         ]
         .compactMap { $0 }
         .joined(separator: " ")
+    }
+
+    private static func relatedResourcesText(_ summary: KubernetesResourceDetailSummary) -> String {
+        var lines: [String] = []
+
+        for owner in summary.ownerReferences.prefix(8) {
+            lines.append("- owner \(owner.kind)/\(owner.name)")
+        }
+
+        if let selector = summary.labelSelector, !selector.displayText.isEmpty {
+            lines.append("- selector \(AIContextRedactor.redactedText(selector.displayText))")
+        }
+
+        for reference in summary.configMapReferences.prefix(10) {
+            lines.append("- ConfigMap/\(reference.name) \(reference.detail)")
+        }
+
+        for reference in summary.secretReferences.prefix(10) {
+            lines.append("- Secret/\(reference.name) \(reference.detail)")
+        }
+
+        if let persistentVolumeName = summary.persistentVolumeName {
+            lines.append("- PersistentVolume/\(persistentVolumeName)")
+        }
+
+        for service in summary.ingressServices.prefix(10) {
+            lines.append("- Service/\(service.name) \(service.route)")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private static func environmentText(_ container: KubernetesContainerEnvironmentSummary) -> String {
+        var lines = ["Container: \(container.containerName)"]
+
+        for source in container.envFrom.prefix(8) {
+            lines.append("- envFrom \(source.kind.rawValue)/\(source.name)\(source.prefix.map { " prefix=\($0)" } ?? "")")
+        }
+
+        for variable in container.variables.prefix(20) {
+            lines.append(environmentVariableText(variable))
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private static func environmentVariableText(_ variable: KubernetesEnvVarSummary) -> String {
+        if let source = variable.source {
+            let name = source.name ?? "-"
+            let key = source.key ?? "-"
+            return "- \(variable.name)=<from \(source.kind.rawValue) \(name)/\(key)>"
+        }
+
+        let value = variable.literalValue ?? ""
+        let redactedValue = shouldRedactEnvironmentValue(name: variable.name, value: value)
+            ? "<redacted>"
+            : AIContextRedactor.redactedText(value)
+        return "- \(variable.name)=\(redactedValue)"
+    }
+
+    private static func shouldRedactEnvironmentValue(name: String, value: String) -> Bool {
+        let sensitiveFragments = [
+            "api_key",
+            "apikey",
+            "auth",
+            "bearer",
+            "client_secret",
+            "credential",
+            "password",
+            "private",
+            "secret",
+            "token"
+        ]
+        let normalizedName = name.lowercased()
+        if sensitiveFragments.contains(where: { normalizedName.contains($0) }) {
+            return true
+        }
+
+        return AIContextRedactor.redactedText(value) != value
     }
 
     private static func eventText(_ event: KubernetesResourceEventSummary) -> String {

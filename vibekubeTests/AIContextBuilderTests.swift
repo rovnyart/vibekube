@@ -82,6 +82,30 @@ struct AIContextBuilderTests {
         #expect(prompt.count < 35_000)
     }
 
+    @Test func contextIncludesRelatedResourcesAndRedactedEnvironment() throws {
+        let detail = try podDetailSnapshot()
+
+        let context = AIContextBuilder.resourceContext(
+            detail: detail,
+            cluster: nil,
+            namespaceTitle: "vibekube-demo",
+            eventState: .idle
+        )
+        let prompt = context.promptText
+
+        #expect(prompt.contains("Related Resources"))
+        #expect(prompt.contains("owner Deployment/echo-web"))
+        #expect(prompt.contains("selector app=echo"))
+        #expect(prompt.contains("Secret/demo-secret"))
+        #expect(prompt.contains("Environment"))
+        #expect(prompt.contains("PUBLIC_MODE=demo"))
+        #expect(prompt.contains("API_TOKEN=<redacted>"))
+        #expect(prompt.contains("PASSWORD=<redacted>"))
+        #expect(prompt.contains("SECRET_VALUE=<from secretKeyRef demo-secret/token>"))
+        #expect(!prompt.contains("literal-token"))
+        #expect(!prompt.contains("hunter2"))
+    }
+
     private func podDetailSnapshot(yamlPadding: String = "") throws -> ResourceDetailSnapshot {
         let resource = KubernetesDiscoveredResource(
             groupVersion: "v1",
@@ -111,7 +135,55 @@ struct AIContextBuilderTests {
             "kind": .string("Pod"),
             "metadata": .object([
                 "name": .string("echo-web"),
-                "namespace": .string("vibekube-demo")
+                "namespace": .string("vibekube-demo"),
+                "ownerReferences": .array([
+                    .object([
+                        "kind": .string("Deployment"),
+                        "name": .string("echo-web")
+                    ])
+                ])
+            ]),
+            "spec": .object([
+                "selector": .object([
+                    "matchLabels": .object([
+                        "app": .string("echo")
+                    ])
+                ]),
+                "containers": .array([
+                    .object([
+                        "name": .string("app"),
+                        "env": .array([
+                            .object([
+                                "name": .string("PUBLIC_MODE"),
+                                "value": .string("demo")
+                            ]),
+                            .object([
+                                "name": .string("API_TOKEN"),
+                                "value": .string("literal-token")
+                            ]),
+                            .object([
+                                "name": .string("PASSWORD"),
+                                "value": .string("hunter2")
+                            ]),
+                            .object([
+                                "name": .string("SECRET_VALUE"),
+                                "valueFrom": .object([
+                                    "secretKeyRef": .object([
+                                        "name": .string("demo-secret"),
+                                        "key": .string("token")
+                                    ])
+                                ])
+                            ])
+                        ]),
+                        "envFrom": .array([
+                            .object([
+                                "secretRef": .object([
+                                    "name": .string("demo-secret")
+                                ])
+                            ])
+                        ])
+                    ])
+                ])
             ]),
             "status": .object([
                 "phase": .string("Running")

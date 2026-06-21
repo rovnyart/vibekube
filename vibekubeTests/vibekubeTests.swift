@@ -1273,8 +1273,13 @@ struct vibekubeTests {
         let restart: KubernetesMutationRequest = try #require(requests.dropFirst().first)
         #expect(restart.verb == .patch)
         #expect(restart.contentType == "application/merge-patch+json")
-        let restartText = String(data: try #require(restart.body), encoding: .utf8) ?? ""
-        #expect(restartText.contains("kubectl.kubernetes.io/restartedAt"))
+        let restartBody = try #require(restart.body)
+        let restartObject = try #require(JSONSerialization.jsonObject(with: restartBody) as? [String: Any])
+        let restartSpec = try #require(restartObject["spec"] as? [String: Any])
+        let restartTemplate = try #require(restartSpec["template"] as? [String: Any])
+        let restartMetadata = try #require(restartTemplate["metadata"] as? [String: Any])
+        let restartAnnotations = try #require(restartMetadata["annotations"] as? [String: Any])
+        #expect(restartAnnotations["kubectl.kubernetes.io/restartedAt"] as? String == "2027-01-15T08:00:00.000Z")
 
         let delete: KubernetesMutationRequest = try #require(requests.dropFirst(2).first)
         #expect(delete.verb == .delete)
