@@ -18,7 +18,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 9 | [Workload Debugging Basics](PHASE9.md) | Complete | Workload Overview includes event-aware debug summaries, visible `kubectl`-backed port-forward sessions, container-aware external-terminal Pod exec actions, and pod-local exec launch history |
 | 10 | [Safe Mutations](PHASE10.md) | Complete | Safe mutations are implemented and visually QA'd: scale, rollout restart, typed-confirm delete, apply YAML from editor/file with server-side dry-run preview, structured Namespace/ConfigMap/Secret creation, RBAC/discovery-aware disabled states, and local action history |
 | 11 | [Preferences, Security, Packaging](PHASE11.md) | Complete for read-only release | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, kubeconfig path, appearance, table density, external terminal, log buffer, default namespace, resource watch, Secret reveal settings, reset preferences, privacy docs, secret-surface audit, clean-machine validation, sandbox/credential-storage decisions, no-automatic-crash-reporting policy, no pre-Phase-12 AI placeholder decision, and real Teleport/TLS validation exist |
-| 12 | [AI Foundations](PHASE12.md) | In progress | Provider settings, Keychain secret storage, model discovery, redacted resource context, resource-scoped AI explain chat, and manual AI evaluation checklist are in place |
+| 12 | [AI Foundations](PHASE12.md) | In progress | Provider settings, Keychain secret storage, model discovery, redacted resource context, resource-scoped AI explain chat, visual gating QA, and manual AI evaluation checklist are in place |
 | 13 | [Advanced AI Operations](PHASE13.md) | Not started | Waiting for AI foundation |
 
 ## Current Execution Track
@@ -29,7 +29,7 @@ Vibekube 0.5.0 is released as a fast, read-only, distributable Kubernetes cockpi
 
 Recommended next focus:
 
-1. Continue Phase 12 by completing visual QA and Linear sync once the external tools are available.
+1. Continue Phase 12 by running provider-backed manual AI evaluation with a real test key/model.
 2. Keep Dashboard small and fast unless the product direction explicitly changes.
 3. Treat Phase 10 as done, with any new mutation UX issues tracked as follow-up bugs instead of reopening the phase.
 
