@@ -194,6 +194,11 @@ struct AIContextBundle: Equatable {
     }
 }
 
+struct AIContextGatherResult: Equatable {
+    var context: AIContextBundle
+    var toolSummary: String
+}
+
 struct AIContextSection: Equatable, Identifiable {
     var id: String
     var title: String

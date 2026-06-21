@@ -214,7 +214,7 @@ final class AppModel: ObservableObject {
     ]
     private static let resourceWatchFlushDelayNanoseconds: UInt64 = 150_000_000
     private static let aiSystemPrompt = """
-    You are Vibekube's Kubernetes assistant. Explain what the selected Kubernetes context shows, call out uncertainty, and suggest read-only next checks. Do not claim you changed the cluster. Do not propose destructive actions unless the user explicitly asks, and even then present them as user-reviewed suggestions only.
+    You are Vibekube's Kubernetes assistant. Use the provided Vibekube read-only tool results as evidence, especially logs and events. Explain what the selected Kubernetes context shows, distinguish observed facts from uncertainty, and suggest read-only next checks only when they add value. Do not claim you changed the cluster. Do not propose destructive actions unless the user explicitly asks, and even then present them as user-reviewed suggestions only.
     """
 
     nonisolated static let allNamespacesSelection = DashboardMetricsQuery.allNamespacesSelection
@@ -1104,6 +1104,44 @@ final class AppModel: ObservableObject {
             eventState: resourceEventsState(for: detail),
             logSnapshots: aiLogSnapshots(for: detail)
         )
+    }
+
+    func gatherAIContext(for detail: ResourceDetailSnapshot, userPrompt: String) async -> AIContextGatherResult {
+        var toolNotes = ["Read selected resource manifest, status, conditions, relationships, and redacted environment from Vibekube."]
+        var eventState = resourceEventsState(for: detail)
+        var logSnapshots = aiLogSnapshots(for: detail)
+
+        let eventResult = await gatherAIResourceEvents(for: detail)
+        eventState = eventResult.state
+        toolNotes.append(contentsOf: eventResult.notes)
+
+        if shouldGatherPodLogs(for: detail, userPrompt: userPrompt) {
+            let logResult = await gatherAIPodLogs(for: detail, userPrompt: userPrompt)
+            logSnapshots = mergedLogSnapshots(logSnapshots + logResult.snapshots)
+            toolNotes.append(contentsOf: logResult.notes)
+        } else if detail.summary.kind == "Pod" || detail.query.resource.kind == "Pod" {
+            toolNotes.append("Skipped pod log reads because the prompt did not ask for runtime/log investigation.")
+        }
+
+        var context = AIContextBuilder.resourceContext(
+            detail: detail,
+            cluster: selectedCluster,
+            namespaceTitle: selectedNamespaceTitle,
+            eventState: eventState,
+            logSnapshots: logSnapshots
+        )
+
+        let toolSummary = toolNotes.map { "- \($0)" }.joined(separator: "\n")
+        context.sections.insert(
+            AIContextSection(
+                id: "vibekube-read-only-tools",
+                title: "Vibekube Read-Only Tools",
+                content: toolSummary
+            ),
+            at: 0
+        )
+
+        return AIContextGatherResult(context: context, toolSummary: toolSummary)
     }
 
     func completeAIChat(context: AIContextBundle?, userPrompt: String) async throws -> AIChatResponse {
@@ -4504,6 +4542,238 @@ final class AppModel: ObservableObject {
         }
         .sorted { lhs, rhs in
             lhs.query.title.localizedStandardCompare(rhs.query.title) == .orderedAscending
+        }
+    }
+
+    private func gatherAIResourceEvents(for detail: ResourceDetailSnapshot) async -> (state: ResourceEventsLoadState, notes: [String]) {
+        guard selectedConnectionState == .connected else {
+            return (.failed("Connect to a cluster before loading events."), ["Skipped event lookup because the cluster is not connected."])
+        }
+
+        guard let query = resourceEventsQuery(for: detail),
+              query.eventsResource.verbs.contains("list") else {
+            return (resourceEventsState(for: detail), ["Skipped event lookup because events are not discoverable for this resource."])
+        }
+
+        if case .loaded(let snapshot) = resourceEventsStateByQuery[query] {
+            if snapshot.events.isEmpty {
+                return (.loaded(snapshot), ["Checked Kubernetes events for this resource; none were reported."])
+            }
+            return (.loaded(snapshot), ["Reused \(snapshot.events.count) already loaded Kubernetes event(s) for this resource."])
+        }
+
+        guard let resourceEventService else {
+            return (.failed("Resource event service is unavailable."), ["Tried to read Kubernetes events, but the event service is unavailable."])
+        }
+
+        do {
+            let response = try await resourceEventService.resourceEvents(
+                contextName: query.contextID,
+                kubeconfig: loadedKubeconfig,
+                eventsResource: query.eventsResource,
+                namespace: query.namespace,
+                involvedKind: query.involvedKind,
+                involvedName: query.involvedName,
+                involvedUID: query.involvedUID
+            )
+            let snapshot = ResourceEventsSnapshot(
+                query: query,
+                events: response.summaries,
+                resourceVersion: response.metadata?.resourceVersion,
+                loadedAt: Date()
+            )
+            resourceEventsStateByQuery[query] = .loaded(snapshot)
+            if snapshot.events.isEmpty {
+                return (.loaded(snapshot), ["Checked Kubernetes events for this resource; none were reported."])
+            }
+            return (.loaded(snapshot), ["Read \(snapshot.events.count) Kubernetes event(s) for this resource."])
+        } catch {
+            let message = error.localizedDescription
+            resourceEventsStateByQuery[query] = .failed(message)
+            return (.failed(message), ["Tried to read Kubernetes events, but it failed: \(message)"])
+        }
+    }
+
+    private func shouldGatherPodLogs(for detail: ResourceDetailSnapshot, userPrompt: String) -> Bool {
+        let kind = detail.summary.kind ?? detail.query.resource.kind
+        guard kind == "Pod" else {
+            return false
+        }
+
+        let prompt = userPrompt.lowercased()
+        let logIntentFragments = [
+            "log",
+            "logs",
+            "suspicious",
+            "error",
+            "exception",
+            "crash",
+            "restart",
+            "readiness",
+            "liveness",
+            "debug",
+            "why",
+            "fail",
+            "failure",
+            "not working",
+            "analyze"
+        ]
+        if logIntentFragments.contains(where: { prompt.contains($0) }) {
+            return true
+        }
+
+        return detail.summary.containers.contains { ($0.restartCount ?? 0) > 0 || $0.ready == false }
+    }
+
+    private func gatherAIPodLogs(for detail: ResourceDetailSnapshot, userPrompt: String) async -> (snapshots: [PodLogSnapshot], notes: [String]) {
+        guard selectedConnectionState == .connected,
+              let selectedClusterID else {
+            return ([], ["Skipped pod log reads because the cluster is not connected."])
+        }
+
+        let summary = detail.summary
+        let kind = summary.kind ?? detail.query.resource.kind
+        guard kind == "Pod" else {
+            return ([], ["Skipped pod log reads because the selected resource is \(kind)."])
+        }
+
+        guard let namespace = summary.namespace ?? detail.query.namespace,
+              !namespace.isEmpty else {
+            return ([], ["Skipped pod log reads because the pod namespace is unknown."])
+        }
+
+        let podName = summary.name ?? detail.query.name
+        let containers = aiLogContainers(for: detail)
+        guard !containers.isEmpty else {
+            return ([], ["Skipped pod log reads because no pod containers were found in the manifest."])
+        }
+
+        let wantsPreviousLogs = shouldGatherPreviousPodLogs(for: detail, userPrompt: userPrompt)
+        var snapshots: [PodLogSnapshot] = []
+        var notes: [String] = []
+
+        for container in containers.prefix(5) {
+            let current = await gatherAIPodLogSnapshot(
+                contextID: selectedClusterID,
+                namespace: namespace,
+                podName: podName,
+                containerName: container.name,
+                previous: false
+            )
+            snapshots.append(contentsOf: current.snapshot.map { [$0] } ?? [])
+            notes.append(current.note)
+
+            guard wantsPreviousLogs else {
+                continue
+            }
+
+            let previous = await gatherAIPodLogSnapshot(
+                contextID: selectedClusterID,
+                namespace: namespace,
+                podName: podName,
+                containerName: container.name,
+                previous: true
+            )
+            snapshots.append(contentsOf: previous.snapshot.map { [$0] } ?? [])
+            notes.append(previous.note)
+        }
+
+        if containers.count > 5 {
+            notes.append("Skipped \(containers.count - 5) additional container log stream(s) to keep the AI context bounded.")
+        }
+
+        return (snapshots, notes)
+    }
+
+    private func aiLogContainers(for detail: ResourceDetailSnapshot) -> [KubernetesContainerSummary] {
+        let containers = detail.summary.containers
+        let appContainers = containers.filter { $0.kind == .container }
+        let initContainers = containers.filter { $0.kind == .initContainer }
+        let ephemeralContainers = containers.filter { $0.kind == .ephemeralContainer }
+        return appContainers + initContainers + ephemeralContainers
+    }
+
+    private func shouldGatherPreviousPodLogs(for detail: ResourceDetailSnapshot, userPrompt: String) -> Bool {
+        let prompt = userPrompt.lowercased()
+        let previousIntentFragments = [
+            "previous",
+            "last",
+            "crash",
+            "crashloop",
+            "restart",
+            "terminated",
+            "exit"
+        ]
+        if previousIntentFragments.contains(where: { prompt.contains($0) }) {
+            return true
+        }
+
+        return detail.summary.containers.contains { ($0.restartCount ?? 0) > 0 || $0.lastState != nil }
+    }
+
+    private func gatherAIPodLogSnapshot(
+        contextID: ClusterSummary.ID,
+        namespace: String,
+        podName: String,
+        containerName: String?,
+        previous: Bool
+    ) async -> (snapshot: PodLogSnapshot?, note: String) {
+        let query = PodLogQuery(
+            contextID: contextID,
+            namespace: namespace,
+            podName: podName,
+            containerName: containerName,
+            previous: previous,
+            tailLines: 300,
+            sinceSeconds: nil,
+            timestamps: true,
+            follow: false
+        )
+        let label = "\(previous ? "previous" : "current") logs for \(query.title)"
+
+        do {
+            let text: String
+            if let logService {
+                text = try await logService.podLogs(
+                    contextName: query.contextID,
+                    kubeconfig: loadedKubeconfig,
+                    namespace: query.namespace,
+                    podName: query.podName,
+                    options: podLogOptions(for: query)
+                )
+            } else {
+                text = PreviewKubernetesLogService.previewLogText
+            }
+
+            let sanitized = Self.cappedPodLogText(
+                Self.sanitizedPodLogText(text),
+                lineLimit: min(podLogLineLimit, 300)
+            )
+            let snapshot = PodLogSnapshot(query: query, text: sanitized, loadedAt: Date())
+            podLogStateByQuery[query] = .loaded(snapshot)
+
+            let lineCount = snapshot.lines.filter { !$0.isEmpty }.count
+            if lineCount == 0 {
+                return (snapshot, "Read \(label); Kubernetes returned no log lines.")
+            }
+            return (snapshot, "Read \(lineCount) line(s) of \(label).")
+        } catch {
+            let message = error.localizedDescription
+            podLogStateByQuery[query] = .failed(message)
+            return (nil, "Tried to read \(label), but it failed: \(message)")
+        }
+    }
+
+    private func mergedLogSnapshots(_ snapshots: [PodLogSnapshot]) -> [PodLogSnapshot] {
+        var byQuery: [PodLogQuery: PodLogSnapshot] = [:]
+        for snapshot in snapshots {
+            byQuery[snapshot.query] = snapshot
+        }
+        return byQuery.values.sorted { lhs, rhs in
+            if lhs.query.title == rhs.query.title {
+                return lhs.query.previous && !rhs.query.previous
+            }
+            return lhs.query.title.localizedStandardCompare(rhs.query.title) == .orderedAscending
         }
     }
 

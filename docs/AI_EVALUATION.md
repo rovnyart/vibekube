@@ -11,6 +11,8 @@ Use this checklist when changing AI prompts, provider behavior, context building
 - The assistant should open as a standalone resizable window, not a fixed attached sheet.
 - The top-level AI page should show provider readiness, selected model, and Keychain status without exposing the API key.
 - Review the redacted context preview before sending each prompt.
+- When asking about Pod logs, confirm the assistant shows a Vibekube tools card and fetches logs without requiring the Logs tab to be opened first.
+- Confirm the tools card lists only read-only inspection work and any read failures; it must not mutate the cluster.
 - Confirm streamed answers appear incrementally and render Markdown headings, lists, emphasis, and code blocks cleanly.
 - Confirm code blocks have syntax highlighting and a copy control.
 
@@ -29,6 +31,7 @@ Expected:
 
 - Answer says the resource appears healthy or mostly healthy.
 - Answer cites resource identity/status/YAML or conditions from the preview.
+- If asked about Pod logs, answer cites fetched log lines or names the specific containers where Kubernetes returned no current log lines.
 - No destructive action is presented as something Vibekube performed.
 
 ### Image Pull Failure
@@ -59,7 +62,7 @@ Prompts:
 Expected:
 
 - Answer distinguishes current state, restarts, container status, and loaded log snippets.
-- If logs were not loaded before opening AI, answer should say log context is unavailable.
+- If logs were not loaded before opening AI, Vibekube should fetch relevant current logs and previous logs for restarted/crashing containers before the provider answer.
 - Answer recommends read-only next checks before remediation.
 
 ### Rollout Failure
@@ -96,4 +99,5 @@ Expected:
 - Provider/model failure surfaces an error in the assistant without changing the cluster.
 - Oversized YAML/log context is truncated with `<truncated by Vibekube before AI request>`.
 - AI responses never trigger mutation services directly.
+- AI read-only gathering never calls mutation services and never executes suggested kubectl commands.
 - OpenAI-compatible chat requests should stream over provider SSE responses, use `max_completion_tokens`, and never send legacy `max_tokens`.

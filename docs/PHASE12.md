@@ -18,6 +18,8 @@ Goal: add safe AI explain/summarize capabilities on top of local Kubernetes cont
 - [x] AI answers render Markdown and highlighted code blocks.
 - [x] OpenAI-compatible streaming chat transport exists.
 - [x] Read-only explain flows exist.
+- [x] Resource-scoped AI gathers read-only cluster evidence before provider calls.
+- [x] Pod logs and events are loaded on demand when the prompt needs runtime context.
 - [x] AI foundation evaluation checklist exists.
 
 ## Implementation Slices
@@ -45,9 +47,11 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 - [x] Include relevant events.
 - [x] Include relevant conditions.
 - [x] Include selected log snippets.
+- [x] Load Pod log snippets on demand for log/runtime prompts instead of requiring the Logs tab first.
 - [x] Include related resource summaries.
 - [x] Include cluster context and namespace.
 - [x] Enforce size limits.
+- [x] Show read-only tool results in the assistant transcript before the provider answer.
 
 ### 12.3 Redaction And Policy
 
@@ -79,6 +83,7 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 ### 12.5 Guardrails
 
 - [x] AI cannot mutate the cluster directly.
+- [x] AI tool gathering is limited to Vibekube-owned read-only inspection paths.
 - [x] AI command/YAML suggestions are copy or preview only.
 - [x] Every AI answer is prompted to name the context it used.
 - [x] Empty/missing configuration is handled honestly.

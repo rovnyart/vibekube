@@ -356,13 +356,31 @@ struct AIResourceAssistantView: View {
         errorMessage = nil
         isSending = true
         messages.append(AIChatTranscriptMessage(role: .user, text: prompt))
-        messages.append(AIChatTranscriptMessage(role: .assistant, text: "", isStreaming: true))
-        let assistantID = messages.last?.id
+        messages.append(
+            AIChatTranscriptMessage(
+                role: .tool,
+                text: "- Gathering read-only cluster context before asking the provider.",
+                isStreaming: true
+            )
+        )
+        let toolID = messages.last?.id
 
-        let context = context
         Task {
             do {
-                let stream = try appModel.streamAIChat(context: context, userPrompt: prompt)
+                let gatheredContext = await appModel.gatherAIContext(for: detail, userPrompt: prompt)
+                await MainActor.run {
+                    if let toolID,
+                       let index = messages.firstIndex(where: { $0.id == toolID }) {
+                        messages[index].text = gatheredContext.toolSummary
+                        messages[index].isStreaming = false
+                    }
+                    messages.append(AIChatTranscriptMessage(role: .assistant, text: "", isStreaming: true))
+                }
+
+                let assistantID = await MainActor.run {
+                    messages.last?.id
+                }
+                let stream = try appModel.streamAIChat(context: gatheredContext.context, userPrompt: prompt)
                 var didReceiveText = false
                 for try await chunk in stream {
                     await MainActor.run {
@@ -393,12 +411,8 @@ struct AIResourceAssistantView: View {
                 }
             } catch {
                 await MainActor.run {
-                    if let assistantID,
-                       let index = messages.firstIndex(where: { $0.id == assistantID }),
-                       messages[index].text.isEmpty {
-                        messages.remove(at: index)
-                    } else if let assistantID,
-                              let index = messages.firstIndex(where: { $0.id == assistantID }) {
+                    if let toolID,
+                       let index = messages.firstIndex(where: { $0.id == toolID }) {
                         messages[index].isStreaming = false
                     }
                     errorMessage = error.localizedDescription
@@ -599,6 +613,7 @@ private struct AIContextSectionCard: View {
 private struct AIChatTranscriptMessage: Identifiable, Equatable {
     enum Role {
         case user
+        case tool
         case assistant
     }
 
@@ -621,7 +636,7 @@ private struct AIChatBubble: View {
             VStack(alignment: .leading, spacing: 10) {
                 bubbleHeader
 
-                if message.role == .assistant {
+                if message.role == .assistant || message.role == .tool {
                     AIMarkdownView(text: message.text, isStreaming: message.isStreaming)
                 } else {
                     Text(message.text)
@@ -632,7 +647,7 @@ private struct AIChatBubble: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .frame(maxWidth: message.role == .assistant ? 760 : 520, alignment: .leading)
+            .frame(maxWidth: message.role == .user ? 520 : 760, alignment: .leading)
             .background(background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -640,7 +655,7 @@ private struct AIChatBubble: View {
             }
             .shadow(color: Color.black.opacity(0.06), radius: 18, x: 0, y: 8)
 
-            if message.role == .assistant {
+            if message.role != .user {
                 Spacer(minLength: 80)
             }
         }
@@ -648,9 +663,9 @@ private struct AIChatBubble: View {
 
     private var bubbleHeader: some View {
         HStack(spacing: 8) {
-            Label(message.role == .assistant ? "Vibekube AI" : "You", systemImage: message.role == .assistant ? "sparkles" : "person.crop.circle")
+            Label(title, systemImage: systemImage)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(message.role == .assistant ? Color.accentColor : .secondary)
+                .foregroundStyle(tint)
 
             if message.isStreaming {
                 Text("streaming")
@@ -679,6 +694,9 @@ private struct AIChatBubble: View {
         if message.role == .user {
             return AnyShapeStyle(Color.accentColor.opacity(0.14))
         }
+        if message.role == .tool {
+            return AnyShapeStyle(Color(nsColor: .controlBackgroundColor).opacity(0.54))
+        }
         return AnyShapeStyle(.thinMaterial)
     }
 
@@ -686,8 +704,43 @@ private struct AIChatBubble: View {
         switch message.role {
         case .user:
             Color.accentColor.opacity(0.26)
+        case .tool:
+            Color.blue.opacity(0.20)
         case .assistant:
             Color(nsColor: .separatorColor).opacity(0.28)
+        }
+    }
+
+    private var title: String {
+        switch message.role {
+        case .user:
+            "You"
+        case .tool:
+            "Vibekube tools"
+        case .assistant:
+            "Vibekube AI"
+        }
+    }
+
+    private var systemImage: String {
+        switch message.role {
+        case .user:
+            "person.crop.circle"
+        case .tool:
+            "wrench.and.screwdriver"
+        case .assistant:
+            "sparkles"
+        }
+    }
+
+    private var tint: Color {
+        switch message.role {
+        case .user:
+            .secondary
+        case .tool:
+            .blue
+        case .assistant:
+            Color.accentColor
         }
     }
 
