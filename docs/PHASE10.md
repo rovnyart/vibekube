@@ -1,6 +1,6 @@
 # Phase 10: Safe Mutations
 
-Status: QA.
+Status: Complete.
 
 Goal: add common write operations with strong previews, confirmations, RBAC awareness, and rollback-friendly behavior.
 
@@ -79,7 +79,7 @@ Checkpoint: existing-resource YAML edits now have a highlighted editor with line
 - [x] AppModel apply wiring tests.
 - [x] Rendered YAML preview regression tests for managedFields and resource quantities.
 - [x] Confirmation policy and local action history tests.
-- [ ] Confirmation flow UI tests.
+- [x] Confirmation flow UI tests.
 - [x] Integration tests against disposable kind cluster.
 
 ## Acceptance Criteria
@@ -109,7 +109,7 @@ VIBEKUBE_RUN_KIND_INTEGRATION=1 xcodebuild -project vibekube.xcodeproj -scheme v
 - 2026-06-21: Added a first-class Actions detail tab for scale, rollout restart, typed-confirm delete, stronger namespace delete confirmation, and local per-resource action history. Added a header Apply YAML sheet with a reusable highlighted YAML editor, Cmd+F search, file open, side-by-side server-side dry-run preview/diff before apply, and structured Namespace/ConfigMap/Secret generators.
 - 2026-06-21: Focused safe mutation request tests passed:
   `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/vibekubeTests/safeMutationServiceBuildsScaleRestartDeleteAndApplyRequests -only-testing:vibekubeTests/vibekubeTests/appModelAppliesPreviewedMutationForSelectedResourceRow -only-testing:vibekubeTests/vibekubeTests/appModelPreviewsMutationForSelectedResourceRow`
-- 2026-06-21: Visual Computer Use QA for the new Actions tab and global Apply YAML sheet is still pending; the latest debug build is running, but the Mac is locked and Computer Use returns only `remoteConnection`.
+- 2026-06-21: Visual Computer Use QA passed on the latest debug build against `kind-vibekube-dev`: global Apply YAML opened from the resource header, `Cmd+F` focused editor search, Enter kept search navigation active, ConfigMap and Secret generators reset stale previews, Secret form values were masked, dry-run diff redacted Secret data, preview changed the single top-right action from Preview to Apply, and no duplicate Apply button appeared. Actions tab QA verified Scale enables only when the requested replica count differs, Restart is available for Deployments, ordinary resource delete requires the exact resource name, Namespace delete requires the stronger `delete <name>` phrase, wrong phrases keep Delete disabled, and no destructive action was executed.
 - 2026-06-21: Focused confirmation/history tests passed for namespace delete confirmation phrases, successful and failed mutation history, Secret apply history redaction, and the 50-record history cap:
   `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/vibekubeTests/safeMutationServiceBuildsScaleRestartDeleteAndApplyRequests -only-testing:vibekubeTests/vibekubeTests/mutationConfirmationPolicyRequiresStrongerNamespaceDeletePhrase -only-testing:vibekubeTests/vibekubeTests/appModelRecordsSucceededMutationActionHistory -only-testing:vibekubeTests/vibekubeTests/appModelRecordsFailedMutationActionHistory -only-testing:vibekubeTests/vibekubeTests/appModelDoesNotLeakSecretValuesIntoMutationHistory -only-testing:vibekubeTests/vibekubeTests/appModelCapsMutationActionHistory`
 - 2026-06-21: Opt-in kind integration test passed against `kind-vibekube-dev`. The test creates a disposable namespace, runs server-side dry-run/apply for Namespace/ConfigMap/Secret/Deployment, scales and restarts the Deployment, deletes the ConfigMap, verifies lookup failure, and removes the namespace:
