@@ -2,6 +2,30 @@
 
 All notable user-facing changes are tracked here.
 
+## 0.6.0 - 2026-06-21
+
+Changes since 0.5.0:
+
+### Added
+
+- Safe Kubernetes mutation workflows for common day-to-day operations, including scaling workloads, restarting rollouts, deleting resources, and applying YAML with explicit user confirmation.
+- Server-side dry-run preview and diff flow for YAML edits, so existing resources can be edited, searched, previewed, confirmed, applied, and refreshed without guessing what Kubernetes will accept.
+- A highlighted YAML editing experience with line numbers, search, indentation support, expanded diff review, validation errors, and structured apply confirmation.
+- Global Apply YAML tooling with file loading, dry-run preview, and quick generators for basic Namespaces, ConfigMaps, and Secrets.
+- Local mutation action history with status, target resource, timestamp, failure details, and Secret-value redaction.
+- AI provider settings for OpenAI-compatible and Anthropic-compatible APIs, including custom base URLs, custom headers, Keychain-stored secrets, model discovery, and availability testing.
+- Resource-scoped AI assistant for explaining selected Kubernetes resources from visible, redacted context.
+- Cluster-aware read-only AI gathering for resource questions, including Events, conditions, selected logs, selector-matched related Pods, related Pod health, and bounded log/event inspection when a prompt asks about runtime behavior.
+- Streaming AI chat with Markdown rendering, syntax-highlighted code blocks, copy controls, stop generation, clear chat, and Jump to bottom behavior that respects manual scrolling.
+- Top-level AI status page showing provider readiness, selected model, and Keychain status.
+
+### Changed
+
+- Resource detail actions now live in a dedicated Actions flow from the detail header instead of being mixed into read-only inspector tabs.
+- AI assistant opens as a resizable standalone window with a structured context browser and a transcript showing what Vibekube read before contacting the provider.
+- AI suggestions are read-only by design: generated commands and YAML are for copy/preview, and no AI response can mutate a cluster automatically.
+- Privacy documentation and settings behavior now distinguish local-only browsing from optional user-configured AI provider requests.
+
 ## 0.5.0 - 2026-06-21
 
 Changes since 0.4.0:

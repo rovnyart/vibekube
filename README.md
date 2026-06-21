@@ -1,8 +1,8 @@
 # Vibekube
 
-Vibekube is a native macOS Kubernetes client focused on fast read-only cluster browsing, rich pod logs, and clean day-to-day debugging workflows.
+Vibekube is a native macOS Kubernetes cockpit for fast cluster browsing, rich logs, safe Kubernetes actions, and optional AI-assisted debugging.
 
-It is built as a local-first desktop app: Vibekube reads your kubeconfig, connects directly to Kubernetes API servers, and does not send cluster data to a Vibekube backend.
+It is built as a local-first desktop app: Vibekube reads your kubeconfig, connects directly to Kubernetes API servers, and does not send cluster data to a Vibekube backend. AI features are optional and only contact the provider you configure.
 
 ## Download
 
@@ -10,17 +10,19 @@ Download the latest notarized macOS build from [vibekube.tech](https://vibekube.
 
 ## Highlights
 
-- Native macOS interface with sidebar contexts, resource navigation, toolbar search, and namespace selection.
-- Kubeconfig discovery with support for standard Kubernetes auth, client certificates, bearer tokens, and exec credential plugins such as Teleport `tsh`.
-- Fast resource browsing for common Kubernetes resources and CRDs.
-- Resource inspector with Overview, Events, Logs, Env, searchable/copyable/saveable YAML, Metadata, and Conditions tabs.
-- Workload debug summaries that call out unhealthy signals, warning Events, scheduling context, container state, probes, mounts, and resource requests/limits.
-- Practical debug actions, including `kubectl`-backed port-forwarding and external-terminal Pod exec from Pod context menus or per-container detail.
-- Related-resource navigation for common Kubernetes paths such as owner references, workload/service selectors, Ingress backends, PVC/PV bindings, and Pod ConfigMap/Secret references.
-- Rich pod logs: live streaming, timestamps, search, grep-style filtering, JSONL formatting, previous container logs, fullscreen mode, copy, save, and download-all.
-- Large Env views stay navigable by grouping and collapsing `envFrom` ConfigMap and Secret values.
-- Real-time watches for active resource lists and selected resource details, with reconnect handling after idle/background timeouts.
-- Safe Secret handling: Secret manifest payloads are redacted by default, Secret-backed env values are masked until explicitly revealed, and diagnostics redact sensitive data.
+- Native macOS interface with context sidebar, resource navigation, toolbar search, namespace selection, light/dark appearance, and density controls.
+- Direct kubeconfig support for standard Kubernetes auth, client certificates, bearer tokens, and exec credential plugins such as Teleport `tsh`, `aws`, `gcloud`, and `kubelogin`.
+- Fast browsing for common Kubernetes resources and CRDs, backed by real-time watches for active lists and selected resource details.
+- Resource inspector with Overview, Events, Logs, Containers, Env, YAML, Metadata, Conditions, and dedicated Actions flows where they apply.
+- Workload debug summaries that call out warning Events, scheduling context, replica gaps, container state, probes, volume mounts, restarts, termination details, and resource requests/limits.
+- Practical debugging actions: `kubectl`-backed port-forwarding, external-terminal Pod exec, per-container exec choices, shell selection, and local launch history.
+- Rich Pod logs: live streaming, timestamps, search, grep-style filtering, JSONL formatting, previous container logs, fullscreen mode, copy, save, and download-all.
+- Related-resource navigation for owner references, workload/service selectors, Ingress backends, PVC/PV bindings, CronJob Jobs, and Pod ConfigMap/Secret references.
+- Safe mutation workflows for scaling workloads, restarting rollouts, deleting resources, and applying YAML with dry-run preview, diff review, typed confirmations, RBAC/error surfacing, and local action history.
+- Highlighted YAML editing with line numbers, search, server-side dry-run validation, expanded diff review, apply confirmation, and post-apply refresh.
+- Optional AI assistant with OpenAI-compatible and Anthropic-compatible providers, custom URLs/headers, Keychain-stored secrets, model discovery, streaming chat, Markdown/code rendering, stop generation, and clear chat.
+- AI resource investigations gather read-only cluster context on demand, including Events, conditions, redacted YAML, selected logs, selector-matched related Pods, Pod health, and bounded log/event snippets when useful.
+- Strong Secret handling: Secret manifest payloads are redacted by default, Secret-backed env values are masked until explicitly revealed, diagnostics redact sensitive data, and mutation/AI history avoids leaking Secret values.
 - Optional local diagnostics logging to `~/Library/Logs/Vibekube`, disabled by default.
 
 ## Requirements
@@ -28,6 +30,8 @@ Download the latest notarized macOS build from [vibekube.tech](https://vibekube.
 - macOS 26.0 or later.
 - A working Kubernetes kubeconfig, usually `~/.kube/config`.
 - Any external kubeconfig exec plugins used by your contexts, for example `tsh`, `aws`, `gcloud`, or `kubelogin`.
+- `kubectl` for external-terminal exec and port-forward helper actions.
+- Optional: an API key for an OpenAI-compatible or Anthropic-compatible provider if you want AI features.
 
 ## Development
 
@@ -68,4 +72,4 @@ See [docs/RELEASE.md](docs/RELEASE.md) for signing, notarization, and DMG verifi
 
 ## Privacy
 
-Vibekube is local-first and currently has no telemetry, crash reporting, automatic update checks, or AI network requests. See [docs/PRIVACY.md](docs/PRIVACY.md).
+Vibekube is local-first and has no Vibekube backend, telemetry, crash reporting, or automatic update checks. Optional AI calls are user-initiated and sent only to the provider URL configured in Settings with redacted resource context. See [docs/PRIVACY.md](docs/PRIVACY.md).
