@@ -1494,6 +1494,34 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelGathersRelatedPodLogsForDeploymentLogPrompt() async throws {
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            resourceListService: AIRelatedPodResourceListService(),
+            resourceEventService: EmptyAIResourceEventService(),
+            logService: AIRelatedPodLogService(),
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        let detail = deploymentAIResourceDetailSnapshot()
+        let result = await model.gatherAIContext(
+            for: detail,
+            userPrompt: "а можешь посмотреть логи? там ничего подозрительного?"
+        )
+        let prompt = result.context.promptText
+
+        #expect(result.toolSummary.contains("Prompt asked for logs/runtime evidence"))
+        #expect(result.toolSummary.contains("Read 1 line(s) of current logs"))
+        #expect(result.toolSummary.contains("echo-web-pod / nginx"))
+        #expect(prompt.contains("## Selected Log Snippets"))
+        #expect(prompt.contains("nginx request completed without suspicious signals"))
+    }
+
+    @MainActor
     @Test func appModelLoadsPodLogsWithSinceSeconds() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -2348,6 +2376,70 @@ private func deploymentResource(name: String, namespace: String, replicas: Int) 
     )
 }
 
+private func deploymentAIResourceDetailSnapshot() -> ResourceDetailSnapshot {
+    let resource = KubernetesDiscoveredResource(
+        groupVersion: "apps/v1",
+        resource: KubernetesAPIResource(
+            name: "deployments",
+            singularName: "",
+            namespaced: true,
+            kind: "Deployment",
+            verbs: ["get", "list"],
+            shortNames: nil,
+            categories: nil
+        )
+    )
+    let yaml = """
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: echo-web
+      namespace: vibekube-demo
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: echo-web
+    status:
+      replicas: 1
+      readyReplicas: 1
+      availableReplicas: 1
+    """
+    let value = KubernetesJSONValue.object([
+        "apiVersion": .string("apps/v1"),
+        "kind": .string("Deployment"),
+        "metadata": .object([
+            "name": .string("echo-web"),
+            "namespace": .string("vibekube-demo")
+        ]),
+        "spec": .object([
+            "replicas": .number(1),
+            "selector": .object([
+                "matchLabels": .object([
+                    "app.kubernetes.io/name": .string("echo-web")
+                ])
+            ])
+        ]),
+        "status": .object([
+            "replicas": .number(1),
+            "readyReplicas": .number(1),
+            "availableReplicas": .number(1)
+        ])
+    ])
+
+    return ResourceDetailSnapshot(
+        query: ResourceDetailQuery(
+            contextID: "kind-vibekube-dev",
+            resource: resource,
+            namespace: "vibekube-demo",
+            name: "echo-web"
+        ),
+        yaml: yaml,
+        summary: KubernetesResourceDetailSummary(value: value),
+        loadedAt: Date()
+    )
+}
+
 private func mutationResourceDetail(
     resource: KubernetesDiscoveredResource,
     namespace: String?,
@@ -3063,6 +3155,88 @@ private struct SucceedingResourceListService: KubernetesResourceListServicing {
                       },
                       "status": {
                         "phase": "Running"
+                      }
+                    }
+                  ]
+                }
+                """.utf8
+            )
+        )
+    }
+}
+
+private struct AIRelatedPodResourceListService: KubernetesResourceFilteredListServicing {
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        try await listResources(
+            contextName: contextName,
+            kubeconfig: kubeconfig,
+            resource: resource,
+            namespace: namespace,
+            labelSelector: nil
+        )
+    }
+
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        labelSelector: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        #expect(contextName == "kind-vibekube-dev")
+        guard resource.name == "pods",
+              namespace == "vibekube-demo",
+              labelSelector == "app.kubernetes.io/name=echo-web" else {
+            return try JSONDecoder().decode(
+                KubernetesUnstructuredResourceList.self,
+                from: Data(#"{"items":[]}"#.utf8)
+            )
+        }
+
+        return try JSONDecoder().decode(
+            KubernetesUnstructuredResourceList.self,
+            from: Data(
+                """
+                {
+                  "items": [
+                    {
+                      "apiVersion": "v1",
+                      "kind": "Pod",
+                      "metadata": {
+                        "name": "echo-web-pod",
+                        "namespace": "vibekube-demo",
+                        "uid": "echo-web-pod-uid",
+                        "resourceVersion": "44",
+                        "labels": {
+                          "app.kubernetes.io/name": "echo-web"
+                        }
+                      },
+                      "spec": {
+                        "containers": [
+                          {
+                            "name": "nginx"
+                          }
+                        ]
+                      },
+                      "status": {
+                        "phase": "Running",
+                        "containerStatuses": [
+                          {
+                            "name": "nginx",
+                            "ready": true,
+                            "restartCount": 0,
+                            "state": {
+                              "running": {
+                                "startedAt": "2026-06-21T18:00:00Z"
+                              }
+                            }
+                          }
+                        ]
                       }
                     }
                   ]
@@ -4161,6 +4335,27 @@ private struct SucceedingResourceEventService: KubernetesResourceEventServicing 
     }
 }
 
+private struct EmptyAIResourceEventService: KubernetesResourceEventServicing {
+    func resourceEvents(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        eventsResource: KubernetesDiscoveredResource,
+        namespace: String?,
+        involvedKind: String,
+        involvedName: String,
+        involvedUID: String?
+    ) async throws -> KubernetesResourceEventList {
+        #expect(contextName == "kind-vibekube-dev")
+        #expect(eventsResource.name == "events")
+        #expect(namespace == "vibekube-demo")
+
+        return try JSONDecoder().decode(
+            KubernetesResourceEventList.self,
+            from: Data(#"{"items":[]}"#.utf8)
+        )
+    }
+}
+
 private struct SucceedingLogService: KubernetesLogServicing {
     func podLogs(
         contextName: String,
@@ -4198,6 +4393,39 @@ private struct SucceedingLogService: KubernetesLogServicing {
             #expect(options.sinceSeconds == nil)
 
             continuation.yield("2026-06-15T10:01:01Z still running\n")
+            continuation.finish()
+        }
+    }
+}
+
+private struct AIRelatedPodLogService: KubernetesLogServicing {
+    func podLogs(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) async throws -> String {
+        #expect(contextName == "kind-vibekube-dev")
+        #expect(namespace == "vibekube-demo")
+        #expect(podName == "echo-web-pod")
+        #expect(options.container == "nginx")
+        #expect(options.tailLines == 300)
+        #expect(options.sinceSeconds == nil)
+        #expect(options.timestamps == true)
+        #expect(options.follow == false)
+
+        return "2026-06-21T18:00:00Z nginx request completed without suspicious signals"
+    }
+
+    func podLogStream(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        namespace: String,
+        podName: String,
+        options: KubernetesPodLogOptions
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
             continuation.finish()
         }
     }

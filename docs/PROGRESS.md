@@ -18,7 +18,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 9 | [Workload Debugging Basics](PHASE9.md) | Complete | Workload Overview includes event-aware debug summaries, visible `kubectl`-backed port-forward sessions, container-aware external-terminal Pod exec actions, and pod-local exec launch history |
 | 10 | [Safe Mutations](PHASE10.md) | Complete | Safe mutations are implemented and visually QA'd: scale, rollout restart, typed-confirm delete, apply YAML from editor/file with server-side dry-run preview, structured Namespace/ConfigMap/Secret creation, RBAC/discovery-aware disabled states, and local action history |
 | 11 | [Preferences, Security, Packaging](PHASE11.md) | Complete for read-only release | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, kubeconfig path, appearance, table density, external terminal, log buffer, default namespace, resource watch, Secret reveal settings, reset preferences, privacy docs, secret-surface audit, clean-machine validation, sandbox/credential-storage decisions, no-automatic-crash-reporting policy, no pre-Phase-12 AI placeholder decision, and real Teleport/TLS validation exist |
-| 12 | [AI Foundations](PHASE12.md) | Complete | Provider settings, Keychain secret storage, model discovery, OpenAI `max_completion_tokens` compatibility, streaming provider transport, cancellable AI responses, scroll-aware chat follow, redacted resource context, selector-aware related Pod investigation, read-only event/log gathering, resizable resource-scoped AI assistant window, Markdown/code rendering, top-level AI status page, visual gating QA, and manual provider evaluation are in place |
+| 12 | [AI Foundations](PHASE12.md) | Complete | Provider settings, Keychain secret storage, model discovery, OpenAI `max_completion_tokens` compatibility, streaming provider transport, cancellable AI responses, clearable scroll-aware chat follow, redacted resource context, selector-aware related Pod investigation, prompt-driven read-only event/log gathering, resizable resource-scoped AI assistant window, Markdown/code rendering, top-level AI status page, visual gating QA, and manual provider evaluation are in place |
 | 13 | [Advanced AI Operations](PHASE13.md) | Not started | Ready for guided, user-approved AI troubleshooting/remediation design |
 
 ## Current Execution Track
@@ -88,7 +88,7 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Add AI provider settings, secure key/header storage, provider model discovery, and availability testing.
 - [x] Add redacted selected-resource AI explain chat.
 - [x] Add read-only AI event/log gathering for resource investigation prompts.
-- [x] Add selector-aware related Pod investigation for workload and Service AI prompts.
+- [x] Add selector-aware related Pod investigation and prompt-driven related Pod log reads for workload and Service AI prompts.
 - [x] Add AI explain/summarize flows.
 
 ## Checkpoint Rules

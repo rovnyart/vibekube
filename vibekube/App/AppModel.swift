@@ -4615,29 +4615,45 @@ final class AppModel: ObservableObject {
             return false
         }
 
-        let prompt = userPrompt.lowercased()
-        let logIntentFragments = [
-            "log",
-            "logs",
-            "suspicious",
-            "error",
-            "exception",
-            "crash",
-            "restart",
-            "readiness",
-            "liveness",
-            "debug",
-            "why",
-            "fail",
-            "failure",
-            "not working",
-            "analyze"
-        ]
-        if logIntentFragments.contains(where: { prompt.contains($0) }) {
+        if aiPromptIndicatesLogIntent(userPrompt) {
             return true
         }
 
         return detail.summary.containers.contains { ($0.restartCount ?? 0) > 0 || $0.ready == false }
+    }
+
+    private func aiPromptIndicatesLogIntent(_ userPrompt: String) -> Bool {
+        let prompt = userPrompt.lowercased()
+        let logIntentFragments = [
+            "log",
+            "logs",
+            "лог",
+            "логи",
+            "логов",
+            "логах",
+            "suspicious",
+            "подозр",
+            "error",
+            "ошиб",
+            "exception",
+            "исключ",
+            "crash",
+            "restart",
+            "рестарт",
+            "readiness",
+            "liveness",
+            "debug",
+            "дебаг",
+            "why",
+            "почему",
+            "fail",
+            "failure",
+            "не работает",
+            "слом",
+            "not working",
+            "analyze"
+        ]
+        return logIntentFragments.contains { prompt.contains($0) }
     }
 
     private func gatherAIPodLogs(for detail: ResourceDetailSnapshot, userPrompt: String) async -> (snapshots: [PodLogSnapshot], notes: [String]) {
@@ -4784,7 +4800,20 @@ final class AppModel: ObservableObject {
                 contentLines.append("- \(pods.count - 12) additional matching Pod(s) omitted from AI context.")
             }
 
-            let inspectionPods = Array(unhealthyPods.prefix(3))
+            let wantsRelatedPodLogs = aiPromptIndicatesLogIntent(userPrompt)
+            var inspectionPods = Array(unhealthyPods.prefix(3))
+            if wantsRelatedPodLogs {
+                let remainingSlots = max(0, 3 - inspectionPods.count)
+                let selectedIDs = Set(inspectionPods.map(\.id))
+                inspectionPods.append(
+                    contentsOf: pods
+                        .filter { !selectedIDs.contains($0.id) }
+                        .prefix(remainingSlots)
+                )
+                if unhealthyPods.isEmpty {
+                    notes.append("Prompt asked for logs/runtime evidence, so Vibekube inspected related Pod logs for up to 3 matching Pod(s).")
+                }
+            }
             var logSnapshots: [PodLogSnapshot] = []
             for pod in inspectionPods {
                 let eventResult = await gatherAIEventsForPod(
@@ -4810,6 +4839,9 @@ final class AppModel: ObservableObject {
 
             if unhealthyPods.count > inspectionPods.count {
                 notes.append("Skipped deep AI event/log reads for \(unhealthyPods.count - inspectionPods.count) additional unhealthy related Pod(s) to keep context bounded.")
+            }
+            if wantsRelatedPodLogs, pods.count > inspectionPods.count {
+                notes.append("Skipped related Pod log reads for \(pods.count - inspectionPods.count) additional matching Pod(s) to keep the AI context bounded.")
             }
 
             return (

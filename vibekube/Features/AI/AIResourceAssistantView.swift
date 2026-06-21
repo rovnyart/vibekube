@@ -66,6 +66,8 @@ struct AIResourceAssistantView: View {
     @State private var sendTask: Task<Void, Never>?
     @State private var autoFollowsChat = true
     @State private var showsJumpToBottom = false
+    @State private var scrollToBottomGeneration = 0
+    @State private var lastScrollRequestAt = Date.distantPast
     @FocusState private var composerFocused: Bool
 
     private let chatBottomID = "ai-chat-bottom"
@@ -140,6 +142,15 @@ struct AIResourceAssistantView: View {
             }
 
             Spacer()
+
+            Button {
+                clearChat()
+            } label: {
+                Label("Clear Chat", systemImage: "trash")
+            }
+            .buttonStyle(.bordered)
+            .disabled(messages.isEmpty && errorMessage == nil && sentContext == nil)
+            .help("Clear this chat")
 
             Button {
                 copyToPasteboard(context.promptText)
@@ -217,11 +228,11 @@ struct AIResourceAssistantView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .background(.regularMaterial.opacity(0.42))
-                    .onChange(of: messages.map(\.text).joined(separator: "\u{0}")) {
+                    .onChange(of: scrollToBottomGeneration) {
                         scrollToBottomIfNeeded(proxy: proxy)
                     }
                     .onChange(of: isSending) {
-                        scrollToBottomIfNeeded(proxy: proxy)
+                        requestChatAutoScroll(force: true)
                     }
 
                     if showsJumpToBottom {
@@ -407,6 +418,20 @@ struct AIResourceAssistantView: View {
         }
     }
 
+    private func requestChatAutoScroll(force: Bool = false) {
+        guard autoFollowsChat else {
+            showsJumpToBottom = true
+            return
+        }
+
+        let now = Date()
+        guard force || now.timeIntervalSince(lastScrollRequestAt) >= 0.12 else {
+            return
+        }
+        lastScrollRequestAt = now
+        scrollToBottomGeneration += 1
+    }
+
     private func sendPrompt() {
         let prompt = draftPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty, !isSending else {
@@ -427,6 +452,7 @@ struct AIResourceAssistantView: View {
             )
         )
         let toolID = messages.last?.id
+        requestChatAutoScroll(force: true)
 
         let task = Task {
             do {
@@ -442,6 +468,7 @@ struct AIResourceAssistantView: View {
                         messages[index].isStreaming = false
                     }
                     messages.append(AIChatTranscriptMessage(role: .assistant, text: "", isStreaming: true))
+                    requestChatAutoScroll(force: true)
                 }
 
                 let assistantID = await MainActor.run {
@@ -449,28 +476,13 @@ struct AIResourceAssistantView: View {
                 }
                 let stream = try appModel.streamAIChat(context: gatheredContext.context, userPrompt: prompt)
                 var didReceiveText = false
-                var pendingText = ""
-                var lastFlush = Date.distantPast
                 for try await chunk in stream {
                     try Task.checkCancellation()
                     if !chunk.textDelta.isEmpty {
                         didReceiveText = true
-                        pendingText += chunk.textDelta
-                    }
-                    let shouldFlush = !pendingText.isEmpty &&
-                        (chunk.isFinished || Date().timeIntervalSince(lastFlush) >= 0.08)
-                    if shouldFlush {
-                        let text = pendingText
-                        pendingText = ""
-                        lastFlush = Date()
-                        await appendAssistantText(text, assistantID: assistantID)
+                        await appendAssistantText(chunk.textDelta, assistantID: assistantID)
                     }
                     if chunk.isFinished {
-                        if !pendingText.isEmpty {
-                            let text = pendingText
-                            pendingText = ""
-                            await appendAssistantText(text, assistantID: assistantID)
-                        }
                         await MainActor.run {
                             guard let assistantID,
                                   let index = messages.firstIndex(where: { $0.id == assistantID }) else {
@@ -478,6 +490,7 @@ struct AIResourceAssistantView: View {
                             }
                             messages[index].isStreaming = false
                             isSending = false
+                            requestChatAutoScroll(force: true)
                         }
                     }
                 }
@@ -492,6 +505,7 @@ struct AIResourceAssistantView: View {
                     }
                     isSending = false
                     sendTask = nil
+                    requestChatAutoScroll(force: true)
                 }
             } catch is CancellationError {
                 await MainActor.run {
@@ -519,6 +533,7 @@ struct AIResourceAssistantView: View {
                 return
             }
             messages[index].text += text
+            requestChatAutoScroll()
         }
     }
 
@@ -542,6 +557,18 @@ struct AIResourceAssistantView: View {
                 messages[index].text = "- Stopped before asking the provider."
             }
         }
+    }
+
+    private func clearChat() {
+        stopGenerating()
+        messages.removeAll()
+        draftPrompt = ""
+        errorMessage = nil
+        sentContext = nil
+        selectedContextSectionID = nil
+        autoFollowsChat = true
+        showsJumpToBottom = false
+        requestChatAutoScroll(force: true)
     }
 
     private func copyToPasteboard(_ text: String) {

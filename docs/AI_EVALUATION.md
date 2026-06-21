@@ -12,13 +12,14 @@ Use this checklist when changing AI prompts, provider behavior, context building
 - The top-level AI page should show provider readiness, selected model, and Keychain status without exposing the API key.
 - Review the redacted context preview before sending each prompt.
 - When asking about Pod logs, confirm the assistant shows a Vibekube tools card and fetches logs without requiring the Logs tab to be opened first.
-- When asking about a workload or Service with a selector, confirm the assistant gathers matching Pods server-side, inspects unhealthy related Pod events, and attempts bounded related Pod logs where useful.
+- When asking about a workload or Service with a selector, confirm the assistant gathers matching Pods server-side, inspects related Pod events, and attempts bounded related Pod logs when the prompt asks about logs/runtime behavior, even for currently healthy matching Pods.
 - Confirm the tools card lists only read-only inspection work and any read failures; it must not mutate the cluster.
 - Confirm streamed answers appear incrementally and render Markdown headings, lists, emphasis, and code blocks cleanly.
 - Confirm code blocks have syntax highlighting and a copy control.
 - While an answer is streaming, confirm the composer button becomes Stop and stops the provider response without freezing the assistant.
 - Confirm chat output auto-scrolls while untouched; after manually scrolling upward, auto-scroll should pause and a Jump to bottom control should appear.
 - Confirm Jump to bottom returns the transcript to the latest output and hides the control.
+- Confirm Clear Chat removes the current transcript/context cards without changing provider settings or Keychain secrets.
 
 ## Scenarios
 
@@ -35,7 +36,8 @@ Expected:
 
 - Answer says the resource appears healthy or mostly healthy.
 - Answer cites resource identity/status/YAML or conditions from the preview.
-- If asked about Pod logs, answer cites fetched log lines or names the specific containers where Kubernetes returned no current log lines.
+- If asked about Pod logs from the Deployment, the tools card says Vibekube read matching Pods for the selector and read current logs from the matching Pod container before the provider answer.
+- If Kubernetes returns no current log lines, answer names the specific matching Pod/container where logs were empty.
 - No destructive action is presented as something Vibekube performed.
 
 ### Image Pull Failure
@@ -83,6 +85,7 @@ Expected:
 
 - The tools card says Vibekube read matching Pods for the selector and names any unhealthy related Pod inspected.
 - The sent context panel shows a `Related Pod Health` section with related Pod status, container state, related Pod events, and any log read failure/success.
+- If the prompt explicitly asks for logs, the tools card should include bounded related Pod log reads even if the matching Pods are healthy.
 - Answer identifies the related ImagePullBackOff or other Pod-level blocker, not only the Deployment replica/availability mismatch.
 - Draft YAML is clearly a draft and is not applied by Vibekube.
 - User is directed to review through the normal YAML preview/apply flow if they choose to act.

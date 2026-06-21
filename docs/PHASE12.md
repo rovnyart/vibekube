@@ -21,7 +21,7 @@ Goal: add safe AI explain/summarize capabilities on top of local Kubernetes cont
 - [x] Read-only explain flows exist.
 - [x] Resource-scoped AI gathers read-only cluster evidence before provider calls.
 - [x] Pod logs and events are loaded on demand when the prompt needs runtime context.
-- [x] Workload and Service AI prompts gather selector-matched Pod health, related Pod events, and bounded log attempts for unhealthy Pods.
+- [x] Workload and Service AI prompts gather selector-matched Pod health, related Pod events, and bounded log attempts for unhealthy Pods or explicit log/runtime prompts.
 - [x] The context preview switches to the exact enriched context sent to the provider after read-only gathering.
 - [x] AI foundation evaluation checklist exists.
 
@@ -53,6 +53,7 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 - [x] Load Pod log snippets on demand for log/runtime prompts instead of requiring the Logs tab first.
 - [x] Include related resource summaries.
 - [x] Include selector-matched related Pod health for workloads and Services.
+- [x] Load bounded selector-matched Pod logs for workload and Service prompts that explicitly ask about logs/runtime behavior, even when the matching Pods are currently healthy.
 - [x] Include cluster context and namespace.
 - [x] Enforce size limits.
 - [x] Show read-only tool results in the assistant transcript before the provider answer.
@@ -85,6 +86,7 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 - [x] Show live streaming answer state with animated provider activity.
 - [x] Let the user stop an in-flight model response.
 - [x] Auto-follow streaming chat output until the user scrolls away, then show a Jump to bottom control.
+- [x] Let the user clear the current assistant transcript without changing saved AI settings.
 - [x] Show the actual sent context after read-only gathering so the user can audit what the provider saw.
 
 ### 12.5 Guardrails
@@ -103,6 +105,8 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 - [x] AI-generated actions are never executed automatically.
 - [x] User can stop a streaming provider response.
 - [x] Chat auto-scroll does not fight the user after they scroll away from the bottom.
+- [x] Workload log questions fetch selector-matched Pod logs before calling the provider.
+- [x] User can clear the current chat transcript.
 - [x] Provider-backed manual evaluation passes with a real test key/model.
 
 ## Validation Commands
