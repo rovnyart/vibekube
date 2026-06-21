@@ -1157,6 +1157,13 @@ struct KubernetesLabelSelectorSummary: Equatable {
             .joined(separator: ", ")
     }
 
+    var queryString: String {
+        matchLabels
+            .sorted { lhs, rhs in lhs.key.localizedStandardCompare(rhs.key) == .orderedAscending }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: ",")
+    }
+
     func matches(labels: [String: String]?) -> Bool {
         guard let labels else {
             return false

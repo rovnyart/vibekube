@@ -79,6 +79,33 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
     func resourceList(
         resource: KubernetesDiscoveredResource,
         namespace: String?,
+        labelSelector: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        try await resourceList(
+            resource: resource,
+            namespace: namespace,
+            labelSelector: labelSelector,
+            progress: { _ in }
+        )
+    }
+
+    func resourceList(
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        progress: @escaping (ResourceListPageProgress) async -> Void
+    ) async throws -> KubernetesUnstructuredResourceList {
+        try await resourceList(
+            resource: resource,
+            namespace: namespace,
+            labelSelector: nil,
+            progress: progress
+        )
+    }
+
+    private func resourceList(
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        labelSelector: String?,
         progress: @escaping (ResourceListPageProgress) async -> Void
     ) async throws -> KubernetesUnstructuredResourceList {
         var pages: [KubernetesUnstructuredResourceList] = []
@@ -91,7 +118,11 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
             try Task.checkCancellation()
             let page: KubernetesUnstructuredResourceList = try await get(
                 path: resource.listPath(namespace: namespace),
-                queryItems: Self.listQueryItems(limit: Self.defaultListLimit, continueToken: continueToken)
+                queryItems: Self.listQueryItems(
+                    limit: Self.defaultListLimit,
+                    continueToken: continueToken,
+                    labelSelector: labelSelector
+                )
             )
             pages.append(page)
             pageCount += 1
@@ -475,13 +506,21 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         return items
     }
 
-    private static func listQueryItems(limit: Int, continueToken: String?) -> [URLQueryItem] {
+    private static func listQueryItems(
+        limit: Int,
+        continueToken: String?,
+        labelSelector: String? = nil
+    ) -> [URLQueryItem] {
         var items = [
             URLQueryItem(name: "limit", value: "\(limit)")
         ]
 
         if let continueToken, !continueToken.isEmpty {
             items.append(URLQueryItem(name: "continue", value: continueToken))
+        }
+
+        if let labelSelector, !labelSelector.isEmpty {
+            items.append(URLQueryItem(name: "labelSelector", value: labelSelector))
         }
 
         return items

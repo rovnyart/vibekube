@@ -62,6 +62,7 @@ struct AIResourceAssistantView: View {
     @State private var isSending = false
     @State private var errorMessage: String?
     @State private var selectedContextSectionID: AIContextSection.ID?
+    @State private var sentContext: AIContextBundle?
     @FocusState private var composerFocused: Bool
 
     let detail: ResourceDetailSnapshot
@@ -343,7 +344,7 @@ struct AIResourceAssistantView: View {
     }
 
     private var context: AIContextBundle {
-        appModel.aiContextBundle(for: detail)
+        sentContext ?? appModel.aiContextBundle(for: detail)
     }
 
     private func sendPrompt() {
@@ -369,6 +370,9 @@ struct AIResourceAssistantView: View {
             do {
                 let gatheredContext = await appModel.gatherAIContext(for: detail, userPrompt: prompt)
                 await MainActor.run {
+                    sentContext = gatheredContext.context
+                    selectedContextSectionID = gatheredContext.context.sections.first(where: { $0.title == "Related Pod Health" })?.id
+                        ?? "vibekube-read-only-tools"
                     if let toolID,
                        let index = messages.firstIndex(where: { $0.id == toolID }) {
                         messages[index].text = gatheredContext.toolSummary

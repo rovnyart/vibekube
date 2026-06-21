@@ -199,6 +199,12 @@ struct AIContextGatherResult: Equatable {
     var toolSummary: String
 }
 
+struct AIRelatedPodContext: Equatable {
+    var title: String
+    var content: String
+    var logSnapshots: [PodLogSnapshot]
+}
+
 struct AIContextSection: Equatable, Identifiable {
     var id: String
     var title: String

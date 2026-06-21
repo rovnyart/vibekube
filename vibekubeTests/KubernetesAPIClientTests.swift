@@ -146,6 +146,35 @@ struct KubernetesAPIClientTests {
         #expect(result.status == nil)
     }
 
+    @Test func resourceListCanSendLabelSelector() async throws {
+        let client = try makeClient { request in
+            #expect(request.httpMethod == "GET")
+            #expect(request.url?.path == "/api/v1/namespaces/vibekube-demo/pods")
+            let components = URLComponents(url: try #require(request.url), resolvingAgainstBaseURL: false)
+            let queryItems = components?.queryItems ?? []
+            #expect(queryItems.contains(URLQueryItem(name: "limit", value: "500")))
+            #expect(queryItems.contains(URLQueryItem(name: "labelSelector", value: "app=echo,tier=web")))
+            return .response(
+                statusCode: 200,
+                body: """
+                {
+                  "apiVersion": "v1",
+                  "kind": "PodList",
+                  "items": []
+                }
+                """
+            )
+        }
+
+        let response = try await client.resourceList(
+            resource: podResource(),
+            namespace: "vibekube-demo",
+            labelSelector: "app=echo,tier=web"
+        )
+
+        #expect(response.items.isEmpty)
+    }
+
     @Test func mutationRequestDecodesForbiddenStatus() async throws {
         let client = try makeClient { _ in
             .response(statusCode: 403, body: Self.statusBody(reason: "Forbidden", code: 403))

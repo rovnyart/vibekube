@@ -1110,6 +1110,12 @@ final class AppModel: ObservableObject {
         var toolNotes = ["Read selected resource manifest, status, conditions, relationships, and redacted environment from Vibekube."]
         var eventState = resourceEventsState(for: detail)
         var logSnapshots = aiLogSnapshots(for: detail)
+        let relatedPodResult = await gatherAIRelatedPodContext(for: detail, userPrompt: userPrompt)
+        let relatedPodContext = relatedPodResult.context
+        toolNotes.append(contentsOf: relatedPodResult.notes)
+        if let relatedPodContext {
+            logSnapshots = mergedLogSnapshots(logSnapshots + relatedPodContext.logSnapshots)
+        }
 
         let eventResult = await gatherAIResourceEvents(for: detail)
         eventState = eventResult.state
@@ -1140,6 +1146,15 @@ final class AppModel: ObservableObject {
             ),
             at: 0
         )
+        if let relatedPodContext {
+            context.sections.insert(
+                AIContextSection(
+                    title: relatedPodContext.title,
+                    content: relatedPodContext.content
+                ),
+                at: min(1, context.sections.count)
+            )
+        }
 
         return AIContextGatherResult(context: context, toolSummary: toolSummary)
     }
@@ -4683,6 +4698,377 @@ final class AppModel: ObservableObject {
         }
 
         return (snapshots, notes)
+    }
+
+    private func gatherAIRelatedPodContext(
+        for detail: ResourceDetailSnapshot,
+        userPrompt: String
+    ) async -> (context: AIRelatedPodContext?, notes: [String]) {
+        let kind = detail.summary.kind ?? detail.query.resource.kind
+        guard shouldGatherRelatedPods(for: kind),
+              let selector = detail.summary.labelSelector else {
+            return (nil, [])
+        }
+
+        guard selectedConnectionState == .connected,
+              let selectedClusterID else {
+            return (nil, ["Skipped related Pod lookup because the cluster is not connected."])
+        }
+
+        guard let namespace = detail.summary.namespace ?? detail.query.namespace,
+              !namespace.isEmpty else {
+            return (nil, ["Skipped related Pod lookup because the selected resource namespace is unknown."])
+        }
+
+        guard let podResource = ResourceNavigationItem.pods.discoveredResource(in: selectedDiscovery),
+              podResource.verbs.contains("list") else {
+            return (nil, ["Skipped related Pod lookup because Pods are not discoverable or listable."])
+        }
+
+        guard let resourceListService else {
+            return (nil, ["Tried to read related Pods, but the resource list service is unavailable."])
+        }
+
+        do {
+            let response: KubernetesUnstructuredResourceList
+            if let filteredService = resourceListService as? KubernetesResourceFilteredListServicing {
+                response = try await filteredService.listResources(
+                    contextName: selectedClusterID,
+                    kubeconfig: loadedKubeconfig,
+                    resource: podResource,
+                    namespace: namespace,
+                    labelSelector: selector.queryString
+                )
+            } else {
+                let unfiltered = try await resourceListService.listResources(
+                    contextName: selectedClusterID,
+                    kubeconfig: loadedKubeconfig,
+                    resource: podResource,
+                    namespace: namespace
+                )
+                response = KubernetesUnstructuredResourceList(
+                    apiVersion: unfiltered.apiVersion,
+                    kind: unfiltered.kind,
+                    metadata: unfiltered.metadata,
+                    items: unfiltered.items.filter { selector.matches(labels: $0.metadata.labels) }
+                )
+            }
+
+            let pods = response.items.sorted { lhs, rhs in
+                lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
+            }
+            var notes = ["Read \(pods.count) related Pod(s) for selector \(selector.displayText)."]
+            guard !pods.isEmpty else {
+                return (
+                    AIRelatedPodContext(
+                        title: "Related Pod Health",
+                        content: "Selector: \(AIContextRedactor.redactedText(selector.displayText))\nNo Pods currently match this selector.",
+                        logSnapshots: []
+                    ),
+                    notes
+                )
+            }
+
+            var contentLines = [
+                "Selector: \(AIContextRedactor.redactedText(selector.displayText))",
+                "Related Pods: \(pods.count)"
+            ]
+            let unhealthyPods = pods.filter(aiShouldInspectRelatedPod)
+            if !unhealthyPods.isEmpty {
+                contentLines.append("Pods needing attention: \(unhealthyPods.count)")
+                notes.append("Found \(unhealthyPods.count) related Pod(s) needing attention: \(unhealthyPods.prefix(3).map(\.displayName).joined(separator: ", ")).")
+            }
+            contentLines.append("")
+            contentLines.append(contentsOf: pods.prefix(12).map(aiRelatedPodLine))
+            if pods.count > 12 {
+                contentLines.append("- \(pods.count - 12) additional matching Pod(s) omitted from AI context.")
+            }
+
+            let inspectionPods = Array(unhealthyPods.prefix(3))
+            var logSnapshots: [PodLogSnapshot] = []
+            for pod in inspectionPods {
+                let eventResult = await gatherAIEventsForPod(
+                    contextID: selectedClusterID,
+                    podResource: podResource,
+                    pod: pod
+                )
+                notes.append(eventResult.note)
+                if !eventResult.events.isEmpty {
+                    contentLines.append("")
+                    contentLines.append("Events for Pod/\(pod.displayName):")
+                    contentLines.append(contentsOf: eventResult.events.prefix(5).map { "- \(AIContextRedactor.redactedText($0.type)) reason=\(AIContextRedactor.redactedText($0.reason)) message=\(AIContextRedactor.redactedText($0.message))" })
+                }
+
+                let logResult = await gatherAILogsForRelatedPod(
+                    contextID: selectedClusterID,
+                    pod: pod,
+                    userPrompt: userPrompt
+                )
+                logSnapshots.append(contentsOf: logResult.snapshots)
+                notes.append(contentsOf: logResult.notes)
+            }
+
+            if unhealthyPods.count > inspectionPods.count {
+                notes.append("Skipped deep AI event/log reads for \(unhealthyPods.count - inspectionPods.count) additional unhealthy related Pod(s) to keep context bounded.")
+            }
+
+            return (
+                AIRelatedPodContext(
+                    title: "Related Pod Health",
+                    content: contentLines.joined(separator: "\n"),
+                    logSnapshots: logSnapshots
+                ),
+                notes
+            )
+        } catch {
+            return (nil, ["Tried to read related Pods for selector \(selector.displayText), but it failed: \(error.localizedDescription)"])
+        }
+    }
+
+    private func shouldGatherRelatedPods(for kind: String) -> Bool {
+        switch kind {
+        case "Deployment", "ReplicaSet", "StatefulSet", "DaemonSet", "Job", "Service":
+            true
+        default:
+            false
+        }
+    }
+
+    private func aiShouldInspectRelatedPod(_ pod: KubernetesUnstructuredResource) -> Bool {
+        let status = pod.displayStatus.lowercased()
+        let failedStatusFragments = [
+            "backoff",
+            "error",
+            "failed",
+            "errimagepull",
+            "crashloop",
+            "invalidimage",
+            "createcontainer",
+            "pending"
+        ]
+        if failedStatusFragments.contains(where: { status.contains($0) }) {
+            return true
+        }
+
+        let readyCount = aiPodReadyCount(pod)
+        let containerCount = aiPodContainerCount(pod)
+        if containerCount > 0, readyCount < containerCount {
+            return true
+        }
+
+        return aiPodContainerStatuses(pod).contains { status in
+            status["ready"]?.boolValue == false ||
+                (status["restartCount"]?.intValue ?? 0) > 0 ||
+                aiContainerStateNeedsAttention(status["state"]) ||
+                status["lastState"]?.objectValue?.isEmpty == false
+        }
+    }
+
+    private func aiRelatedPodLine(_ pod: KubernetesUnstructuredResource) -> String {
+        let containerStatuses = aiPodContainerStatuses(pod)
+        let containers = containerStatuses.prefix(4).map { status in
+            let name = status["name"]?.stringValue ?? "container"
+            let ready = status["ready"]?.boolValue.map(String.init) ?? "unknown"
+            let restarts = status["restartCount"]?.intValue.map(String.init) ?? "unknown"
+            let state = aiContainerStateText(status["state"])
+            return "\(name) ready=\(ready) restarts=\(restarts) state=\(state)"
+        }
+        let containersText = containers.isEmpty ? "" : " containers=[\(containers.joined(separator: "; "))]"
+        return "- Pod/\(pod.displayName) status=\(AIContextRedactor.redactedText(pod.displayStatus)) ready=\(aiPodReadyDescription(pod)) restarts=\(aiPodRestartCount(pod))\(containersText)"
+    }
+
+    private func gatherAIEventsForPod(
+        contextID: ClusterSummary.ID,
+        podResource: KubernetesDiscoveredResource,
+        pod: KubernetesUnstructuredResource
+    ) async -> (events: [KubernetesResourceEventSummary], note: String) {
+        guard let eventsResource = ResourceNavigationItem.events.discoveredResource(in: selectedDiscovery),
+              eventsResource.verbs.contains("list") else {
+            return ([], "Skipped events for related Pod/\(pod.displayName) because events are not discoverable.")
+        }
+
+        let query = ResourceEventsQuery(
+            contextID: contextID,
+            eventsResource: eventsResource,
+            namespace: pod.metadata.namespace,
+            involvedKind: podResource.kind,
+            involvedName: pod.displayName,
+            involvedUID: pod.metadata.uid,
+            involvedResourceVersion: pod.metadata.resourceVersion
+        )
+
+        if case .loaded(let snapshot) = resourceEventsStateByQuery[query] {
+            let note = snapshot.events.isEmpty
+                ? "Checked events for related Pod/\(pod.displayName); none were reported."
+                : "Reused \(snapshot.events.count) event(s) for related Pod/\(pod.displayName)."
+            return (snapshot.events, note)
+        }
+
+        guard let resourceEventService else {
+            return ([], "Tried to read events for related Pod/\(pod.displayName), but the event service is unavailable.")
+        }
+
+        do {
+            let response = try await resourceEventService.resourceEvents(
+                contextName: contextID,
+                kubeconfig: loadedKubeconfig,
+                eventsResource: eventsResource,
+                namespace: query.namespace,
+                involvedKind: query.involvedKind,
+                involvedName: query.involvedName,
+                involvedUID: query.involvedUID
+            )
+            let snapshot = ResourceEventsSnapshot(
+                query: query,
+                events: response.summaries,
+                resourceVersion: response.metadata?.resourceVersion,
+                loadedAt: Date()
+            )
+            resourceEventsStateByQuery[query] = .loaded(snapshot)
+            let note = snapshot.events.isEmpty
+                ? "Checked events for related Pod/\(pod.displayName); none were reported."
+                : "Read \(snapshot.events.count) event(s) for related Pod/\(pod.displayName)."
+            return (snapshot.events, note)
+        } catch {
+            let message = error.localizedDescription
+            resourceEventsStateByQuery[query] = .failed(message)
+            return ([], "Tried to read events for related Pod/\(pod.displayName), but it failed: \(message)")
+        }
+    }
+
+    private func gatherAILogsForRelatedPod(
+        contextID: ClusterSummary.ID,
+        pod: KubernetesUnstructuredResource,
+        userPrompt: String
+    ) async -> (snapshots: [PodLogSnapshot], notes: [String]) {
+        guard let namespace = pod.metadata.namespace,
+              !namespace.isEmpty else {
+            return ([], ["Skipped logs for related Pod/\(pod.displayName) because its namespace is unknown."])
+        }
+
+        let statuses = aiPodContainerStatuses(pod)
+        let unhealthyStatuses = statuses.filter { status in
+            status["ready"]?.boolValue == false ||
+                (status["restartCount"]?.intValue ?? 0) > 0 ||
+                aiContainerStateNeedsAttention(status["state"])
+        }
+        let selectedStatuses = (unhealthyStatuses.isEmpty ? statuses : unhealthyStatuses).prefix(3)
+        guard !selectedStatuses.isEmpty else {
+            return ([], ["Skipped logs for related Pod/\(pod.displayName) because no container statuses were found."])
+        }
+
+        var snapshots: [PodLogSnapshot] = []
+        var notes: [String] = []
+        for status in selectedStatuses {
+            let containerName = status["name"]?.stringValue
+            let current = await gatherAIPodLogSnapshot(
+                contextID: contextID,
+                namespace: namespace,
+                podName: pod.displayName,
+                containerName: containerName,
+                previous: false
+            )
+            snapshots.append(contentsOf: current.snapshot.map { [$0] } ?? [])
+            notes.append(current.note)
+
+            if shouldGatherPreviousPodLogs(for: pod, userPrompt: userPrompt) {
+                let previous = await gatherAIPodLogSnapshot(
+                    contextID: contextID,
+                    namespace: namespace,
+                    podName: pod.displayName,
+                    containerName: containerName,
+                    previous: true
+                )
+                snapshots.append(contentsOf: previous.snapshot.map { [$0] } ?? [])
+                notes.append(previous.note)
+            }
+        }
+
+        return (snapshots, notes)
+    }
+
+    private func shouldGatherPreviousPodLogs(for pod: KubernetesUnstructuredResource, userPrompt: String) -> Bool {
+        let prompt = userPrompt.lowercased()
+        let previousIntentFragments = [
+            "previous",
+            "last",
+            "crash",
+            "crashloop",
+            "restart",
+            "terminated",
+            "exit"
+        ]
+        if previousIntentFragments.contains(where: { prompt.contains($0) }) {
+            return true
+        }
+
+        return aiPodRestartCount(pod) > 0 || aiPodContainerStatuses(pod).contains { $0["lastState"]?.objectValue?.isEmpty == false }
+    }
+
+    private func aiPodReadyCount(_ pod: KubernetesUnstructuredResource) -> Int {
+        aiPodContainerStatuses(pod).filter { $0["ready"]?.boolValue == true }.count
+    }
+
+    private func aiPodContainerCount(_ pod: KubernetesUnstructuredResource) -> Int {
+        let statusCount = aiPodContainerStatuses(pod).count
+        if statusCount > 0 {
+            return statusCount
+        }
+        return pod.spec?["containers"]?.arrayValue?.count ?? 0
+    }
+
+    private func aiPodReadyDescription(_ pod: KubernetesUnstructuredResource) -> String {
+        let containerCount = aiPodContainerCount(pod)
+        guard containerCount > 0 else {
+            return "-"
+        }
+        return "\(aiPodReadyCount(pod))/\(containerCount)"
+    }
+
+    private func aiPodRestartCount(_ pod: KubernetesUnstructuredResource) -> Int {
+        aiPodContainerStatuses(pod).reduce(0) { result, status in
+            result + (status["restartCount"]?.intValue ?? 0)
+        }
+    }
+
+    private func aiPodContainerStatuses(_ pod: KubernetesUnstructuredResource) -> [[String: KubernetesJSONValue]] {
+        let initStatuses = pod.status?["initContainerStatuses"]?.arrayValue ?? []
+        let appStatuses = pod.status?["containerStatuses"]?.arrayValue ?? []
+        let ephemeralStatuses = pod.status?["ephemeralContainerStatuses"]?.arrayValue ?? []
+        return (appStatuses + initStatuses + ephemeralStatuses).compactMap(\.objectValue)
+    }
+
+    private func aiContainerStateNeedsAttention(_ value: KubernetesJSONValue?) -> Bool {
+        let state = aiContainerStateText(value).lowercased()
+        return state.contains("backoff") ||
+            state.contains("error") ||
+            state.contains("failed") ||
+            state.contains("errimagepull") ||
+            state.contains("crashloop") ||
+            state.contains("invalidimage") ||
+            state.contains("createcontainer") ||
+            state.contains("terminated")
+    }
+
+    private func aiContainerStateText(_ value: KubernetesJSONValue?) -> String {
+        guard let state = value?.objectValue else {
+            return "unknown"
+        }
+        if let waiting = state["waiting"]?.objectValue {
+            let reason = waiting["reason"]?.stringValue ?? "Waiting"
+            let message = waiting["message"]?.stringValue.map { " \($0)" } ?? ""
+            return AIContextRedactor.redactedText("\(reason)\(message)")
+        }
+        if let terminated = state["terminated"]?.objectValue {
+            let reason = terminated["reason"]?.stringValue ?? "Terminated"
+            let exitCode = terminated["exitCode"]?.intValue.map { " exitCode=\($0)" } ?? ""
+            let message = terminated["message"]?.stringValue.map { " \($0)" } ?? ""
+            return AIContextRedactor.redactedText("\(reason)\(exitCode)\(message)")
+        }
+        if state["running"]?.objectValue != nil {
+            return "Running"
+        }
+        return "unknown"
     }
 
     private func aiLogContainers(for detail: ResourceDetailSnapshot) -> [KubernetesContainerSummary] {

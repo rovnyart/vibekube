@@ -12,6 +12,7 @@ Use this checklist when changing AI prompts, provider behavior, context building
 - The top-level AI page should show provider readiness, selected model, and Keychain status without exposing the API key.
 - Review the redacted context preview before sending each prompt.
 - When asking about Pod logs, confirm the assistant shows a Vibekube tools card and fetches logs without requiring the Logs tab to be opened first.
+- When asking about a workload or Service with a selector, confirm the assistant gathers matching Pods server-side, inspects unhealthy related Pod events, and attempts bounded related Pod logs where useful.
 - Confirm the tools card lists only read-only inspection work and any read failures; it must not mutate the cluster.
 - Confirm streamed answers appear incrementally and render Markdown headings, lists, emphasis, and code blocks cleanly.
 - Confirm code blocks have syntax highlighting and a copy control.
@@ -72,11 +73,14 @@ Resource: `Deployment/broken-rollout`
 Prompts:
 
 - Summarize warning events.
+- Why is this Deployment unavailable? Check matching Pods, warning events, and logs if they exist.
 - Draft YAML remediation without applying it.
 
 Expected:
 
-- Answer identifies replica/availability mismatch or related unhealthy state from context.
+- The tools card says Vibekube read matching Pods for the selector and names any unhealthy related Pod inspected.
+- The sent context panel shows a `Related Pod Health` section with related Pod status, container state, related Pod events, and any log read failure/success.
+- Answer identifies the related ImagePullBackOff or other Pod-level blocker, not only the Deployment replica/availability mismatch.
 - Draft YAML is clearly a draft and is not applied by Vibekube.
 - User is directed to review through the normal YAML preview/apply flow if they choose to act.
 

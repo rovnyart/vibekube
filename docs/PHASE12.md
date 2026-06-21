@@ -1,6 +1,6 @@
 # Phase 12: AI Foundations
 
-Status: In progress.
+Status: Complete.
 
 Goal: add safe AI explain/summarize capabilities on top of local Kubernetes context without allowing hidden cluster mutations.
 
@@ -20,6 +20,8 @@ Goal: add safe AI explain/summarize capabilities on top of local Kubernetes cont
 - [x] Read-only explain flows exist.
 - [x] Resource-scoped AI gathers read-only cluster evidence before provider calls.
 - [x] Pod logs and events are loaded on demand when the prompt needs runtime context.
+- [x] Workload and Service AI prompts gather selector-matched Pod health, related Pod events, and bounded log attempts for unhealthy Pods.
+- [x] The context preview switches to the exact enriched context sent to the provider after read-only gathering.
 - [x] AI foundation evaluation checklist exists.
 
 ## Implementation Slices
@@ -49,6 +51,7 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 - [x] Include selected log snippets.
 - [x] Load Pod log snippets on demand for log/runtime prompts instead of requiring the Logs tab first.
 - [x] Include related resource summaries.
+- [x] Include selector-matched related Pod health for workloads and Services.
 - [x] Include cluster context and namespace.
 - [x] Enforce size limits.
 - [x] Show read-only tool results in the assistant transcript before the provider answer.
@@ -79,6 +82,7 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 - [x] Replace raw context wall with section navigation and highlighted code surfaces.
 - [x] Render AI answers as Markdown with code-block copy controls.
 - [x] Show live streaming answer state with animated provider activity.
+- [x] Show the actual sent context after read-only gathering so the user can audit what the provider saw.
 
 ### 12.5 Guardrails
 
@@ -94,7 +98,7 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 - [x] User can summarize demo logs.
 - [x] Sensitive values are redacted before provider calls.
 - [x] AI-generated actions are never executed automatically.
-- [ ] Provider-backed manual evaluation passes with a real test key/model.
+- [x] Provider-backed manual evaluation passes with a real test key/model.
 
 ## Validation Commands
 

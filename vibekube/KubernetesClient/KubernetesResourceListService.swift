@@ -27,6 +27,16 @@ protocol KubernetesResourceListProgressServicing: KubernetesResourceListServicin
     ) async throws -> KubernetesUnstructuredResourceList
 }
 
+protocol KubernetesResourceFilteredListServicing: KubernetesResourceListServicing {
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        labelSelector: String?
+    ) async throws -> KubernetesUnstructuredResourceList
+}
+
 protocol KubernetesResourceDetailWatchServicing {
     func watchResource(
         contextName: String,
@@ -52,7 +62,7 @@ extension KubernetesResourceListServicing {
     }
 }
 
-final class KubernetesResourceListService: KubernetesResourceListProgressServicing, KubernetesResourceDetailWatchServicing {
+final class KubernetesResourceListService: KubernetesResourceListProgressServicing, KubernetesResourceFilteredListServicing, KubernetesResourceDetailWatchServicing {
     private let execCredentialProvider: KubernetesExecCredentialProviding
 
     init(execCredentialProvider: KubernetesExecCredentialProviding = DefaultKubernetesExecCredentialProvider()) {
@@ -115,6 +125,32 @@ final class KubernetesResourceListService: KubernetesResourceListProgressServici
             resourceVersion: resourceVersion,
             fieldSelector: nil
         )
+    }
+
+    func listResources(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        labelSelector: String?
+    ) async throws -> KubernetesUnstructuredResourceList {
+        var configuration = try KubernetesClientConfiguration(contextName: contextName, kubeconfig: kubeconfig)
+        let execRequest = try await resolveExecCredentialIfNeeded(configuration: &configuration)
+        let client = try DefaultKubernetesAPIClient(configuration: configuration)
+
+        do {
+            return try await client.resourceList(resource: resource, namespace: namespace, labelSelector: labelSelector)
+        } catch let error as KubernetesClientError where error.connectionState == .unauthorized {
+            guard let execRequest else {
+                throw error
+            }
+
+            execCredentialProvider.invalidate(execRequest)
+            var retryConfiguration = try KubernetesClientConfiguration(contextName: contextName, kubeconfig: kubeconfig)
+            _ = try await resolveExecCredentialIfNeeded(configuration: &retryConfiguration)
+            let retryClient = try DefaultKubernetesAPIClient(configuration: retryConfiguration)
+            return try await retryClient.resourceList(resource: resource, namespace: namespace, labelSelector: labelSelector)
+        }
     }
 
     func watchResource(

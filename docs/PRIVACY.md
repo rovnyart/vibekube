@@ -56,7 +56,7 @@ If AI provider settings are configured, Vibekube may contact the selected AI pro
 
 Provider settings calls send the provider API key and optional custom headers to the configured provider URL, but do not send Kubernetes resource data, logs, diagnostics, or kubeconfig data.
 
-Resource assistant calls send the user's prompt plus a visible, redacted context bundle for the selected resource. The bundle can include resource identity, namespace, status/debug summary, conditions, recent events, container state summaries, and redacted YAML. Secret `data`, `stringData`, and `binaryData` blocks are redacted before the prompt is sent, and free-form text passes through the shared diagnostics redactor for bearer tokens, private keys, certificates, passwords, and token-like values. AI calls never execute Kubernetes mutations.
+Resource assistant calls send the user's prompt plus a visible, redacted context bundle for the selected resource. The bundle can include resource identity, namespace, status/debug summary, conditions, recent events, container state summaries, selector-matched related Pod health, bounded related Pod event/log inspection results, and redacted YAML. Secret `data`, `stringData`, and `binaryData` blocks are redacted before the prompt is sent, and free-form text passes through the shared diagnostics redactor for bearer tokens, private keys, certificates, passwords, and token-like values. AI calls never execute Kubernetes mutations.
 
 Vibekube does not automatically send crash reports or diagnostics. macOS may create system crash reports outside Vibekube's control, but Vibekube does not upload them. Any diagnostics export is local, redacted, and created only when the user explicitly uses the export action.
 

@@ -18,8 +18,8 @@ This file tracks implementation status across all phases. Keep this updated when
 | 9 | [Workload Debugging Basics](PHASE9.md) | Complete | Workload Overview includes event-aware debug summaries, visible `kubectl`-backed port-forward sessions, container-aware external-terminal Pod exec actions, and pod-local exec launch history |
 | 10 | [Safe Mutations](PHASE10.md) | Complete | Safe mutations are implemented and visually QA'd: scale, rollout restart, typed-confirm delete, apply YAML from editor/file with server-side dry-run preview, structured Namespace/ConfigMap/Secret creation, RBAC/discovery-aware disabled states, and local action history |
 | 11 | [Preferences, Security, Packaging](PHASE11.md) | Complete for read-only release | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, kubeconfig path, appearance, table density, external terminal, log buffer, default namespace, resource watch, Secret reveal settings, reset preferences, privacy docs, secret-surface audit, clean-machine validation, sandbox/credential-storage decisions, no-automatic-crash-reporting policy, no pre-Phase-12 AI placeholder decision, and real Teleport/TLS validation exist |
-| 12 | [AI Foundations](PHASE12.md) | In progress | Provider settings, Keychain secret storage, model discovery, OpenAI `max_completion_tokens` compatibility, streaming provider transport tests, redacted resource context, read-only event/log gathering, resizable resource-scoped AI assistant window, Markdown/code rendering, top-level AI status page, visual gating QA, and manual AI evaluation checklist are in place |
-| 13 | [Advanced AI Operations](PHASE13.md) | Not started | Waiting for AI foundation |
+| 12 | [AI Foundations](PHASE12.md) | Complete | Provider settings, Keychain secret storage, model discovery, OpenAI `max_completion_tokens` compatibility, streaming provider transport, redacted resource context, selector-aware related Pod investigation, read-only event/log gathering, resizable resource-scoped AI assistant window, Markdown/code rendering, top-level AI status page, visual gating QA, and manual provider evaluation are in place |
+| 13 | [Advanced AI Operations](PHASE13.md) | Not started | Ready for guided, user-approved AI troubleshooting/remediation design |
 
 ## Current Execution Track
 
@@ -29,7 +29,7 @@ Vibekube 0.5.0 is released as a fast, read-only, distributable Kubernetes cockpi
 
 Recommended next focus:
 
-1. Continue Phase 12 by expanding provider-backed manual AI evaluation around read-only event/log gathering with a real test key/model.
+1. Start Phase 13 by designing guided AI troubleshooting/remediation flows that can cite read-only evidence and prepare user-approved actions without bypassing existing confirmations.
 2. Keep Dashboard small and fast unless the product direction explicitly changes.
 3. Treat Phase 10 as done, with any new mutation UX issues tracked as follow-up bugs instead of reopening the phase.
 
@@ -88,6 +88,7 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Add AI provider settings, secure key/header storage, provider model discovery, and availability testing.
 - [x] Add redacted selected-resource AI explain chat.
 - [x] Add read-only AI event/log gathering for resource investigation prompts.
+- [x] Add selector-aware related Pod investigation for workload and Service AI prompts.
 - [x] Add AI explain/summarize flows.
 
 ## Checkpoint Rules

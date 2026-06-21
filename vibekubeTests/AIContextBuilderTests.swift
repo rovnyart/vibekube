@@ -125,6 +125,16 @@ struct AIContextBuilderTests {
         #expect(first.sections.map(\.id) == second.sections.map(\.id))
     }
 
+    @Test func labelSelectorKeepsReadableAndQueryForms() {
+        let selector = KubernetesLabelSelectorSummary(matchLabels: [
+            "tier": "web",
+            "app": "echo"
+        ])
+
+        #expect(selector.displayText == "app=echo, tier=web")
+        #expect(selector.queryString == "app=echo,tier=web")
+    }
+
     private func podDetailSnapshot(yamlPadding: String = "") throws -> ResourceDetailSnapshot {
         let resource = KubernetesDiscoveredResource(
             groupVersion: "v1",
