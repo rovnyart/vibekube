@@ -29,9 +29,9 @@ The current product milestone is Vibekube 0.5.0: a fast, read-only, distributabl
 
 Recommended next focus:
 
-1. Run the per-release checklist for the next DMG build and keep release notes/public privacy text aligned with `docs/PRIVACY.md`.
-2. Start Phase 10 safe mutations only after the read-only release path is trustworthy, because writes change the app's risk profile.
-3. Keep Dashboard small and fast unless the product direction explicitly changes.
+1. Start Phase 10 mutation foundation with `ART-28`, keeping mutation APIs behind tests before any visible write UI appears.
+2. Keep Dashboard small and fast unless the product direction explicitly changes.
+3. Keep AI work blocked until provider, consent, storage, and redaction decisions are implemented in Phase 12.
 
 Current stop rule: after any visible UI slice, stop for manual review before moving to the next feature family.
 
@@ -78,6 +78,8 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Validate daily use on a non-development work Mac since version 0.3.0.
 - [x] Decide credential storage and sandbox strategy for the current direct-distribution release.
 - [x] Decide crash reporting and AI settings placeholder policy for the current direct-distribution release.
+- [x] Release Vibekube 0.5.0 and complete post-release smoke validation.
+- [x] Clear Swift concurrency warnings before starting mutation/write paths.
 - [ ] Add safe mutations.
 - [ ] Add AI explain/summarize flows.
 

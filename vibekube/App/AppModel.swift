@@ -948,18 +948,26 @@ final class AppModel: ObservableObject {
         )
 
         Task { [weak self, portForwardService] in
+            guard let model = self else {
+                return
+            }
+
             do {
-                let handle = try await portForwardService.startPortForward(request: request) { termination in
-                    Task { @MainActor [weak self] in
-                        self?.finishPortForwardSession(sessionID, termination: termination)
+                let handle = try await portForwardService.startPortForward(request: request) { [weak model] termination in
+                    guard let model else {
+                        return
+                    }
+
+                    Task { @MainActor [model] in
+                        model.finishPortForwardSession(sessionID, termination: termination)
                     }
                 }
-                self?.portForwardHandlesBySessionID[sessionID] = handle
-                self?.updatePortForwardSession(sessionID) { session in
+                model.portForwardHandlesBySessionID[sessionID] = handle
+                model.updatePortForwardSession(sessionID) { session in
                     session.status = .running(processIdentifier: handle.processIdentifier)
                 }
             } catch {
-                self?.failPortForwardSession(sessionID, message: error.localizedDescription)
+                model.failPortForwardSession(sessionID, message: error.localizedDescription)
             }
         }
     }
@@ -1229,8 +1237,8 @@ final class AppModel: ObservableObject {
                 let snapshot = try await connectionService.connect(
                     contextName: selectedClusterID,
                     kubeconfig: kubeconfig,
-                    progress: { progress in
-                        await self?.updateConnectionProgress(contextID: selectedClusterID, progress: progress)
+                    progress: { [weak model = self] progress in
+                        await model?.updateConnectionProgress(contextID: selectedClusterID, progress: progress)
                     }
                 )
 
@@ -2365,11 +2373,11 @@ final class AppModel: ObservableObject {
         resourceWatchFlushTasksByQuery[query] = Task { [weak self] in
             do {
                 try await Task.sleep(nanoseconds: delay)
-                await self?.flushPendingResourceWatchEvents(query: query)
+                self?.flushPendingResourceWatchEvents(query: query)
             } catch is CancellationError {
-                await self?.cancelResourceWatchFlush(query: query)
+                self?.cancelResourceWatchFlush(query: query)
             } catch {
-                await self?.cancelResourceWatchFlush(query: query)
+                self?.cancelResourceWatchFlush(query: query)
             }
         }
     }
