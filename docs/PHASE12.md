@@ -75,6 +75,7 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 - [x] User can summarize demo logs.
 - [x] Sensitive values are redacted before provider calls.
 - [x] AI-generated actions are never executed automatically.
+- [ ] Provider-backed manual evaluation passes with a real test key/model.
 
 ## Validation Commands
 
