@@ -1,12 +1,58 @@
-# Vibekube
+<p align="center">
+  <img src="vibekube/Assets.xcassets/AppIcon.appiconset/AppIcon-128x128.png" width="96" height="96" alt="Vibekube icon">
+</p>
 
-Vibekube is a native macOS Kubernetes cockpit for fast cluster browsing, rich logs, safe Kubernetes actions, and optional AI-assisted debugging.
+<h1 align="center">Vibekube</h1>
 
-It is built as a local-first desktop app: Vibekube reads your kubeconfig, connects directly to Kubernetes API servers, and does not send cluster data to a Vibekube backend. AI features are optional and only contact the provider you configure.
+<p align="center">
+  A native macOS Kubernetes cockpit for fast cluster browsing, rich logs, safe operations, and optional cluster-aware AI.
+</p>
+
+<p align="center">
+  <a href="https://github.com/rovnyart/vibekube/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/rovnyart/vibekube?sort=semver&style=flat-square"></a>
+  <a href="https://vibekube.tech"><img alt="Download" src="https://img.shields.io/badge/download-vibekube.tech-1677ff?style=flat-square"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square">
+  <img alt="Built with SwiftUI" src="https://img.shields.io/badge/built%20with-SwiftUI-f05138?style=flat-square">
+  <img alt="Local-first" src="https://img.shields.io/badge/local--first-no%20backend-2ea043?style=flat-square">
+  <img alt="AI optional" src="https://img.shields.io/badge/AI-optional-7c3aed?style=flat-square">
+</p>
+
+<p align="center">
+  <a href="https://vibekube.tech">Download</a>
+  ·
+  <a href="https://github.com/rovnyart/vibekube/releases">Releases</a>
+  ·
+  <a href="docs/PRIVACY.md">Privacy</a>
+  ·
+  <a href="docs/DEVELOPMENT.md">Development</a>
+</p>
+
+<p align="center">
+  <img src="docs/assets/screenshots/vibekube-resources.png" alt="Vibekube resources window showing live Kubernetes Pods" width="900">
+</p>
+
+Vibekube is built as a local-first desktop app: it reads your kubeconfig, connects directly to Kubernetes API servers, and does not send cluster data to a Vibekube backend. AI features are optional, user-initiated, and only contact the provider URL you configure.
 
 ## Download
 
 Download the latest notarized macOS build from [vibekube.tech](https://vibekube.tech).
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/screenshots/vibekube-logs.png" alt="Vibekube log viewer with live Pod logs">
+    </td>
+    <td width="50%">
+      <img src="docs/assets/screenshots/vibekube-ai.png" alt="Vibekube AI Resource Assistant with redacted Kubernetes context">
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Live logs</strong><br>Search, filter, JSONL formatting, previous logs, fullscreen, copy, and export.</td>
+    <td align="center"><strong>AI investigations</strong><br>Read-only cluster context, logs, Events, related Pods, Markdown answers, and visible redaction.</td>
+  </tr>
+</table>
 
 ## Highlights
 
