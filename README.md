@@ -15,6 +15,7 @@
   <img alt="Built with SwiftUI" src="https://img.shields.io/badge/built%20with-SwiftUI-f05138?style=flat-square">
   <img alt="Local-first" src="https://img.shields.io/badge/local--first-no%20backend-2ea043?style=flat-square">
   <img alt="AI optional" src="https://img.shields.io/badge/AI-optional-7c3aed?style=flat-square">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/rovnyart/vibekube?style=flat-square"></a>
 </p>
 
 <p align="center">
@@ -25,6 +26,8 @@
   <a href="docs/PRIVACY.md">Privacy</a>
   ·
   <a href="docs/DEVELOPMENT.md">Development</a>
+  ·
+  <a href="LICENSE">License</a>
 </p>
 
 <p align="center">
