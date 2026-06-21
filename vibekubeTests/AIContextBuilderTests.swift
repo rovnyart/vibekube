@@ -106,6 +106,25 @@ struct AIContextBuilderTests {
         #expect(!prompt.contains("hunter2"))
     }
 
+    @Test func contextSectionIDsAreStableAcrossRefreshes() throws {
+        let detail = try podDetailSnapshot()
+
+        let first = AIContextBuilder.resourceContext(
+            detail: detail,
+            cluster: nil,
+            namespaceTitle: "vibekube-demo",
+            eventState: .idle
+        )
+        let second = AIContextBuilder.resourceContext(
+            detail: detail,
+            cluster: nil,
+            namespaceTitle: "vibekube-demo",
+            eventState: .idle
+        )
+
+        #expect(first.sections.map(\.id) == second.sections.map(\.id))
+    }
+
     private func podDetailSnapshot(yamlPadding: String = "") throws -> ResourceDetailSnapshot {
         let resource = KubernetesDiscoveredResource(
             groupVersion: "v1",

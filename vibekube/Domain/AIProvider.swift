@@ -195,7 +195,15 @@ struct AIContextBundle: Equatable {
 }
 
 struct AIContextSection: Equatable, Identifiable {
-    var id = UUID()
+    var id: String
     var title: String
     var content: String
+
+    init(id: String? = nil, title: String, content: String) {
+        self.id = id ?? title
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+        self.title = title
+        self.content = content
+    }
 }

@@ -61,6 +61,7 @@ struct AIResourceAssistantView: View {
     @State private var draftPrompt = ""
     @State private var isSending = false
     @State private var errorMessage: String?
+    @State private var selectedContextSectionID: AIContextSection.ID?
     @FocusState private var composerFocused: Bool
 
     let detail: ResourceDetailSnapshot
@@ -161,7 +162,7 @@ struct AIResourceAssistantView: View {
 
     private var configuredContent: some View {
         HSplitView {
-            AIContextPanel(context: context)
+            AIContextPanel(context: context, selectedSectionID: $selectedContextSectionID)
                 .frame(minWidth: 330, idealWidth: 430, maxWidth: 560)
 
             chatPane
@@ -430,7 +431,7 @@ private struct AIModelStatusChip: View {
 
 private struct AIContextPanel: View {
     let context: AIContextBundle
-    @State private var selectedSectionID: AIContextSection.ID?
+    @Binding var selectedSectionID: AIContextSection.ID?
 
     private var selectedSection: AIContextSection? {
         if let selectedSectionID,
@@ -492,7 +493,10 @@ private struct AIContextPanel: View {
                 .frame(width: 1)
         }
         .onAppear {
-            selectedSectionID = context.sections.first?.id
+            ensureSelectionExists()
+        }
+        .onChange(of: context.sections.map(\.id)) {
+            ensureSelectionExists()
         }
     }
 
@@ -520,6 +524,7 @@ private struct AIContextPanel: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .background(section.id == selectedSection?.id ? Color.accentColor.opacity(0.12) : Color(nsColor: .controlBackgroundColor).opacity(0.38), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -553,6 +558,18 @@ private struct AIContextPanel: View {
             .split(separator: "\n")
             .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
             .map(String.init) ?? "No content"
+    }
+
+    private func ensureSelectionExists() {
+        guard !context.sections.isEmpty else {
+            selectedSectionID = nil
+            return
+        }
+        if let selectedSectionID,
+           context.sections.contains(where: { $0.id == selectedSectionID }) {
+            return
+        }
+        selectedSectionID = context.sections.first?.id
     }
 }
 
