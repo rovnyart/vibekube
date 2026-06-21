@@ -55,7 +55,8 @@ enum AIContextBuilder {
         detail: ResourceDetailSnapshot,
         cluster: ClusterSummary?,
         namespaceTitle: String,
-        eventState: ResourceEventsLoadState
+        eventState: ResourceEventsLoadState,
+        logSnapshots: [PodLogSnapshot] = []
     ) -> AIContextBundle {
         let summary = detail.summary
         let kind = summary.kind ?? detail.query.resource.kind
@@ -114,17 +115,29 @@ enum AIContextBuilder {
             )
         }
 
+        if !logSnapshots.isEmpty {
+            sections.append(
+                AIContextSection(
+                    title: "Selected Log Snippets",
+                    content: logSnapshots.prefix(3).map(logText).joined(separator: "\n\n")
+                )
+            )
+        }
+
         sections.append(
             AIContextSection(
                 title: "Redacted YAML",
-                content: AIContextRedactor.redactedManifest(detail.yaml, kind: summary.kind)
+                content: limitedText(
+                    AIContextRedactor.redactedManifest(detail.yaml, kind: summary.kind),
+                    maxCharacters: 14_000
+                )
             )
         )
 
         return AIContextBundle(
             title: title,
             identity: identityLines.joined(separator: "\n"),
-            sections: sections
+            sections: limitedSections(sections)
         )
     }
 
@@ -178,5 +191,51 @@ enum AIContextBuilder {
         ]
         .compactMap { $0 }
         .joined(separator: " ")
+    }
+
+    private static func logText(_ snapshot: PodLogSnapshot) -> String {
+        let lines = snapshot.lines.suffix(120).joined(separator: "\n")
+        let redacted = AIContextRedactor.redactedText(lines)
+        return limitedText(
+            "Log: \(snapshot.query.title)\n\(redacted)",
+            maxCharacters: 8_000
+        )
+    }
+
+    private static func limitedSections(_ sections: [AIContextSection]) -> [AIContextSection] {
+        var remainingCharacters = 32_000
+        var limited: [AIContextSection] = []
+
+        for section in sections {
+            guard remainingCharacters > 0 else {
+                break
+            }
+
+            let contentLimit = min(section.content.count, remainingCharacters)
+            let content = limitedText(section.content, maxCharacters: contentLimit)
+            remainingCharacters -= content.count
+            limited.append(AIContextSection(id: section.id, title: section.title, content: content))
+        }
+
+        if limited.count < sections.count {
+            limited.append(
+                AIContextSection(
+                    title: "Context Limit",
+                    content: "Additional context sections were omitted because the prompt reached Vibekube's local size limit."
+                )
+            )
+        }
+
+        return limited
+    }
+
+    private static func limitedText(_ text: String, maxCharacters: Int) -> String {
+        guard text.count > maxCharacters else {
+            return text
+        }
+
+        let prefixCount = max(0, maxCharacters - 120)
+        let index = text.index(text.startIndex, offsetBy: prefixCount)
+        return String(text[..<index]) + "\n<truncated by Vibekube before AI request>"
     }
 }

@@ -1099,7 +1099,8 @@ final class AppModel: ObservableObject {
             detail: detail,
             cluster: selectedCluster,
             namespaceTitle: selectedNamespaceTitle,
-            eventState: resourceEventsState(for: detail)
+            eventState: resourceEventsState(for: detail),
+            logSnapshots: aiLogSnapshots(for: detail)
         )
     }
 
@@ -4458,6 +4459,32 @@ final class AppModel: ObservableObject {
     private func finishAIAvailability(_ message: String) {
         aiAvailabilityState = .available(message)
         recordDiagnostic(.info, category: "ai", message: "AI provider availability test succeeded.")
+    }
+
+    private func aiLogSnapshots(for detail: ResourceDetailSnapshot) -> [PodLogSnapshot] {
+        let summary = detail.summary
+        let kind = summary.kind ?? detail.query.resource.kind
+        guard kind == "Pod" else {
+            return []
+        }
+
+        guard let namespace = summary.namespace ?? detail.query.namespace else {
+            return []
+        }
+        let name = summary.name ?? detail.query.name
+        return podLogStateByQuery.compactMap { query, state in
+            guard query.contextID == detail.query.contextID,
+                  query.namespace == namespace,
+                  query.podName == name,
+                  case .loaded(let snapshot) = state else {
+                return nil
+            }
+
+            return snapshot
+        }
+        .sorted { lhs, rhs in
+            lhs.query.title.localizedStandardCompare(rhs.query.title) == .orderedAscending
+        }
     }
 
     private func cancelAIAvailability() {

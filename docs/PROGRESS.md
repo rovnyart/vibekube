@@ -29,7 +29,7 @@ Vibekube 0.5.0 is released as a fast, read-only, distributable Kubernetes cockpi
 
 Recommended next focus:
 
-1. Continue Phase 12 by adding log summarization, richer related-resource context, size limits, and visual QA for the AI assistant.
+1. Continue Phase 12 by adding richer related-resource context, evaluation scenarios, and visual QA for the AI assistant.
 2. Keep Dashboard small and fast unless the product direction explicitly changes.
 3. Treat Phase 10 as done, with any new mutation UX issues tracked as follow-up bugs instead of reopening the phase.
 

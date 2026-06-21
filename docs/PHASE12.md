@@ -36,10 +36,10 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 - [x] Build context for selected resource.
 - [x] Include relevant events.
 - [x] Include relevant conditions.
-- [ ] Include selected log snippets.
+- [x] Include selected log snippets.
 - [ ] Include related resource summaries.
 - [x] Include cluster context and namespace.
-- [ ] Enforce size limits.
+- [x] Enforce size limits.
 
 ### 12.3 Redaction And Policy
 
