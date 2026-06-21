@@ -32,7 +32,7 @@ Goal: connect to the selected cluster, authenticate safely, and discover availab
 - Static resource navigation items now show whether their API resource is namespaced or cluster-scoped after discovery.
 - Namespace selection is available in the toolbar once connected, including `All Namespaces`.
 - Namespace discovery follows Kubernetes list pagination so large clusters do not silently truncate namespace options.
-- Resource object tables, YAML views, logs, watches, metrics, and dashboard health summaries now build on this client foundation. Richer dashboard summaries remain deferred to Phase 4.
+- Resource object tables, YAML views, logs, watches, metrics, and the intentionally small dashboard health summaries now build on this client foundation. Richer dashboard summaries are canceled for the current release direction.
 
 ## Implementation Slices
 

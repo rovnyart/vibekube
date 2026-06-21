@@ -291,6 +291,8 @@ Goal: create the daily-use navigation model for clusters, dashboards, resource g
 
 Goal: provide a clear operational overview for a connected cluster.
 
+Status: complete for the current read-only release. Rich workload/event/storage dashboard expansion is canceled because repeated eager and staged implementations caused unacceptable route lag and freezes on demo and real high-load clusters.
+
 ### Deliverables
 
 - Cluster dashboard with:
@@ -298,27 +300,19 @@ Goal: provide a clear operational overview for a connected cluster.
   - node count and readiness
   - namespace count
   - pod health summary
-  - workload health summary
-  - recent warning events
+  - discovery/inventory counts
   - CPU/memory capacity and usage when metrics are available
-  - storage summary
 - Metrics Server detection.
 - Graceful fallback when metrics APIs are unavailable.
 - Refresh controls and last-updated indicators.
+- Canceled: workload health summary, recent warning events, and storage summary.
 
 ### Engineering Tasks
 
-- Query and aggregate:
+- Query and aggregate only the retained fast dashboard inputs:
   - nodes
   - pods
   - namespaces
-  - deployments
-  - daemonsets
-  - statefulsets
-  - jobs
-  - cronjobs
-  - events
-  - persistent volumes and claims
   - metrics APIs if present
 - Implement health calculators for common resources.
 - Add status taxonomy:
@@ -327,22 +321,22 @@ Goal: provide a clear operational overview for a connected cluster.
   - warning
   - failed
   - unknown
-- Add dashboard view models that can update incrementally.
+- Do not restore richer dashboard panels without an explicit product-direction change.
 
 ### UX Notes
 
 - Dashboard cards should be compact and information-dense, not marketing-style panels.
-- Warning events should be actionable links into the related resource.
 - Metrics unavailable should be a subtle state, not a scary error.
+- Rich workload/event/storage dashboard cards are canceled to preserve app responsiveness.
 
 ### Tests
 
 - Unit tests for health calculators.
-- Snapshot or UI tests for dashboard empty/loading/error/healthy states.
+- Snapshot or UI tests for retained dashboard empty/loading/error/healthy states.
 
 ### Exit Criteria
 
-- Demo cluster dashboard shows meaningful workload, pod, event, and node information.
+- Demo cluster dashboard shows meaningful version, inventory, pod, metric, and node information without navigation lag.
 - Missing metrics do not break the dashboard.
 
 ## Phase 5: Resource Browsing

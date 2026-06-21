@@ -10,7 +10,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 1 | [Kubeconfig Discovery](PHASE1.md) | Review checkpoint | App loads kubeconfig contexts, including exec/Teleport metadata; parser and model tests pass |
 | 2 | [Kubernetes API Connectivity](PHASE2.md) | Review checkpoint | Native client connects, runs exec auth with signing-in progress, discovers API resources, loads namespaces, and has focused API-client transport tests |
 | 3 | [Main App Shell](PHASE3.md) | Review checkpoint | NavigationSplitView shell has persisted top-level route state, grouped nav, searchable namespace switching, route-aware commands, detail/YAML shortcuts, and basic keyboard navigation |
-| 4 | [Dashboard And Cluster Stats](PHASE4.md) | Started | Dashboard is simplified to a fast nodes/pods/discovery/metrics overview while workload, event, and storage summaries wait for a non-blocking design |
+| 4 | [Dashboard And Cluster Stats](PHASE4.md) | Complete for read-only release | Dashboard is intentionally limited to fast nodes/pods/discovery/metrics overview; richer workload/event/storage dashboard expansion is canceled |
 | 5 | [Resource Browsing](PHASE5.md) | Review checkpoint | Generic resource list APIs and native read-only tables are available for common built-ins |
 | 6 | [Resource Detail And YAML](PHASE6.md) | Review checkpoint | Bottom detail inspector has Overview, Events, Containers, expanded Environment, searchable/copyable/saveable YAML, Metadata, Conditions, masked Secret env reveal, owner jumps, selector-based related Pod navigation, and version-aware refresh |
 | 7 | [Logs](PHASE7.md) | Review checkpoint | Pod detail inspector has rich logs: tail/since controls, live streaming with smart follow, timestamps, safe JSONL formatting, search, grep, copy, save, download-all, fullscreen, and previous-container logs |
@@ -29,9 +29,9 @@ The current product milestone is Vibekube 0.1.x: a fast, read-only, distributabl
 
 Recommended next focus:
 
-1. Revisit Phase 4 dashboard architecture with a dashboard-specific non-blocking store before restoring richer workload/event/storage panels.
-2. Finish the remaining Phase 11 release checklist polish around distribution QA and public-facing release notes.
-3. Start Phase 10 safe mutations only after the read-only release path is trustworthy, because writes change the app's risk profile.
+1. Finish the remaining Phase 11 release checklist polish around distribution QA and public-facing release notes.
+2. Start Phase 10 safe mutations only after the read-only release path is trustworthy, because writes change the app's risk profile.
+3. Keep Dashboard small and fast unless the product direction explicitly changes.
 
 Current stop rule: after any visible UI slice, stop for manual review before moving to the next feature family.
 
