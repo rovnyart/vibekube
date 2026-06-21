@@ -130,8 +130,8 @@ final class AppModel: ObservableObject {
     ]
     private static let resourceWatchFlushDelayNanoseconds: UInt64 = 150_000_000
 
-    static let allNamespacesSelection = DashboardMetricsQuery.allNamespacesSelection
-    static let dashboardResourceItems: [ResourceNavigationItem] = [
+    nonisolated static let allNamespacesSelection = DashboardMetricsQuery.allNamespacesSelection
+    nonisolated static let dashboardResourceItems: [ResourceNavigationItem] = [
         .nodes,
         .pods
     ]

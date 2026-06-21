@@ -16,7 +16,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 7 | [Logs](PHASE7.md) | Review checkpoint | Pod detail inspector has rich logs: tail/since controls, live streaming with smart follow, timestamps, safe JSONL formatting, search, grep, copy, save, download-all, fullscreen, and previous-container logs |
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Review checkpoint | Active watchable resource lists have watch merging, durable reconnect/backoff, live/stale/failure status, burst coalescing, version-aware detail refresh, narrow selected-resource detail watches, interaction-stable table ordering, subtle updated-row feedback, and manual validation |
 | 9 | [Workload Debugging Basics](PHASE9.md) | Complete | Workload Overview includes event-aware debug summaries, visible `kubectl`-backed port-forward sessions, container-aware external-terminal Pod exec actions, and pod-local exec launch history |
-| 10 | [Safe Mutations](PHASE10.md) | Not started | Waiting for read-only workflows |
+| 10 | [Safe Mutations](PHASE10.md) | Started | Mutation API/service foundation exists with dry-run request support and Kubernetes Status error handling; preview/diff/UI remain blocked behind the next safety slices |
 | 11 | [Preferences, Security, Packaging](PHASE11.md) | Complete for read-only release | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, kubeconfig path, appearance, table density, external terminal, log buffer, default namespace, resource watch, Secret reveal settings, reset preferences, privacy docs, secret-surface audit, clean-machine validation, sandbox/credential-storage decisions, no-automatic-crash-reporting policy, no pre-Phase-12 AI placeholder decision, and real Teleport/TLS validation exist |
 | 12 | [AI Foundations](PHASE12.md) | Not started | Waiting for stable resource context model |
 | 13 | [Advanced AI Operations](PHASE13.md) | Not started | Waiting for AI foundation |
@@ -25,11 +25,11 @@ This file tracks implementation status across all phases. Keep this updated when
 
 The implementation is intentionally allowed to take small cross-phase slices when user-visible gaps are found. That is why logs, release packaging, Teleport/TLS hardening, namespace search, and Env rendering landed before every item in Phases 4-6 was complete.
 
-The current product milestone is Vibekube 0.5.0: a fast, read-only, distributable Kubernetes cockpit for real clusters.
+Vibekube 0.5.0 is released as a fast, read-only, distributable Kubernetes cockpit for real clusters. The current post-0.5.0 track is Phase 10 safe mutations.
 
 Recommended next focus:
 
-1. Start Phase 10 mutation foundation with `ART-28`, keeping mutation APIs behind tests before any visible write UI appears.
+1. Continue Phase 10 with mutation preview, validation, and diff work before any visible write UI appears.
 2. Keep Dashboard small and fast unless the product direction explicitly changes.
 3. Keep AI work blocked until provider, consent, storage, and redaction decisions are implemented in Phase 12.
 
@@ -80,6 +80,7 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Decide crash reporting and AI settings placeholder policy for the current direct-distribution release.
 - [x] Release Vibekube 0.5.0 and complete post-release smoke validation.
 - [x] Clear Swift concurrency warnings before starting mutation/write paths.
+- [x] Add mutation API foundation with dry-run request support and Kubernetes Status error handling.
 - [ ] Add safe mutations.
 - [ ] Add AI explain/summarize flows.
 

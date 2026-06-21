@@ -40,6 +40,7 @@ protocol KubernetesAPIClient {
         podName: String,
         options: KubernetesPodLogOptions
     ) -> AsyncThrowingStream<String, Error>
+    func mutate(_ request: KubernetesMutationRequest) async throws -> KubernetesMutationResult
 }
 
 struct KubernetesVersion: Decodable, Equatable {
@@ -56,5 +57,161 @@ struct KubernetesStatus: Decodable, Equatable {
     var status: String?
     var message: String?
     var reason: String?
+    var details: KubernetesStatusDetails?
     var code: Int?
+
+    var fieldCauses: [KubernetesStatusCause] {
+        details?.causes ?? []
+    }
+
+    var retryAfterSeconds: Int? {
+        details?.retryAfterSeconds
+    }
+}
+
+struct KubernetesStatusDetails: Decodable, Equatable {
+    var name: String?
+    var group: String?
+    var kind: String?
+    var uid: String?
+    var causes: [KubernetesStatusCause]?
+    var retryAfterSeconds: Int?
+}
+
+struct KubernetesStatusCause: Decodable, Equatable {
+    var reason: String?
+    var message: String?
+    var field: String?
+}
+
+enum KubernetesMutationVerb: String, Equatable {
+    case post = "POST"
+    case put = "PUT"
+    case patch = "PATCH"
+    case delete = "DELETE"
+}
+
+struct KubernetesMutationRequest: Equatable {
+    var verb: KubernetesMutationVerb
+    var resource: KubernetesDiscoveredResource
+    var namespace: String?
+    var name: String?
+    var body: Data?
+    var contentType: String
+    var dryRun: Bool
+
+    init(
+        verb: KubernetesMutationVerb,
+        resource: KubernetesDiscoveredResource,
+        namespace: String? = nil,
+        name: String? = nil,
+        body: Data? = nil,
+        contentType: String = "application/json",
+        dryRun: Bool = false
+    ) {
+        self.verb = verb
+        self.resource = resource
+        self.namespace = namespace
+        self.name = name
+        self.body = body
+        self.contentType = contentType
+        self.dryRun = dryRun
+    }
+
+    var path: String {
+        if let name, !name.isEmpty {
+            return resource.itemPath(namespace: namespace, name: name)
+        }
+        return resource.listPath(namespace: namespace)
+    }
+
+    var queryItems: [URLQueryItem] {
+        dryRun ? [URLQueryItem(name: "dryRun", value: "All")] : []
+    }
+}
+
+struct KubernetesMutationResult: Equatable {
+    var statusCode: Int
+    var status: KubernetesStatus?
+    var resource: KubernetesResourceDetail?
+}
+
+enum KubernetesMutationError: LocalizedError, Equatable {
+    case status(KubernetesStatus, httpStatusCode: Int)
+    case emptyResponse(Int)
+
+    var status: KubernetesStatus? {
+        switch self {
+        case .status(let status, _):
+            status
+        case .emptyResponse:
+            nil
+        }
+    }
+
+    var httpStatusCode: Int {
+        switch self {
+        case .status(_, let httpStatusCode), .emptyResponse(let httpStatusCode):
+            httpStatusCode
+        }
+    }
+
+    var isUnauthorized: Bool {
+        httpStatusCode == 401
+    }
+
+    var isForbidden: Bool {
+        httpStatusCode == 403
+    }
+
+    var isNotFound: Bool {
+        httpStatusCode == 404
+    }
+
+    var isConflict: Bool {
+        httpStatusCode == 409
+    }
+
+    var isValidationFailure: Bool {
+        httpStatusCode == 422 || status?.reason == "Invalid"
+    }
+
+    var retryAfterSeconds: Int? {
+        status?.retryAfterSeconds
+    }
+
+    var fieldCauses: [KubernetesStatusCause] {
+        status?.fieldCauses ?? []
+    }
+
+    var errorDescription: String? {
+        switch self {
+        case .status(let status, let httpStatusCode):
+            var parts = ["Kubernetes mutation failed with HTTP \(httpStatusCode)."]
+            if let reason = status.reason, !reason.isEmpty {
+                parts.append(reason)
+            }
+            if let message = status.message, !message.isEmpty {
+                parts.append(DiagnosticsRedactor.redactedText(message))
+            }
+            let causes = status.fieldCauses.compactMap { cause -> String? in
+                guard let message = cause.message, !message.isEmpty else {
+                    return nil
+                }
+                if let field = cause.field, !field.isEmpty {
+                    return "\(field): \(DiagnosticsRedactor.redactedText(message))"
+                }
+                return DiagnosticsRedactor.redactedText(message)
+            }
+            if !causes.isEmpty {
+                parts.append("Causes: \(causes.joined(separator: "; "))")
+            }
+            if let retryAfterSeconds = status.retryAfterSeconds {
+                parts.append("Retry after \(retryAfterSeconds)s.")
+            }
+            return parts.joined(separator: " ")
+        case .emptyResponse(let httpStatusCode):
+            return "Kubernetes mutation failed with HTTP \(httpStatusCode)."
+        }
+    }
 }

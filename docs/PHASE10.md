@@ -1,33 +1,35 @@
 # Phase 10: Safe Mutations
 
-Status: Not started.
+Status: Started.
 
 Goal: add common write operations with strong previews, confirmations, RBAC awareness, and rollback-friendly behavior.
 
 ## Current Progress
 
 - [x] Phase plan exists.
-- [ ] Mutation API exists.
+- [x] Mutation API exists.
 - [ ] Dry-run/diff support exists.
 - [ ] Confirmations exist.
 - [ ] Scale/restart/delete/apply flows exist.
 - [ ] Local action history exists.
+- [x] Kubernetes `Status` mutation errors surface HTTP code, reason, field causes, and retry hints.
+- [x] Dry-run is supported at the request layer; user-facing diff preview is still pending.
 
 ## Implementation Slices
 
 ### 10.1 Mutation Foundation
 
-- [ ] Define `MutationRequest`.
+- [x] Define `MutationRequest`.
 - [ ] Define `MutationPreview`.
-- [ ] Define `MutationResult`.
-- [ ] Implement POST.
-- [ ] Implement PUT.
-- [ ] Implement PATCH.
-- [ ] Implement DELETE.
-- [ ] Decode Kubernetes `Status`.
-- [ ] Support dry-run where available.
+- [x] Define `MutationResult`.
+- [x] Implement POST.
+- [x] Implement PUT.
+- [x] Implement PATCH.
+- [x] Implement DELETE.
+- [x] Decode Kubernetes `Status`.
+- [x] Support dry-run where available.
 
-Checkpoint: stop before enabling any mutation UI against a real cluster.
+Checkpoint: mutation client/service foundation is implemented and tested without exposing mutation UI against a real cluster.
 
 ### 10.2 Diff And Validation
 
@@ -64,8 +66,8 @@ Checkpoint: stop before enabling any mutation UI against a real cluster.
 
 ### 10.5 Tests
 
-- [ ] Mutation request tests.
-- [ ] Dry-run tests against mock server.
+- [x] Mutation request tests.
+- [x] Dry-run tests against mock server.
 - [ ] Diff rendering tests.
 - [ ] Confirmation flow UI tests.
 - [ ] Integration tests against disposable kind cluster.

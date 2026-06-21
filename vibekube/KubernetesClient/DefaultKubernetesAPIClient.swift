@@ -222,6 +222,42 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         )
     }
 
+    func mutate(_ mutation: KubernetesMutationRequest) async throws -> KubernetesMutationResult {
+        var request = Self.jsonRequest(
+            configuration: configuration,
+            path: mutation.path,
+            queryItems: mutation.queryItems,
+            method: mutation.verb.rawValue
+        )
+        request.setValue(mutation.contentType, forHTTPHeaderField: "Content-Type")
+        request.httpBody = mutation.body
+        applyAuthentication(to: &request)
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw KubernetesClientError.badResponse
+            }
+
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                throw Self.mutationError(from: data, statusCode: httpResponse.statusCode)
+            }
+
+            return try Self.mutationResult(from: data, statusCode: httpResponse.statusCode)
+        } catch let error as KubernetesClientError {
+            throw error
+        } catch let error as KubernetesMutationError {
+            throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            if Task.isCancelled {
+                throw CancellationError()
+            }
+            throw mappedTransportError(error)
+        }
+    }
+
     private func streamText(
         path: String,
         queryItems: [URLQueryItem],
@@ -367,6 +403,51 @@ final class DefaultKubernetesAPIClient: KubernetesAPIClient {
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         return request
+    }
+
+    private static func jsonRequest(
+        configuration: KubernetesClientConfiguration,
+        path: String,
+        queryItems: [URLQueryItem],
+        method: String
+    ) -> URLRequest {
+        var components = URLComponents(url: configuration.url(path: path), resolvingAgainstBaseURL: false)
+        components?.queryItems = queryItems.isEmpty ? nil : queryItems
+        var request = URLRequest(url: components?.url ?? configuration.url(path: path))
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return request
+    }
+
+    private static func mutationResult(from data: Data, statusCode: Int) throws -> KubernetesMutationResult {
+        guard !data.isEmpty else {
+            return KubernetesMutationResult(statusCode: statusCode, status: nil, resource: nil)
+        }
+
+        let decoder = JSONDecoder()
+        if let status = try? decoder.decode(KubernetesStatus.self, from: data),
+           status.kind == "Status" || status.status != nil || status.reason != nil {
+            return KubernetesMutationResult(statusCode: statusCode, status: status, resource: nil)
+        }
+
+        do {
+            let resource = try decoder.decode(KubernetesResourceDetail.self, from: data)
+            return KubernetesMutationResult(statusCode: statusCode, status: nil, resource: resource)
+        } catch {
+            throw KubernetesClientError.decoding(error.localizedDescription)
+        }
+    }
+
+    private static func mutationError(from data: Data, statusCode: Int) -> KubernetesMutationError {
+        guard !data.isEmpty else {
+            return .emptyResponse(statusCode)
+        }
+
+        if let status = try? JSONDecoder().decode(KubernetesStatus.self, from: data) {
+            return .status(status, httpStatusCode: statusCode)
+        }
+
+        return .emptyResponse(statusCode)
     }
 
     private static func podLogPath(namespace: String, podName: String) -> String {
