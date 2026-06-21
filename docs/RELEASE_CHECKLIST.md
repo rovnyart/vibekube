@@ -8,6 +8,7 @@ Historical validation: Vibekube has been used daily on a separate work Mac since
 
 - [ ] Confirm `docs/PROGRESS.md` has no missing must-fix item for the release.
 - [ ] Confirm `docs/PRIVACY.md` matches the current app behavior.
+- [ ] Confirm automatic telemetry, crash reporting, update checks, and AI network requests remain absent unless a new privacy review has landed.
 - [ ] Run the non-UI test suite:
 
   ```sh

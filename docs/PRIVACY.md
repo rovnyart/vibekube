@@ -48,6 +48,8 @@ Diagnostics metadata and diagnostics messages redact values that look like crede
 
 Vibekube connects to Kubernetes API servers from the user kubeconfig. It does not currently contain telemetry, crash reporting, automatic update checks, or AI network requests.
 
+Vibekube does not automatically send crash reports or diagnostics. macOS may create system crash reports outside Vibekube's control, but Vibekube does not upload them. Any diagnostics export is local, redacted, and created only when the user explicitly uses the export action.
+
 The current direct-distribution build is signed and notarized with hardened runtime, but App Sandbox remains disabled. The app needs normal user-file access to kubeconfig files and referenced certificate/key paths, outbound Kubernetes API network access, kubeconfig exec credential plugins, external-terminal `kubectl exec`, and `kubectl port-forward`. A sandboxed build would require a separate helper/file-access design and is not the current release target.
 
 If AI features are added later, they must be explicitly documented and must not send cluster data outside the machine without a separate user-controlled path.

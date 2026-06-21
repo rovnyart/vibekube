@@ -1,6 +1,6 @@
 # Phase 11: Preferences, Security, And Packaging
 
-Status: Started.
+Status: Complete for read-only release.
 
 Goal: make Vibekube safe and comfortable as a daily app outside the development machine.
 
@@ -27,6 +27,8 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] External terminal app setting exists.
 - [x] Reset local preferences action exists.
 - [x] Privacy statement exists.
+- [x] Crash reporting policy decided.
+- [x] AI settings placeholder decision recorded.
 
 ## Implementation Slices
 
@@ -43,7 +45,7 @@ Goal: make Vibekube safe and comfortable as a daily app outside the development 
 - [x] External terminal app.
 - [x] Log buffer limits.
 - [x] Secret reveal confirmation behavior.
-- [ ] AI settings placeholder.
+- [x] AI settings placeholder not shipped before Phase 12.
 - [x] Reset local preferences action.
 
 ### 11.2 Security Audit
@@ -92,7 +94,11 @@ Checkpoint: stop before changing sandbox/signing settings if they affect local d
 - [x] Add optional local JSONL diagnostics logging.
 - [x] Add diagnostics export with redaction.
 - [x] Add app version/build display.
-- [ ] Decide crash reporting policy.
+- [x] Decide crash reporting policy.
+
+Crash reporting decision: Vibekube does not include automatic crash reporting, telemetry, analytics, or automatic update checks in the current direct-distribution release. Diagnostics remain local and user-driven: the app keeps an in-memory diagnostics buffer, optional local JSONL logging is disabled by default, and exports happen only when the user explicitly invokes them. macOS may still create system crash reports outside Vibekube's control. If Vibekube adds automatic crash reporting later, it must be opt-in, documented in `docs/PRIVACY.md`, and go through the same redaction/privacy review as future AI network paths.
+
+AI settings decision: do not ship a visible AI settings placeholder before Phase 12. A placeholder would imply unfinished network/provider behavior and make the privacy story less clear. AI settings should appear only when the provider, consent, storage, and redaction model is implemented.
 
 ## Acceptance Criteria
 
