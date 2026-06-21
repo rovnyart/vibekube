@@ -1845,6 +1845,7 @@ private struct ResourceDetailView: View {
     @EnvironmentObject private var appModel: AppModel
     @Binding var selectedPanel: ResourceDetailPanel
     @State private var yamlSaveErrorMessage: String?
+    @State private var isActionsSheetPresented = false
 
     let item: ResourceNavigationItem
     let row: KubernetesUnstructuredResource
@@ -1907,6 +1908,16 @@ private struct ResourceDetailView: View {
                 }
 
                 Button {
+                    isActionsSheetPresented = true
+                } label: {
+                    Label("Actions", systemImage: "bolt.badge.checkmark")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!isLoaded)
+                .help(isLoaded ? "Scale, restart, or delete this resource" : "Load the manifest before running resource actions")
+                .accessibilityIdentifier("resource.detail.actions.open")
+
+                Button {
                     appModel.loadResourceDetail(for: item, row: row, force: true)
                 } label: {
                     Label("Refresh Manifest", systemImage: "arrow.clockwise")
@@ -1925,6 +1936,9 @@ private struct ResourceDetailView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(.bar)
+        .sheet(isPresented: $isActionsSheetPresented) {
+            actionsSheet
+        }
     }
 
     @ViewBuilder
@@ -2010,12 +2024,6 @@ private struct ResourceDetailView: View {
             ResourceDetailEnvironmentView(summary: snapshot.summary)
         case .yaml:
             yamlContent(snapshot)
-        case .actions:
-            ResourceDetailActionsView(
-                item: item,
-                row: row,
-                snapshot: snapshot
-            )
         case .metadata:
             ResourceDetailMetadataView(summary: snapshot.summary)
         case .conditions:
@@ -2033,6 +2041,26 @@ private struct ResourceDetailView: View {
             previewMutation: yamlPreviewAction,
             applyMutation: yamlApplyAction
         )
+    }
+
+    @ViewBuilder
+    private var actionsSheet: some View {
+        switch appModel.resourceDetailState(for: item, row: row) {
+        case .loaded(let snapshot):
+            ResourceDetailActionsSheet(
+                item: item,
+                row: row,
+                snapshot: snapshot
+            )
+            .environmentObject(appModel)
+        default:
+            EmptyStateView(
+                title: "Actions Unavailable",
+                subtitle: "Load the resource manifest before running actions.",
+                systemImage: "bolt.slash"
+            )
+            .frame(width: 520, height: 300)
+        }
     }
 
     private func yamlMutationTarget(_ snapshot: ResourceDetailSnapshot) -> ManifestYAMLMutationTarget? {
@@ -2345,6 +2373,64 @@ private struct ResourceDetailPanelTabButton: View {
         } else {
             Color.clear
         }
+    }
+}
+
+private struct ResourceDetailActionsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let item: ResourceNavigationItem
+    let row: KubernetesUnstructuredResource
+    let snapshot: ResourceDetailSnapshot
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: "bolt.badge.checkmark")
+                    .font(.title3)
+                    .foregroundStyle(.blue)
+                    .frame(width: 30, height: 30)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Resource Actions")
+                        .font(.headline)
+
+                    Text("\(snapshot.query.resource.kind)/\(row.displayName)\(namespaceSuffix)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                }
+
+                Spacer()
+
+                Button("Done") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.bar)
+
+            Divider()
+
+            ResourceDetailActionsView(
+                item: item,
+                row: row,
+                snapshot: snapshot
+            )
+        }
+        .frame(minWidth: 720, idealWidth: 820, minHeight: 500, idealHeight: 620)
+        .accessibilityIdentifier("resource.detail.actions.sheet")
+    }
+
+    private var namespaceSuffix: String {
+        guard let namespace = snapshot.query.namespace, !namespace.isEmpty else {
+            return ""
+        }
+
+        return " in \(namespace)"
     }
 }
 
