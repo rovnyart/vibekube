@@ -185,6 +185,8 @@ struct ManifestYAMLView: View {
         VStack(spacing: 0) {
             ManifestYAMLEditorView(text: $draftYAML)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
+                .clipped()
                 .accessibilityIdentifier("resource.detail.yaml.editor")
 
             if !previewState.isIdle {
@@ -681,8 +683,9 @@ private struct ManifestYAMLEditorView: NSViewRepresentable {
         Coordinator(text: $text)
     }
 
-    func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
+    func makeNSView(context: Context) -> ManifestYAMLEditorContainerView {
+        let container = ManifestYAMLEditorContainerView()
+        let scrollView = ManifestYAMLEditorScrollView()
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = true
         scrollView.backgroundColor = .textBackgroundColor
@@ -691,6 +694,7 @@ private struct ManifestYAMLEditorView: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.hasVerticalRuler = true
         scrollView.rulersVisible = true
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         let textView = ManifestYAMLEditingTextView(frame: .zero)
         textView.delegate = context.coordinator
@@ -731,19 +735,28 @@ private struct ManifestYAMLEditorView: NSViewRepresentable {
         scrollView.documentView = textView
         let rulerView = ManifestYAMLLineNumberRulerView(textView: textView)
         scrollView.verticalRulerView = rulerView
+        container.addSubview(scrollView)
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
         context.coordinator.textView = textView
         context.coordinator.rulerView = rulerView
-        context.coordinator.apply(text)
-        return scrollView
+        context.coordinator.scrollView = scrollView
+        context.coordinator.apply(text, scrollToTop: true)
+        return container
     }
 
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = context.coordinator.textView else {
+    func updateNSView(_ container: ManifestYAMLEditorContainerView, context: Context) {
+        guard let textView = context.coordinator.textView,
+              let scrollView = context.coordinator.scrollView else {
             return
         }
 
         if textView.string != text {
-            context.coordinator.apply(text)
+            context.coordinator.apply(text, scrollToTop: true)
         } else {
             context.coordinator.highlightVisibleLine()
         }
@@ -774,13 +787,14 @@ private struct ManifestYAMLEditorView: NSViewRepresentable {
         @Binding private var text: String
         weak var textView: NSTextView?
         weak var rulerView: ManifestYAMLLineNumberRulerView?
+        weak var scrollView: NSScrollView?
         private var isApplying = false
 
         init(text: Binding<String>) {
             _text = text
         }
 
-        func apply(_ value: String) {
+        func apply(_ value: String, scrollToTop: Bool = false) {
             guard let textView else { return }
 
             isApplying = true
@@ -792,6 +806,9 @@ private struct ManifestYAMLEditorView: NSViewRepresentable {
             textView.typingAttributes = ManifestYAMLAttributedRenderer.editorTypingAttributes
             highlightVisibleLine()
             rulerView?.needsDisplay = true
+            if scrollToTop {
+                textView.scrollRangeToVisible(NSRange(location: 0, length: 0))
+            }
             isApplying = false
         }
 
@@ -889,6 +906,26 @@ private struct ManifestYAMLEditorView: NSViewRepresentable {
 
             return indent
         }
+    }
+}
+
+private final class ManifestYAMLEditorContainerView: NSView {
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+
+    override var fittingSize: NSSize {
+        .zero
+    }
+}
+
+private final class ManifestYAMLEditorScrollView: NSScrollView {
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+
+    override var fittingSize: NSSize {
+        .zero
     }
 }
 
