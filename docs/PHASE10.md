@@ -80,7 +80,7 @@ Checkpoint: existing-resource YAML edits now have a highlighted editor with line
 - [x] Rendered YAML preview regression tests for managedFields and resource quantities.
 - [x] Confirmation policy and local action history tests.
 - [ ] Confirmation flow UI tests.
-- [ ] Integration tests against disposable kind cluster.
+- [x] Integration tests against disposable kind cluster.
 
 ## Acceptance Criteria
 
@@ -97,6 +97,7 @@ dev/k8s/scripts/start.sh
 kubectl -n vibekube-demo scale deploy/echo-web --replicas=3
 kubectl -n vibekube-demo rollout restart deploy/echo-web
 xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test
+VIBEKUBE_RUN_KIND_INTEGRATION=1 xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/KubernetesClientIntegrationTests/runsSafeMutationFlowAgainstDisposableKindNamespaceWhenEnabled
 ```
 
 ## Validation Log
@@ -111,3 +112,5 @@ xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=m
 - 2026-06-21: Visual Computer Use QA for the new Actions tab and global Apply YAML sheet is still pending; the latest debug build is running, but the Mac is locked and Computer Use returns only `remoteConnection`.
 - 2026-06-21: Focused confirmation/history tests passed for namespace delete confirmation phrases, successful and failed mutation history, Secret apply history redaction, and the 50-record history cap:
   `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/vibekubeTests/safeMutationServiceBuildsScaleRestartDeleteAndApplyRequests -only-testing:vibekubeTests/vibekubeTests/mutationConfirmationPolicyRequiresStrongerNamespaceDeletePhrase -only-testing:vibekubeTests/vibekubeTests/appModelRecordsSucceededMutationActionHistory -only-testing:vibekubeTests/vibekubeTests/appModelRecordsFailedMutationActionHistory -only-testing:vibekubeTests/vibekubeTests/appModelDoesNotLeakSecretValuesIntoMutationHistory -only-testing:vibekubeTests/vibekubeTests/appModelCapsMutationActionHistory`
+- 2026-06-21: Opt-in kind integration test passed against `kind-vibekube-dev`. The test creates a disposable namespace, runs server-side dry-run/apply for Namespace/ConfigMap/Secret/Deployment, scales and restarts the Deployment, deletes the ConfigMap, verifies lookup failure, and removes the namespace:
+  `VIBEKUBE_RUN_KIND_INTEGRATION=1 xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/KubernetesClientIntegrationTests/runsSafeMutationFlowAgainstDisposableKindNamespaceWhenEnabled`
