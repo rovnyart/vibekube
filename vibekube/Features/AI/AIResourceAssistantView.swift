@@ -68,7 +68,8 @@ struct AIResourceAssistantView: View {
     @State private var showsJumpToBottom = false
     @State private var scrollToBottomGeneration = 0
     @State private var lastScrollRequestAt = Date.distantPast
-    @FocusState private var composerFocused: Bool
+    @State private var composerFocused = false
+    @State private var composerTextHeight: CGFloat = 30
 
     private let chatBottomID = "ai-chat-bottom"
 
@@ -325,21 +326,31 @@ struct AIResourceAssistantView: View {
     private var composer: some View {
         VStack(spacing: 10) {
             HStack(alignment: .bottom, spacing: 10) {
-                TextField("Ask about the selected resource", text: $draftPrompt, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.callout)
-                    .lineLimit(1...6)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(Color(nsColor: .textBackgroundColor).opacity(0.68), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(composerFocused ? Color.accentColor.opacity(0.62) : Color(nsColor: .separatorColor).opacity(0.28))
+                ZStack(alignment: .topLeading) {
+                    AIComposerTextView(
+                        text: $draftPrompt,
+                        measuredHeight: $composerTextHeight,
+                        onSubmit: sendPrompt,
+                        onFocusChange: { composerFocused = $0 }
+                    )
+                    .frame(height: composerTextHeight)
+
+                    if draftPrompt.isEmpty {
+                        Text("Ask about the selected resource")
+                            .font(.callout)
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 1)
+                            .allowsHitTesting(false)
                     }
-                    .focused($composerFocused)
-                    .onSubmit {
-                        sendPrompt()
-                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .frame(minHeight: 54)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.68), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(composerFocused ? Color.accentColor.opacity(0.62) : Color(nsColor: .separatorColor).opacity(0.28))
+                }
 
                 Button {
                     if isSending {
@@ -352,14 +363,24 @@ struct AIResourceAssistantView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .frame(height: 54)
                 .tint(isSending ? .red : nil)
                 .disabled(!isSending && draftPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .keyboardShortcut(.return, modifiers: .command)
             }
 
-            HStack(spacing: 8) {
-                Label("Enter inserts a newline", systemImage: "return")
-                Text("Command-Return sends")
+            HStack(spacing: 10) {
+                HStack(spacing: 5) {
+                    AIKeycap("↩")
+                    Text("newline")
+                }
+
+                HStack(spacing: 5) {
+                    AIKeycap("⌘")
+                    AIKeycap("↩")
+                    Text("send")
+                }
+
                 Spacer()
                 if isSending {
                     LiquidThinkingView()
@@ -589,6 +610,143 @@ private struct AIModelStatusChip: View {
             .padding(.vertical, 5)
             .foregroundStyle(tint)
             .background(tint.opacity(0.12), in: Capsule())
+    }
+}
+
+private struct AIKeycap: View {
+    let symbol: String
+
+    init(_ symbol: String) {
+        self.symbol = symbol
+    }
+
+    var body: some View {
+        Text(symbol)
+            .font(.caption.weight(.semibold))
+            .monospaced()
+            .frame(minWidth: 22, minHeight: 20)
+            .foregroundStyle(.secondary)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.86), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(Color(nsColor: .separatorColor).opacity(0.34))
+            }
+    }
+}
+
+private struct AIComposerTextView: NSViewRepresentable {
+    @Binding var text: String
+    @Binding var measuredHeight: CGFloat
+    var onSubmit: () -> Void
+    var onFocusChange: (Bool) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+
+        let textView = AIComposerNSTextView(frame: .zero)
+        textView.delegate = context.coordinator
+        textView.onCommandReturn = onSubmit
+        textView.string = text
+        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
+        textView.textColor = .labelColor
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.allowsUndo = true
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.textContainerInset = .zero
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
+
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.parent = self
+        guard let textView = scrollView.documentView as? AIComposerNSTextView else {
+            return
+        }
+
+        textView.onCommandReturn = onSubmit
+        if textView.string != text {
+            textView.string = text
+        }
+        context.coordinator.publishHeight(for: textView)
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: AIComposerTextView
+
+        init(_ parent: AIComposerTextView) {
+            self.parent = parent
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else {
+                return
+            }
+            parent.text = textView.string
+            publishHeight(for: textView)
+        }
+
+        func textDidBeginEditing(_ notification: Notification) {
+            parent.onFocusChange(true)
+        }
+
+        func textDidEndEditing(_ notification: Notification) {
+            parent.onFocusChange(false)
+        }
+
+        func publishHeight(for textView: NSTextView) {
+            guard let textContainer = textView.textContainer,
+                  let layoutManager = textView.layoutManager else {
+                return
+            }
+
+            layoutManager.ensureLayout(for: textContainer)
+            let usedHeight = layoutManager.usedRect(for: textContainer).height
+            let height = min(112, max(30, ceil(usedHeight + 2)))
+            guard abs(parent.measuredHeight - height) > 0.5 else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.parent.measuredHeight = height
+            }
+        }
+    }
+}
+
+private final class AIComposerNSTextView: NSTextView {
+    var onCommandReturn: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isReturn = event.keyCode == 36 || event.keyCode == 76
+        if isReturn, flags.contains(.command) {
+            onCommandReturn?()
+            return
+        }
+
+        super.keyDown(with: event)
     }
 }
 

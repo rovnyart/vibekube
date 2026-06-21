@@ -17,6 +17,7 @@ Use this checklist when changing AI prompts, provider behavior, context building
 - Confirm streamed answers appear incrementally and render Markdown headings, lists, emphasis, and code blocks cleanly.
 - Confirm code blocks have syntax highlighting and a copy control.
 - While an answer is streaming, confirm the composer button becomes Stop and stops the provider response without freezing the assistant.
+- Confirm the composer is multiline: Return inserts a newline, Command+Return sends, and the Send button stays aligned with the input.
 - Confirm chat output auto-scrolls while untouched; after manually scrolling upward, auto-scroll should pause and a Jump to bottom control should appear.
 - Confirm Jump to bottom returns the transcript to the latest output and hides the control.
 - Confirm Clear Chat removes the current transcript/context cards without changing provider settings or Keychain secrets.
