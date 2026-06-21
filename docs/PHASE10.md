@@ -78,6 +78,7 @@ Checkpoint: existing-resource YAML edits now have a highlighted editor with line
 - [x] AppModel preview wiring tests.
 - [x] AppModel apply wiring tests.
 - [x] Rendered YAML preview regression tests for managedFields and resource quantities.
+- [x] Confirmation policy and local action history tests.
 - [ ] Confirmation flow UI tests.
 - [ ] Integration tests against disposable kind cluster.
 
@@ -108,3 +109,5 @@ xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=m
 - 2026-06-21: Focused safe mutation request tests passed:
   `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/vibekubeTests/safeMutationServiceBuildsScaleRestartDeleteAndApplyRequests -only-testing:vibekubeTests/vibekubeTests/appModelAppliesPreviewedMutationForSelectedResourceRow -only-testing:vibekubeTests/vibekubeTests/appModelPreviewsMutationForSelectedResourceRow`
 - 2026-06-21: Visual Computer Use QA for the new Actions tab and global Apply YAML sheet is still pending; the latest debug build is running, but the Mac is locked and Computer Use returns only `remoteConnection`.
+- 2026-06-21: Focused confirmation/history tests passed for namespace delete confirmation phrases, successful and failed mutation history, Secret apply history redaction, and the 50-record history cap:
+  `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/vibekubeTests/safeMutationServiceBuildsScaleRestartDeleteAndApplyRequests -only-testing:vibekubeTests/vibekubeTests/mutationConfirmationPolicyRequiresStrongerNamespaceDeletePhrase -only-testing:vibekubeTests/vibekubeTests/appModelRecordsSucceededMutationActionHistory -only-testing:vibekubeTests/vibekubeTests/appModelRecordsFailedMutationActionHistory -only-testing:vibekubeTests/vibekubeTests/appModelDoesNotLeakSecretValuesIntoMutationHistory -only-testing:vibekubeTests/vibekubeTests/appModelCapsMutationActionHistory`

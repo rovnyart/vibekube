@@ -1289,6 +1289,125 @@ struct vibekubeTests {
         #expect(apply.queryItems.contains(URLQueryItem(name: "dryRun", value: "All")))
     }
 
+    @Test func mutationConfirmationPolicyRequiresStrongerNamespaceDeletePhrase() {
+        #expect(MutationConfirmationPolicy.deleteConfirmationPhrase(resourceKind: "Deployment", resourceName: "echo-web") == "echo-web")
+        #expect(MutationConfirmationPolicy.deleteConfirmationPhrase(resourceKind: "Namespace", resourceName: "demo") == "delete demo")
+    }
+
+    @MainActor
+    @Test func appModelRecordsSucceededMutationActionHistory() async throws {
+        let mutationActionService = RecordingSafeMutationActionService()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: MutationActionConnectionService(),
+            mutationActionService: mutationActionService,
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        let row = try deploymentResource(name: "echo-web", namespace: "vibekube-demo", replicas: 2)
+
+        _ = try await model.scaleResource(for: .deployments, row: row, replicas: 3)
+        _ = try await model.restartRollout(for: .deployments, row: row)
+        try await model.deleteResource(for: .deployments, row: row)
+
+        #expect(model.mutationActionHistory.map(\.kind) == [.delete, .restart, .scale])
+        #expect(model.mutationActionHistory.allSatisfy { $0.status == .succeeded })
+        #expect(model.mutationActionHistory.allSatisfy { $0.finishedAt != nil })
+
+        let calls = await mutationActionService.calls
+        #expect(calls.map(\.operation) == ["scale", "restart", "delete"])
+        #expect(calls.map(\.name) == ["echo-web", "echo-web", "echo-web"])
+    }
+
+    @MainActor
+    @Test func appModelRecordsFailedMutationActionHistory() async throws {
+        let mutationActionService = RecordingSafeMutationActionService(errorMessage: "forbidden by test")
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: MutationActionConnectionService(),
+            mutationActionService: mutationActionService,
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        let row = try deploymentResource(name: "echo-web", namespace: "vibekube-demo", replicas: 2)
+
+        do {
+            _ = try await model.scaleResource(for: .deployments, row: row, replicas: 4)
+            Issue.record("Expected scale to fail")
+        } catch {
+            #expect(error.localizedDescription.contains("forbidden by test"))
+        }
+
+        let record = try #require(model.mutationActionHistory.first)
+        #expect(record.kind == .scale)
+        #expect(record.finishedAt != nil)
+        #expect(record.status.message?.contains("forbidden by test") == true)
+    }
+
+    @MainActor
+    @Test func appModelDoesNotLeakSecretValuesIntoMutationHistory() async throws {
+        let mutationActionService = RecordingSafeMutationActionService()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: MutationActionConnectionService(),
+            mutationActionService: mutationActionService,
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        let yaml = """
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: demo-secret
+          namespace: vibekube-demo
+        stringData:
+          token: super-secret-token
+        """
+
+        _ = try await model.applyManifestYAML(yaml, actionKind: .createSecret)
+
+        let record = try #require(model.mutationActionHistory.first)
+        #expect(record.kind == .createSecret)
+        #expect(record.resourceKind == "Secret")
+        #expect(record.resourceName == "demo-secret")
+        #expect(record.detail == "Server-side apply")
+        #expect(record.status == .succeeded)
+        #expect(!record.detail.contains("super-secret-token"))
+        #expect(!record.targetTitle.contains("super-secret-token"))
+    }
+
+    @MainActor
+    @Test func appModelCapsMutationActionHistory() async throws {
+        let mutationActionService = RecordingSafeMutationActionService()
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: MutationActionConnectionService(),
+            mutationActionService: mutationActionService,
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        for index in 0..<55 {
+            let row = try deploymentResource(name: "echo-web-\(index)", namespace: "vibekube-demo", replicas: 1)
+            try await model.deleteResource(for: .deployments, row: row)
+        }
+
+        #expect(model.mutationActionHistory.count == 50)
+        #expect(model.mutationActionHistory.first?.resourceName == "echo-web-54")
+        #expect(model.mutationActionHistory.last?.resourceName == "echo-web-5")
+    }
+
     @MainActor
     @Test func appModelLoadsResourceEventsForSelectedDetail() async throws {
         let model = AppModel(
@@ -2197,6 +2316,64 @@ private func podResourceDetail(name: String, namespace: String, resourceVersion:
     )
 }
 
+private func deploymentResource(name: String, namespace: String, replicas: Int) throws -> KubernetesUnstructuredResource {
+    try JSONDecoder().decode(
+        KubernetesUnstructuredResource.self,
+        from: Data(
+            """
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "metadata": {
+                "name": "\(name)",
+                "namespace": "\(namespace)"
+              },
+              "spec": {
+                "replicas": \(replicas)
+              },
+              "status": {
+                "replicas": \(replicas),
+                "readyReplicas": \(replicas),
+                "availableReplicas": \(replicas),
+                "updatedReplicas": \(replicas)
+              }
+            }
+            """.utf8
+        )
+    )
+}
+
+private func mutationResourceDetail(
+    resource: KubernetesDiscoveredResource,
+    namespace: String?,
+    name: String,
+    resourceVersion: String
+) throws -> KubernetesResourceDetail {
+    var metadataLines = [
+        #"    "name": "\#(name)","#,
+        #"    "resourceVersion": "\#(resourceVersion)""#
+    ]
+    if let namespace {
+        metadataLines.insert(#"    "namespace": "\#(namespace)","#, at: 1)
+    }
+    let metadata = metadataLines.joined(separator: "\n")
+
+    return try JSONDecoder().decode(
+        KubernetesResourceDetail.self,
+        from: Data(
+            """
+            {
+              "apiVersion": "\(resource.groupVersion)",
+              "kind": "\(resource.kind)",
+              "metadata": {
+            \(metadata)
+              }
+            }
+            """.utf8
+        )
+    )
+}
+
 @MainActor
 private func waitForResourceDetail(
     _ model: AppModel,
@@ -2314,6 +2491,50 @@ private struct SucceedingConnectionService: KubernetesConnectionServicing {
                             KubernetesAPIResource(name: "configmaps", singularName: "", namespaced: true, kind: "ConfigMap", verbs: ["get"], shortNames: nil, categories: nil),
                             KubernetesAPIResource(name: "secrets", singularName: "", namespaced: true, kind: "Secret", verbs: ["get"], shortNames: nil, categories: nil),
                             KubernetesAPIResource(name: "events", singularName: "", namespaced: true, kind: "Event", verbs: ["list"], shortNames: nil, categories: nil)
+                        ]
+                    )
+                ],
+                namespaceDiscovery: .loaded([
+                    KubernetesNamespaceSummary(name: "default", phase: "Active"),
+                    KubernetesNamespaceSummary(name: "vibekube-demo", phase: "Active")
+                ])
+            )
+        )
+    }
+}
+
+private struct MutationActionConnectionService: KubernetesConnectionServicing {
+    func connect(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        progress: @escaping @Sendable (KubernetesConnectionProgress) async -> Void
+    ) async throws -> KubernetesConnectionSnapshot {
+        KubernetesConnectionSnapshot(
+            version: KubernetesVersion(
+                major: "1",
+                minor: "30",
+                gitVersion: "v1.30.0",
+                gitCommit: nil,
+                platform: nil
+            ),
+            discovery: KubernetesDiscoverySnapshot(
+                coreVersions: ["v1"],
+                groups: [],
+                resourceLists: [
+                    KubernetesAPIResourceList(
+                        groupVersion: "v1",
+                        resources: [
+                            KubernetesAPIResource(name: "namespaces", singularName: "", namespaced: false, kind: "Namespace", verbs: ["get", "list", "patch", "delete"], shortNames: nil, categories: nil),
+                            KubernetesAPIResource(name: "configmaps", singularName: "", namespaced: true, kind: "ConfigMap", verbs: ["get", "list", "patch", "delete"], shortNames: nil, categories: nil),
+                            KubernetesAPIResource(name: "secrets", singularName: "", namespaced: true, kind: "Secret", verbs: ["get", "list", "patch", "delete"], shortNames: nil, categories: nil)
+                        ]
+                    ),
+                    KubernetesAPIResourceList(
+                        groupVersion: "apps/v1",
+                        resources: [
+                            KubernetesAPIResource(name: "deployments", singularName: "", namespaced: true, kind: "Deployment", verbs: ["get", "list", "watch", "patch", "delete"], shortNames: nil, categories: nil),
+                            KubernetesAPIResource(name: "statefulsets", singularName: "", namespaced: true, kind: "StatefulSet", verbs: ["get", "list", "watch", "patch", "delete"], shortNames: nil, categories: nil),
+                            KubernetesAPIResource(name: "daemonsets", singularName: "", namespaced: true, kind: "DaemonSet", verbs: ["get", "list", "watch", "patch", "delete"], shortNames: nil, categories: nil)
                         ]
                     )
                 ],
@@ -2476,6 +2697,130 @@ private actor RecordingMutationService: KubernetesMutationServicing {
             ) : nil,
             resource: request.verb == .delete ? nil : resourceDetail
         )
+    }
+}
+
+private struct RecordingSafeMutationCall: Equatable {
+    var operation: String
+    var resourceKind: String
+    var namespace: String?
+    var name: String
+    var replicas: Int?
+    var dryRun: Bool?
+    var yaml: String?
+}
+
+private struct RecordingSafeMutationError: LocalizedError {
+    var message: String
+
+    var errorDescription: String? {
+        message
+    }
+}
+
+private actor RecordingSafeMutationActionService: KubernetesSafeMutationServicing {
+    private(set) var calls: [RecordingSafeMutationCall] = []
+    private let errorMessage: String?
+
+    init(errorMessage: String? = nil) {
+        self.errorMessage = errorMessage
+    }
+
+    func scale(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String,
+        replicas: Int
+    ) async throws -> KubernetesResourceDetail {
+        calls.append(
+            RecordingSafeMutationCall(
+                operation: "scale",
+                resourceKind: resource.kind,
+                namespace: namespace,
+                name: name,
+                replicas: replicas
+            )
+        )
+        try throwIfNeeded()
+        return try mutationResourceDetail(resource: resource, namespace: namespace, name: name, resourceVersion: "scale")
+    }
+
+    func restartRollout(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String,
+        restartedAt: Date
+    ) async throws -> KubernetesResourceDetail {
+        calls.append(
+            RecordingSafeMutationCall(
+                operation: "restart",
+                resourceKind: resource.kind,
+                namespace: namespace,
+                name: name
+            )
+        )
+        try throwIfNeeded()
+        return try mutationResourceDetail(resource: resource, namespace: namespace, name: name, resourceVersion: "restart")
+    }
+
+    func delete(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String
+    ) async throws -> KubernetesStatus? {
+        calls.append(
+            RecordingSafeMutationCall(
+                operation: "delete",
+                resourceKind: resource.kind,
+                namespace: namespace,
+                name: name
+            )
+        )
+        try throwIfNeeded()
+        return KubernetesStatus(
+            kind: "Status",
+            apiVersion: "v1",
+            status: "Success",
+            message: nil,
+            reason: nil,
+            details: nil,
+            code: 200
+        )
+    }
+
+    func applyManifest(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String,
+        yaml: String,
+        dryRun: Bool
+    ) async throws -> KubernetesResourceDetail {
+        calls.append(
+            RecordingSafeMutationCall(
+                operation: "apply",
+                resourceKind: resource.kind,
+                namespace: namespace,
+                name: name,
+                dryRun: dryRun,
+                yaml: yaml
+            )
+        )
+        try throwIfNeeded()
+        return try mutationResourceDetail(resource: resource, namespace: namespace, name: name, resourceVersion: dryRun ? "dry-run" : "apply")
+    }
+
+    private func throwIfNeeded() throws {
+        if let errorMessage {
+            throw RecordingSafeMutationError(message: errorMessage)
+        }
     }
 }
 

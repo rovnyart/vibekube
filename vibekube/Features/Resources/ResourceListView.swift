@@ -2535,7 +2535,10 @@ private struct ResourceDetailActionsView: View {
     }
 
     private var deleteConfirmationPhrase: String {
-        snapshot.query.resource.kind == "Namespace" ? "delete \(row.displayName)" : row.displayName
+        MutationConfirmationPolicy.deleteConfirmationPhrase(
+            resourceKind: snapshot.query.resource.kind,
+            resourceName: row.displayName
+        )
     }
 
     private var replicaBinding: Binding<Int> {
