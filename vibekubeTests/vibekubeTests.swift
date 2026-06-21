@@ -1145,6 +1145,40 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelPreviewsMutationForSelectedResourceRow() async throws {
+        let previewService = RecordingMutationPreviewService(
+            preview: try podMutationPreview(resource: dashboardDiscoveredResource(for: .pods))
+        )
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            mutationPreviewService: previewService,
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        let row = try podResource(name: "web-0", namespace: "vibekube-demo")
+        let preview = try await model.previewMutation(
+            for: .pods,
+            row: row,
+            proposedYAML: "kind: Pod"
+        )
+
+        #expect(preview.mutationRequest.dryRun)
+        #expect(preview.diff.hasChanges)
+
+        let request = try #require(await previewService.firstRequest())
+        #expect(request.contextName == "kind-vibekube-dev")
+        #expect(request.resource.name == "pods")
+        #expect(request.resource.groupVersion == "v1")
+        #expect(request.namespace == "vibekube-demo")
+        #expect(request.name == "web-0")
+        #expect(request.proposedYAML == "kind: Pod")
+    }
+
+    @MainActor
     @Test func appModelLoadsResourceEventsForSelectedDetail() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -2025,6 +2059,33 @@ private func podResource(name: String, namespace: String) throws -> KubernetesUn
     )
 }
 
+private func podResourceDetail(name: String, namespace: String, resourceVersion: String) throws -> KubernetesResourceDetail {
+    try JSONDecoder().decode(
+        KubernetesResourceDetail.self,
+        from: Data(
+            """
+            {
+              "apiVersion": "v1",
+              "kind": "Pod",
+              "metadata": {
+                "name": "\(name)",
+                "namespace": "\(namespace)",
+                "resourceVersion": "\(resourceVersion)"
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "name": "web",
+                    "image": "nginx"
+                  }
+                ]
+              }
+            }
+            """.utf8
+        )
+    )
+}
+
 @MainActor
 private func waitForResourceDetail(
     _ model: AppModel,
@@ -2219,6 +2280,47 @@ private final class RecordingPortForwardHandle: KubernetesPortForwardHandle {
 
     func stop() {
         stopped = true
+    }
+}
+
+private actor RecordingMutationPreviewService: KubernetesMutationPreviewServicing {
+    struct Request: Equatable {
+        var contextName: String
+        var resource: KubernetesDiscoveredResource
+        var namespace: String?
+        var name: String
+        var proposedYAML: String
+    }
+
+    private var requests: [Request] = []
+    private let preview: KubernetesMutationPreview
+
+    init(preview: KubernetesMutationPreview) {
+        self.preview = preview
+    }
+
+    func previewExistingResource(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        resource: KubernetesDiscoveredResource,
+        namespace: String?,
+        name: String,
+        proposedYAML: String
+    ) async throws -> KubernetesMutationPreview {
+        requests.append(
+            Request(
+                contextName: contextName,
+                resource: resource,
+                namespace: namespace,
+                name: name,
+                proposedYAML: proposedYAML
+            )
+        )
+        return preview
+    }
+
+    func firstRequest() -> Request? {
+        requests.first
     }
 }
 
@@ -3770,5 +3872,51 @@ private func dashboardAPIResource(for item: ResourceNavigationItem) -> Kubernete
         verbs: ["get", "list"],
         shortNames: nil,
         categories: nil
+    )
+}
+
+private func dashboardDiscoveredResource(for item: ResourceNavigationItem) -> KubernetesDiscoveredResource {
+    let groupVersion = switch item {
+    case .deployments, .replicaSets, .statefulSets, .daemonSets:
+        "apps/v1"
+    case .jobs, .cronJobs:
+        "batch/v1"
+    default:
+        "v1"
+    }
+
+    return KubernetesDiscoveredResource(
+        groupVersion: groupVersion,
+        resource: dashboardAPIResource(for: item)
+    )
+}
+
+private func podMutationPreview(resource: KubernetesDiscoveredResource) throws -> KubernetesMutationPreview {
+    let liveResource = try podResourceDetail(
+        name: "web-0",
+        namespace: "vibekube-demo",
+        resourceVersion: "10"
+    )
+    let dryRunResource = try podResourceDetail(
+        name: "web-0",
+        namespace: "vibekube-demo",
+        resourceVersion: "11"
+    )
+
+    return KubernetesMutationPreview(
+        liveResource: liveResource,
+        proposedResource: liveResource,
+        dryRunResource: dryRunResource,
+        mutationRequest: KubernetesMutationRequest(
+            verb: .put,
+            resource: resource,
+            namespace: "vibekube-demo",
+            name: "web-0",
+            dryRun: true
+        ),
+        diff: KubernetesYAMLDiff.between(
+            old: liveResource.yaml,
+            new: dryRunResource.yaml
+        )
     )
 }

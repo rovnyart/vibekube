@@ -1953,16 +1953,35 @@ private struct ResourceDetailView: View {
         case .environment:
             ResourceDetailEnvironmentView(summary: snapshot.summary)
         case .yaml:
-            ManifestYAMLView(
-                yaml: snapshot.yaml,
-                saveYAML: {
-                    saveYAML(snapshot.yaml)
-                }
-            )
+            yamlContent(snapshot)
         case .metadata:
             ResourceDetailMetadataView(summary: snapshot.summary)
         case .conditions:
             ResourceDetailConditionsView(conditions: snapshot.summary.conditions)
+        }
+    }
+
+    private func yamlContent(_ snapshot: ResourceDetailSnapshot) -> some View {
+        ManifestYAMLView(
+            yaml: snapshot.yaml,
+            saveYAML: {
+                saveYAML(snapshot.yaml)
+            },
+            previewMutation: yamlPreviewAction
+        )
+    }
+
+    private var yamlPreviewAction: ((String) async throws -> KubernetesMutationPreview)? {
+        guard appModel.canPreviewMutations else {
+            return nil
+        }
+
+        return { proposedYAML in
+            try await appModel.previewMutation(
+                for: item,
+                row: row,
+                proposedYAML: proposedYAML
+            )
         }
     }
 

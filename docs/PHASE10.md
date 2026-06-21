@@ -8,13 +8,14 @@ Goal: add common write operations with strong previews, confirmations, RBAC awar
 
 - [x] Phase plan exists.
 - [x] Mutation API exists.
-- [ ] Dry-run/diff support exists.
+- [x] Dry-run/diff support exists.
 - [ ] Confirmations exist.
 - [ ] Scale/restart/delete/apply flows exist.
 - [ ] Local action history exists.
 - [x] Kubernetes `Status` mutation errors surface HTTP code, reason, field causes, and retry hints.
-- [x] Dry-run is supported at the request layer; user-facing diff preview is still pending.
+- [x] Dry-run is supported at the request layer and exposed in the YAML detail editor as a no-apply preview.
 - [x] Non-UI mutation preview foundation parses YAML, validates target identity, runs server-side dry-run, fetches live state, and produces a diff.
+- [x] YAML detail tab can edit a draft manifest and render server-side dry-run diff or validation errors without mutating the cluster.
 
 ## Implementation Slices
 
@@ -40,9 +41,9 @@ Checkpoint: mutation client/service foundation is implemented and tested without
 - [x] Fetch live object for diff.
 - [x] Render diff preview.
 - [x] Detect conflicts/resourceVersion issues.
-- [ ] Show RBAC/permission failures clearly.
+- [x] Show RBAC/permission failures clearly.
 
-Checkpoint: non-UI preview/diff foundation exists for existing-resource YAML edits. Visible preview UI, confirmation flow, and apply actions are still pending.
+Checkpoint: existing-resource YAML edits now have visible draft editing, server-side dry-run preview, diff rendering, validation causes, conflict handling, and permission/error surfacing. Confirmation flow and real apply actions are still pending.
 
 ### 10.3 Common Actions
 
@@ -72,6 +73,7 @@ Checkpoint: non-UI preview/diff foundation exists for existing-resource YAML edi
 - [x] Mutation request tests.
 - [x] Dry-run tests against mock server.
 - [x] Diff rendering tests.
+- [x] AppModel preview wiring tests.
 - [ ] Confirmation flow UI tests.
 - [ ] Integration tests against disposable kind cluster.
 

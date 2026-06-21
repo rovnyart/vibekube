@@ -59,6 +59,29 @@ private extension DebugActionFailureExplanation.Action {
     }
 }
 
+enum MutationPreviewRequestError: LocalizedError, Equatable {
+    case unavailable
+    case disconnected
+    case missingCluster
+    case missingResource
+    case missingName
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable:
+            "Mutation preview is not available."
+        case .disconnected:
+            "Connect to the cluster before previewing changes."
+        case .missingCluster:
+            "No cluster is selected."
+        case .missingResource:
+            "The selected resource API is not available."
+        case .missingName:
+            "The selected row does not have a resource name."
+        }
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var clusters: [ClusterSummary]
@@ -102,6 +125,7 @@ final class AppModel: ObservableObject {
     private let resourceListService: KubernetesResourceListServicing?
     private let resourceDetailService: KubernetesResourceDetailServicing?
     private let resourceEventService: KubernetesResourceEventServicing?
+    private let mutationPreviewService: KubernetesMutationPreviewServicing?
     private let metricsService: KubernetesMetricsServicing?
     private let logService: KubernetesLogServicing?
     private let portForwardService: KubernetesPortForwardServicing?
@@ -148,6 +172,7 @@ final class AppModel: ObservableObject {
                 resourceListService: usePreviewData ? PreviewKubernetesResourceListService() : nil,
                 resourceDetailService: usePreviewData ? PreviewKubernetesResourceDetailService() : nil,
                 resourceEventService: usePreviewData ? PreviewKubernetesResourceEventService() : nil,
+                mutationPreviewService: nil,
                 metricsService: usePreviewData ? PreviewKubernetesMetricsService() : nil,
                 logService: usePreviewData ? PreviewKubernetesLogService() : nil,
                 portForwardService: usePreviewData ? nil : KubectlPortForwardService(),
@@ -167,6 +192,10 @@ final class AppModel: ObservableObject {
                 resourceListService: KubernetesResourceListService(execCredentialProvider: execCredentialProvider),
                 resourceDetailService: KubernetesResourceDetailService(execCredentialProvider: execCredentialProvider),
                 resourceEventService: KubernetesResourceEventService(execCredentialProvider: execCredentialProvider),
+                mutationPreviewService: KubernetesMutationPreviewService(
+                    mutationService: KubernetesMutationService(execCredentialProvider: execCredentialProvider),
+                    resourceDetailService: KubernetesResourceDetailService(execCredentialProvider: execCredentialProvider)
+                ),
                 metricsService: KubernetesMetricsService(execCredentialProvider: execCredentialProvider),
                 logService: KubernetesLogService(execCredentialProvider: execCredentialProvider),
                 portForwardService: KubectlPortForwardService(),
@@ -185,6 +214,7 @@ final class AppModel: ObservableObject {
         resourceListService: KubernetesResourceListServicing? = nil,
         resourceDetailService: KubernetesResourceDetailServicing? = nil,
         resourceEventService: KubernetesResourceEventServicing? = nil,
+        mutationPreviewService: KubernetesMutationPreviewServicing? = nil,
         metricsService: KubernetesMetricsServicing? = nil,
         logService: KubernetesLogServicing? = nil,
         portForwardService: KubernetesPortForwardServicing? = nil,
@@ -221,6 +251,7 @@ final class AppModel: ObservableObject {
         self.resourceListService = resourceListService
         self.resourceDetailService = resourceDetailService
         self.resourceEventService = resourceEventService
+        self.mutationPreviewService = mutationPreviewService
         self.metricsService = metricsService
         self.logService = logService
         self.portForwardService = portForwardService
@@ -381,6 +412,10 @@ final class AppModel: ObservableObject {
             state: dashboardMetricsState(),
             nodeItems: resourceListSnapshot(for: .nodes)?.items
         )
+    }
+
+    var canPreviewMutations: Bool {
+        mutationPreviewService != nil && selectedConnectionState == .connected
     }
 
     private var appVersionDescription: String {
@@ -1726,6 +1761,39 @@ final class AppModel: ObservableObject {
         }
 
         loadResourceDetail(query: query, row: row, force: force)
+    }
+
+    func previewMutation(
+        for resource: ResourceNavigationItem,
+        row: KubernetesUnstructuredResource,
+        proposedYAML: String
+    ) async throws -> KubernetesMutationPreview {
+        guard let mutationPreviewService else {
+            throw MutationPreviewRequestError.unavailable
+        }
+        guard selectedConnectionState == .connected else {
+            throw MutationPreviewRequestError.disconnected
+        }
+        guard let selectedClusterID else {
+            throw MutationPreviewRequestError.missingCluster
+        }
+        guard let discoveredResource = resource.discoveredResource(in: selectedDiscovery) else {
+            throw MutationPreviewRequestError.missingResource
+        }
+        guard let name = row.metadata.name, !name.isEmpty else {
+            throw MutationPreviewRequestError.missingName
+        }
+
+        let namespace = discoveredResource.namespaced ? row.metadata.namespace : nil
+        let kubeconfig = loadedKubeconfig
+        return try await mutationPreviewService.previewExistingResource(
+            contextName: selectedClusterID,
+            kubeconfig: kubeconfig,
+            resource: discoveredResource,
+            namespace: namespace,
+            name: name,
+            proposedYAML: proposedYAML
+        )
     }
 
     private func loadResourceDetail(

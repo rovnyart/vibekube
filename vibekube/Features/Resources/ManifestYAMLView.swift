@@ -5,9 +5,24 @@ struct ManifestYAMLView: View {
     @State private var searchText = ""
     @State private var selectedMatchIndex = 0
     @State private var copiedToClipboard = false
+    @State private var isEditing = false
+    @State private var draftYAML: String
+    @State private var previewState: ManifestMutationPreviewState = .idle
 
     let yaml: String
     var saveYAML: (() -> Void)?
+    var previewMutation: ((String) async throws -> KubernetesMutationPreview)?
+
+    init(
+        yaml: String,
+        saveYAML: (() -> Void)? = nil,
+        previewMutation: ((String) async throws -> KubernetesMutationPreview)? = nil
+    ) {
+        self.yaml = yaml
+        self.saveYAML = saveYAML
+        self.previewMutation = previewMutation
+        _draftYAML = State(initialValue: yaml)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,21 +30,32 @@ struct ManifestYAMLView: View {
 
             Divider()
 
-            ManifestYAMLTextView(
-                yaml: displayYAML,
-                matches: matches,
-                selectedMatch: selectedMatch
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            if isEditing {
+                editContent
+            } else {
+                ManifestYAMLTextView(
+                    yaml: displayYAML,
+                    matches: matches,
+                    selectedMatch: selectedMatch
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onChange(of: yaml) {
             searchText = ""
             selectedMatchIndex = 0
             copiedToClipboard = false
+            draftYAML = yaml
+            previewState = .idle
         }
         .onChange(of: searchText) {
             selectedMatchIndex = 0
+        }
+        .onChange(of: draftYAML) {
+            if !previewState.isLoading {
+                previewState = .idle
+            }
         }
         .onChange(of: matches.count) { _, count in
             if selectedMatchIndex >= count {
@@ -41,69 +67,139 @@ struct ManifestYAMLView: View {
 
     private var toolbar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
+            if isEditing {
+                Button {
+                    Task {
+                        await previewDraft()
+                    }
+                } label: {
+                    Label("Preview", systemImage: previewState.isLoading ? "hourglass" : "doc.text.magnifyingglass")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(previewMutation == nil || previewState.isLoading)
+                .help(previewMutation == nil ? "Preview unavailable" : "Preview")
+                .accessibilityIdentifier("resource.detail.yaml.preview")
 
-            TextField("Find", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(minWidth: 120, idealWidth: 160, maxWidth: 220)
-                .accessibilityIdentifier("resource.detail.yaml.search")
+                Button {
+                    draftYAML = yaml
+                    previewState = .idle
+                } label: {
+                    Label("Reset", systemImage: "arrow.counterclockwise")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .disabled(draftYAML == yaml)
+                .help("Reset")
+                .accessibilityIdentifier("resource.detail.yaml.reset")
 
-            Text(matchSummary)
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(matches.isEmpty ? .tertiary : .secondary)
-                .frame(minWidth: 48, alignment: .trailing)
+                Button {
+                    cancelEditing()
+                } label: {
+                    Label("Cancel", systemImage: "xmark")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .help("Cancel")
+                .accessibilityIdentifier("resource.detail.yaml.cancelEdit")
+            } else {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
 
-            Button {
-                selectPreviousMatch()
-            } label: {
-                Label("Previous Match", systemImage: "chevron.up")
-                    .labelStyle(.iconOnly)
+                TextField("Find", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 120, idealWidth: 160, maxWidth: 220)
+                    .accessibilityIdentifier("resource.detail.yaml.search")
+
+                Text(matchSummary)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(matches.isEmpty ? .tertiary : .secondary)
+                    .frame(minWidth: 48, alignment: .trailing)
+
+                Button {
+                    selectPreviousMatch()
+                } label: {
+                    Label("Previous Match", systemImage: "chevron.up")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .disabled(matches.isEmpty)
+                .help("Previous Match")
+                .accessibilityIdentifier("resource.detail.yaml.previousMatch")
+
+                Button {
+                    selectNextMatch()
+                } label: {
+                    Label("Next Match", systemImage: "chevron.down")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .disabled(matches.isEmpty)
+                .help("Next Match")
+                .accessibilityIdentifier("resource.detail.yaml.nextMatch")
             }
-            .buttonStyle(.bordered)
-            .disabled(matches.isEmpty)
-            .help("Previous Match")
-            .accessibilityIdentifier("resource.detail.yaml.previousMatch")
-
-            Button {
-                selectNextMatch()
-            } label: {
-                Label("Next Match", systemImage: "chevron.down")
-                    .labelStyle(.iconOnly)
-            }
-            .buttonStyle(.bordered)
-            .disabled(matches.isEmpty)
-            .help("Next Match")
-            .accessibilityIdentifier("resource.detail.yaml.nextMatch")
 
             Divider()
                 .frame(height: 18)
 
-            Button {
-                copyYAML()
-            } label: {
-                Label(copiedToClipboard ? "Copied" : "Copy YAML", systemImage: copiedToClipboard ? "checkmark" : "doc.on.doc")
-                    .labelStyle(.iconOnly)
-            }
-            .buttonStyle(.bordered)
-            .help(copiedToClipboard ? "Copied" : "Copy YAML")
-            .accessibilityIdentifier("resource.detail.yaml.copy")
+            if !isEditing {
+                Button {
+                    startEditing()
+                } label: {
+                    Label("Edit YAML", systemImage: "pencil")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .disabled(previewMutation == nil)
+                .help(previewMutation == nil ? "Edit unavailable" : "Edit YAML")
+                .accessibilityIdentifier("resource.detail.yaml.edit")
 
-            Button {
-                saveYAML?()
-            } label: {
-                Label("Save YAML", systemImage: "square.and.arrow.down")
-                    .labelStyle(.iconOnly)
+                Button {
+                    copyYAML()
+                } label: {
+                    Label(copiedToClipboard ? "Copied" : "Copy YAML", systemImage: copiedToClipboard ? "checkmark" : "doc.on.doc")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .help(copiedToClipboard ? "Copied" : "Copy YAML")
+                .accessibilityIdentifier("resource.detail.yaml.copy")
+
+                Button {
+                    saveYAML?()
+                } label: {
+                    Label("Save YAML", systemImage: "square.and.arrow.down")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .disabled(saveYAML == nil)
+                .help("Save YAML")
+                .accessibilityIdentifier("resource.detail.yaml.save")
             }
-            .buttonStyle(.bordered)
-            .disabled(saveYAML == nil)
-            .help("Save YAML")
-            .accessibilityIdentifier("resource.detail.yaml.save")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.bar)
+    }
+
+    private var editContent: some View {
+        VStack(spacing: 0) {
+            TextEditor(text: $draftYAML)
+                .font(.system(.body, design: .monospaced))
+                .textSelection(.enabled)
+                .scrollContentBackground(.hidden)
+                .background(Color(nsColor: .textBackgroundColor))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityIdentifier("resource.detail.yaml.editor")
+
+            if !previewState.isIdle {
+                Divider()
+
+                ManifestMutationPreviewPane(state: previewState)
+                    .frame(minHeight: 180, idealHeight: 220, maxHeight: 280)
+            }
+        }
     }
 
     private var displayYAML: String {
@@ -159,6 +255,246 @@ struct ManifestYAMLView: View {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.2))
             copiedToClipboard = false
+        }
+    }
+
+    private func startEditing() {
+        draftYAML = yaml
+        previewState = .idle
+        isEditing = true
+    }
+
+    private func cancelEditing() {
+        isEditing = false
+        draftYAML = yaml
+        previewState = .idle
+    }
+
+    @MainActor
+    private func previewDraft() async {
+        guard let previewMutation else {
+            previewState = .failed(message: "Preview unavailable.", causes: [])
+            return
+        }
+
+        previewState = .loading
+        let submittedYAML = draftYAML
+        do {
+            let preview = try await previewMutation(submittedYAML)
+            guard draftYAML == submittedYAML else {
+                previewState = .idle
+                return
+            }
+            previewState = .loaded(preview)
+        } catch let error as KubernetesMutationPreviewError {
+            guard draftYAML == submittedYAML else {
+                previewState = .idle
+                return
+            }
+            previewState = .failed(
+                message: error.localizedDescription,
+                causes: error.fieldCauses
+            )
+        } catch let error as LocalizedError {
+            guard draftYAML == submittedYAML else {
+                previewState = .idle
+                return
+            }
+            previewState = .failed(
+                message: error.errorDescription ?? error.localizedDescription,
+                causes: []
+            )
+        } catch {
+            guard draftYAML == submittedYAML else {
+                previewState = .idle
+                return
+            }
+            previewState = .failed(message: error.localizedDescription, causes: [])
+        }
+    }
+}
+
+private enum ManifestMutationPreviewState {
+    case idle
+    case loading
+    case loaded(KubernetesMutationPreview)
+    case failed(message: String, causes: [KubernetesStatusCause])
+
+    var isIdle: Bool {
+        if case .idle = self {
+            return true
+        }
+        return false
+    }
+
+    var isLoading: Bool {
+        if case .loading = self {
+            return true
+        }
+        return false
+    }
+}
+
+private struct ManifestMutationPreviewPane: View {
+    let state: ManifestMutationPreviewState
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+
+            Divider()
+
+            content
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+        .accessibilityIdentifier("resource.detail.yaml.previewPane")
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Image(systemName: headerImage)
+                .foregroundStyle(headerTint)
+
+            Text(headerTitle)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch state {
+        case .idle:
+            EmptyView()
+        case .loading:
+            ProgressView("Previewing")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .loaded(let preview):
+            if preview.diff.hasChanges {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(preview.diff.lines.enumerated()), id: \.offset) { _, line in
+                            ManifestMutationDiffLineView(line: line)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+                .accessibilityIdentifier("resource.detail.yaml.diff")
+            } else {
+                Text("No changes")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        case .failed(let message, let causes):
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(message)
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+
+                    ForEach(Array(causes.enumerated()), id: \.offset) { _, cause in
+                        Text(causeText(cause))
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+            }
+        }
+    }
+
+    private var headerImage: String {
+        switch state {
+        case .idle:
+            "doc.text"
+        case .loading:
+            "hourglass"
+        case .loaded(let preview):
+            preview.diff.hasChanges ? "plusminus" : "checkmark.circle"
+        case .failed:
+            "exclamationmark.triangle"
+        }
+    }
+
+    private var headerTitle: String {
+        switch state {
+        case .idle:
+            ""
+        case .loading:
+            "Dry-run Preview"
+        case .loaded(let preview):
+            preview.diff.hasChanges ? "Dry-run Diff" : "Dry-run Preview"
+        case .failed:
+            "Preview Failed"
+        }
+    }
+
+    private var headerTint: Color {
+        switch state {
+        case .idle, .loading:
+            .secondary
+        case .loaded(let preview):
+            preview.diff.hasChanges ? .orange : .green
+        case .failed:
+            .red
+        }
+    }
+
+    private func causeText(_ cause: KubernetesStatusCause) -> String {
+        [
+            cause.field,
+            cause.message,
+            cause.reason
+        ]
+        .compactMap { value in
+            guard let value, !value.isEmpty else { return nil }
+            return value
+        }
+        .joined(separator: " - ")
+    }
+}
+
+private struct ManifestMutationDiffLineView: View {
+    let line: KubernetesYAMLDiffLine
+
+    var body: some View {
+        Text(line.unifiedText)
+            .font(.caption.monospaced())
+            .foregroundStyle(foregroundStyle)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 1)
+            .background(backgroundStyle)
+            .textSelection(.enabled)
+    }
+
+    private var foregroundStyle: Color {
+        switch line.kind {
+        case .context:
+            .secondary
+        case .addition:
+            .green
+        case .removal:
+            .red
+        }
+    }
+
+    private var backgroundStyle: Color {
+        switch line.kind {
+        case .context:
+            .clear
+        case .addition:
+            Color.green.opacity(0.10)
+        case .removal:
+            Color.red.opacity(0.10)
         }
     }
 }
