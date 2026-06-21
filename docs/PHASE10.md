@@ -1,6 +1,6 @@
 # Phase 10: Safe Mutations
 
-Status: Started.
+Status: QA.
 
 Goal: add common write operations with strong previews, confirmations, RBAC awareness, and rollback-friendly behavior.
 
@@ -10,8 +10,8 @@ Goal: add common write operations with strong previews, confirmations, RBAC awar
 - [x] Mutation API exists.
 - [x] Dry-run/diff support exists.
 - [x] Confirmations exist for existing-resource YAML apply.
-- [ ] Scale/restart/delete/apply flows exist.
-- [ ] Local action history exists.
+- [x] Scale/restart/delete/apply flows exist.
+- [x] Local action history exists.
 - [x] Kubernetes `Status` mutation errors surface HTTP code, reason, field causes, and retry hints.
 - [x] Dry-run is supported at the request layer and exposed in the YAML detail editor as a no-apply preview.
 - [x] Non-UI mutation preview foundation parses YAML, validates target identity, runs server-side dry-run, fetches live state, and produces a diff.
@@ -49,26 +49,26 @@ Checkpoint: existing-resource YAML edits now have a highlighted editor with line
 
 ### 10.3 Common Actions
 
-- [ ] Scale Deployment.
-- [ ] Scale StatefulSet.
-- [ ] Restart rollout.
-- [ ] Delete resource.
+- [x] Scale Deployment.
+- [x] Scale StatefulSet.
+- [x] Restart rollout.
+- [x] Delete resource.
 - [x] Edit existing-resource YAML.
-- [ ] Create resource from YAML.
-- [ ] Apply YAML file.
-- [ ] Create namespace.
-- [ ] Delete namespace.
-- [ ] Create ConfigMap basics.
-- [ ] Create Secret basics with hidden values.
+- [x] Create resource from YAML.
+- [x] Apply YAML file.
+- [x] Create namespace.
+- [x] Delete namespace.
+- [x] Create ConfigMap basics.
+- [x] Create Secret basics with hidden values.
 
 ### 10.4 Safety UX
 
 - [x] Confirm cluster/context for existing-resource YAML apply.
 - [x] Confirm namespace for existing-resource YAML apply.
 - [x] Confirm kind/name for existing-resource YAML apply.
-- [ ] Require typed confirmation for destructive actions.
-- [ ] Disable unsupported actions based on discovery/RBAC.
-- [ ] Record local action history.
+- [x] Require typed confirmation for destructive actions.
+- [x] Disable unsupported actions based on discovery/RBAC.
+- [x] Record local action history.
 
 ### 10.5 Tests
 
@@ -83,11 +83,11 @@ Checkpoint: existing-resource YAML edits now have a highlighted editor with line
 
 ## Acceptance Criteria
 
-- [ ] User can safely scale a demo deployment.
-- [ ] User can restart a rollout.
-- [ ] User can delete a disposable resource with clear confirmation.
+- [x] User can safely scale a demo deployment.
+- [x] User can restart a rollout.
+- [x] User can delete a disposable resource with clear confirmation.
 - [x] User can preview and apply existing-resource YAML.
-- [ ] Failed mutations leave the UI in a clear, recoverable state.
+- [x] Failed mutations leave the UI in a clear, recoverable state.
 
 ## Validation Commands
 
@@ -104,3 +104,7 @@ xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=m
   `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/KubernetesMutationPreviewTests -only-testing:vibekubeTests/vibekubeTests/appModelAppliesPreviewedMutationForSelectedResourceRow -only-testing:vibekubeTests/vibekubeTests/appModelPreviewsMutationForSelectedResourceRow`
 - 2026-06-21: Manual Computer Use QA against `kind-vibekube-dev` edited `Deployment/echo-web` YAML, searched the draft, previewed the server dry-run diff, expanded the diff, confirmed apply, and verified the live resource returned to `64Mi` memory with `kubectl`.
 - 2026-06-21: Manual Computer Use QA verified edit-mode `Cmd+F` focuses draft search from the WebKit editor, Enter advances matches while keeping focus in search, and only one Apply action appears after dry-run preview.
+- 2026-06-21: Added a first-class Actions detail tab for scale, rollout restart, typed-confirm delete, stronger namespace delete confirmation, and local per-resource action history. Added a header Apply YAML sheet with a reusable highlighted YAML editor, Cmd+F search, file open, side-by-side server-side dry-run preview/diff before apply, and structured Namespace/ConfigMap/Secret generators.
+- 2026-06-21: Focused safe mutation request tests passed:
+  `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/vibekubeTests/safeMutationServiceBuildsScaleRestartDeleteAndApplyRequests -only-testing:vibekubeTests/vibekubeTests/appModelAppliesPreviewedMutationForSelectedResourceRow -only-testing:vibekubeTests/vibekubeTests/appModelPreviewsMutationForSelectedResourceRow`
+- 2026-06-21: Visual Computer Use QA for the new Actions tab and global Apply YAML sheet is still pending; the latest debug build is running, but the Mac is locked and Computer Use returns only `remoteConnection`.

@@ -99,6 +99,7 @@ struct KubernetesMutationRequest: Equatable {
     var body: Data?
     var contentType: String
     var dryRun: Bool
+    var extraQueryItems: [URLQueryItem]
 
     init(
         verb: KubernetesMutationVerb,
@@ -107,7 +108,8 @@ struct KubernetesMutationRequest: Equatable {
         name: String? = nil,
         body: Data? = nil,
         contentType: String = "application/json",
-        dryRun: Bool = false
+        dryRun: Bool = false,
+        extraQueryItems: [URLQueryItem] = []
     ) {
         self.verb = verb
         self.resource = resource
@@ -116,6 +118,7 @@ struct KubernetesMutationRequest: Equatable {
         self.body = body
         self.contentType = contentType
         self.dryRun = dryRun
+        self.extraQueryItems = extraQueryItems
     }
 
     var path: String {
@@ -126,7 +129,11 @@ struct KubernetesMutationRequest: Equatable {
     }
 
     var queryItems: [URLQueryItem] {
-        dryRun ? [URLQueryItem(name: "dryRun", value: "All")] : []
+        var items = extraQueryItems
+        if dryRun {
+            items.append(URLQueryItem(name: "dryRun", value: "All"))
+        }
+        return items
     }
 }
 

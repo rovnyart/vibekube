@@ -293,7 +293,7 @@ final class KubernetesMutationPreviewService: KubernetesMutationPreviewServicing
     }
 }
 
-private struct KubernetesMutationManifest {
+struct KubernetesMutationManifest {
     var value: KubernetesJSONValue
 
     init(yaml: String) throws {
@@ -375,6 +375,34 @@ private struct KubernetesMutationManifest {
                     actual: namespace
                 )
             }
+        } else if let namespace, !namespace.isEmpty {
+            throw KubernetesMutationPreviewError.namespaceNotAllowed(namespace)
+        }
+    }
+
+    func validateApplyTarget(resource: KubernetesDiscoveredResource) throws {
+        try require(apiVersion, field: "apiVersion")
+        try require(kind, field: "kind")
+        try require(metadata, field: "metadata")
+        try require(name, field: "metadata.name")
+
+        if apiVersion != resource.groupVersion {
+            throw KubernetesMutationPreviewError.identityMismatch(
+                field: "apiVersion",
+                expected: resource.groupVersion,
+                actual: apiVersion
+            )
+        }
+        if kind != resource.kind {
+            throw KubernetesMutationPreviewError.identityMismatch(
+                field: "kind",
+                expected: resource.kind,
+                actual: kind
+            )
+        }
+
+        if resource.namespaced {
+            try require(namespace, field: "metadata.namespace")
         } else if let namespace, !namespace.isEmpty {
             throw KubernetesMutationPreviewError.namespaceNotAllowed(namespace)
         }

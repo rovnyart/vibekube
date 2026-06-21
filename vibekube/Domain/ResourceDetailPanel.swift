@@ -7,6 +7,7 @@ enum ResourceDetailPanel: String, CaseIterable, Identifiable {
     case containers
     case environment
     case yaml
+    case actions
     case metadata
     case conditions
 
@@ -28,6 +29,8 @@ enum ResourceDetailPanel: String, CaseIterable, Identifiable {
             "Env"
         case .yaml:
             "YAML"
+        case .actions:
+            "Actions"
         case .metadata:
             "Metadata"
         case .conditions:
@@ -49,6 +52,8 @@ enum ResourceDetailPanel: String, CaseIterable, Identifiable {
             "switch.2"
         case .yaml:
             "doc.plaintext"
+        case .actions:
+            "bolt.badge.checkmark"
         case .metadata:
             "tag"
         case .conditions:

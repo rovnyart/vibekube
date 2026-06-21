@@ -48,6 +48,24 @@ private enum DebugActionFailureExplanation {
     }
 }
 
+private struct MutationActionTarget {
+    var service: KubernetesSafeMutationServicing
+    var contextID: ClusterSummary.ID
+    var kubeconfig: Kubeconfig
+    var discoveredResource: KubernetesDiscoveredResource
+    var namespace: String?
+    var name: String
+}
+
+private struct ManifestMutationTarget {
+    var service: KubernetesSafeMutationServicing
+    var contextID: ClusterSummary.ID
+    var kubeconfig: Kubeconfig
+    var resource: KubernetesDiscoveredResource
+    var namespace: String?
+    var name: String
+}
+
 private extension DebugActionFailureExplanation.Action {
     var name: String {
         switch self {
@@ -82,6 +100,38 @@ enum MutationPreviewRequestError: LocalizedError, Equatable {
     }
 }
 
+enum MutationActionRequestError: LocalizedError, Equatable {
+    case unavailable
+    case disconnected
+    case missingCluster
+    case missingDiscovery
+    case missingResource
+    case missingName
+    case unsupportedAction(String)
+    case invalidManifestTarget
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable:
+            "Mutations are not available."
+        case .disconnected:
+            "Connect to the cluster before changing resources."
+        case .missingCluster:
+            "No cluster is selected."
+        case .missingDiscovery:
+            "Resource discovery is not loaded for the selected cluster."
+        case .missingResource:
+            "The selected resource API is not available."
+        case .missingName:
+            "The selected row does not have a resource name."
+        case .unsupportedAction(let message):
+            message
+        case .invalidManifestTarget:
+            "Could not match the YAML manifest to a discovered Kubernetes resource."
+        }
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var clusters: [ClusterSummary]
@@ -102,6 +152,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var portForwardSessions: [PortForwardSession]
     @Published private(set) var execLaunches: [ExecLaunchRecord]
     @Published private(set) var execLaunchErrorMessage: String?
+    @Published private(set) var mutationActionHistory: [MutationActionRecord]
     @Published private(set) var searchFocusRequestID = 0
     @Published private(set) var diagnosticsFileLoggingEnabled: Bool
     @Published private(set) var diagnosticsIncludeClusterNames: Bool
@@ -126,6 +177,7 @@ final class AppModel: ObservableObject {
     private let resourceDetailService: KubernetesResourceDetailServicing?
     private let resourceEventService: KubernetesResourceEventServicing?
     private let mutationPreviewService: KubernetesMutationPreviewServicing?
+    private let mutationActionService: KubernetesSafeMutationServicing?
     private let metricsService: KubernetesMetricsServicing?
     private let logService: KubernetesLogServicing?
     private let portForwardService: KubernetesPortForwardServicing?
@@ -173,6 +225,7 @@ final class AppModel: ObservableObject {
                 resourceDetailService: usePreviewData ? PreviewKubernetesResourceDetailService() : nil,
                 resourceEventService: usePreviewData ? PreviewKubernetesResourceEventService() : nil,
                 mutationPreviewService: nil,
+                mutationActionService: nil,
                 metricsService: usePreviewData ? PreviewKubernetesMetricsService() : nil,
                 logService: usePreviewData ? PreviewKubernetesLogService() : nil,
                 portForwardService: usePreviewData ? nil : KubectlPortForwardService(),
@@ -196,6 +249,9 @@ final class AppModel: ObservableObject {
                     mutationService: KubernetesMutationService(execCredentialProvider: execCredentialProvider),
                     resourceDetailService: KubernetesResourceDetailService(execCredentialProvider: execCredentialProvider)
                 ),
+                mutationActionService: KubernetesSafeMutationService(
+                    mutationService: KubernetesMutationService(execCredentialProvider: execCredentialProvider)
+                ),
                 metricsService: KubernetesMetricsService(execCredentialProvider: execCredentialProvider),
                 logService: KubernetesLogService(execCredentialProvider: execCredentialProvider),
                 portForwardService: KubectlPortForwardService(),
@@ -215,6 +271,7 @@ final class AppModel: ObservableObject {
         resourceDetailService: KubernetesResourceDetailServicing? = nil,
         resourceEventService: KubernetesResourceEventServicing? = nil,
         mutationPreviewService: KubernetesMutationPreviewServicing? = nil,
+        mutationActionService: KubernetesSafeMutationServicing? = nil,
         metricsService: KubernetesMetricsServicing? = nil,
         logService: KubernetesLogServicing? = nil,
         portForwardService: KubernetesPortForwardServicing? = nil,
@@ -252,6 +309,7 @@ final class AppModel: ObservableObject {
         self.resourceDetailService = resourceDetailService
         self.resourceEventService = resourceEventService
         self.mutationPreviewService = mutationPreviewService
+        self.mutationActionService = mutationActionService
         self.metricsService = metricsService
         self.logService = logService
         self.portForwardService = portForwardService
@@ -271,6 +329,7 @@ final class AppModel: ObservableObject {
         self.portForwardSessions = []
         self.execLaunches = []
         self.execLaunchErrorMessage = nil
+        self.mutationActionHistory = []
         self.connectionProgressMessage = nil
         self.diagnosticsFileLoggingEnabled = userPreferences.diagnosticsFileLoggingEnabled
         self.diagnosticsIncludeClusterNames = userPreferences.diagnosticsIncludeClusterNames
@@ -420,6 +479,10 @@ final class AppModel: ObservableObject {
 
     var canApplyMutations: Bool {
         canPreviewMutations
+    }
+
+    var canRunMutations: Bool {
+        mutationActionService != nil && selectedConnectionState == .connected
     }
 
     private var appVersionDescription: String {
@@ -1840,6 +1903,217 @@ final class AppModel: ObservableObject {
         finishResourceDetail(query: query, detail: appliedResource, summary: summary)
         loadResourceList(for: resource, force: true)
         return appliedResource
+    }
+
+    func canScaleResource(_ resource: ResourceNavigationItem, row: KubernetesUnstructuredResource) -> Bool {
+        guard canRunMutations,
+              ["Deployment", "StatefulSet"].contains(resource.discoveredResource(in: selectedDiscovery)?.kind ?? row.displayKind),
+              resource.discoveredResource(in: selectedDiscovery)?.verbs.contains("patch") == true else {
+            return false
+        }
+        return true
+    }
+
+    func canRestartRollout(_ resource: ResourceNavigationItem, row: KubernetesUnstructuredResource) -> Bool {
+        guard canRunMutations,
+              ["Deployment", "StatefulSet", "DaemonSet"].contains(resource.discoveredResource(in: selectedDiscovery)?.kind ?? row.displayKind),
+              resource.discoveredResource(in: selectedDiscovery)?.verbs.contains("patch") == true else {
+            return false
+        }
+        return true
+    }
+
+    func canDeleteResource(_ resource: ResourceNavigationItem, row: KubernetesUnstructuredResource) -> Bool {
+        guard canRunMutations,
+              row.metadata.name?.isEmpty == false,
+              resource.discoveredResource(in: selectedDiscovery)?.verbs.contains("delete") == true else {
+            return false
+        }
+        return true
+    }
+
+    func scaleResource(
+        for resource: ResourceNavigationItem,
+        row: KubernetesUnstructuredResource,
+        replicas: Int
+    ) async throws -> KubernetesResourceDetail {
+        let target = try mutationTarget(for: resource, row: row, requiredVerb: "patch")
+        guard ["Deployment", "StatefulSet"].contains(target.discoveredResource.kind) else {
+            throw MutationActionRequestError.unsupportedAction("Only Deployments and StatefulSets can be scaled here.")
+        }
+
+        let recordID = startMutationAction(
+            kind: .scale,
+            contextID: target.contextID,
+            namespace: target.namespace,
+            resourceKind: target.discoveredResource.kind,
+            resourceName: target.name,
+            detail: "Replicas: \(replicas)"
+        )
+
+        do {
+            let detail = try await target.service.scale(
+                contextName: target.contextID,
+                kubeconfig: target.kubeconfig,
+                resource: target.discoveredResource,
+                namespace: target.namespace,
+                name: target.name,
+                replicas: replicas
+            )
+            await finishSuccessfulResourceMutation(
+                recordID: recordID,
+                resource: resource,
+                row: row,
+                target: target,
+                detail: detail
+            )
+            return detail
+        } catch {
+            finishMutationAction(recordID, status: .failed(error.localizedDescription))
+            throw error
+        }
+    }
+
+    func restartRollout(
+        for resource: ResourceNavigationItem,
+        row: KubernetesUnstructuredResource
+    ) async throws -> KubernetesResourceDetail {
+        let target = try mutationTarget(for: resource, row: row, requiredVerb: "patch")
+        guard ["Deployment", "StatefulSet", "DaemonSet"].contains(target.discoveredResource.kind) else {
+            throw MutationActionRequestError.unsupportedAction("Rollout restart is available for Deployments, StatefulSets, and DaemonSets.")
+        }
+
+        let recordID = startMutationAction(
+            kind: .restart,
+            contextID: target.contextID,
+            namespace: target.namespace,
+            resourceKind: target.discoveredResource.kind,
+            resourceName: target.name,
+            detail: "Patched pod template restart annotation"
+        )
+
+        do {
+            let detail = try await target.service.restartRollout(
+                contextName: target.contextID,
+                kubeconfig: target.kubeconfig,
+                resource: target.discoveredResource,
+                namespace: target.namespace,
+                name: target.name,
+                restartedAt: Date()
+            )
+            await finishSuccessfulResourceMutation(
+                recordID: recordID,
+                resource: resource,
+                row: row,
+                target: target,
+                detail: detail
+            )
+            return detail
+        } catch {
+            finishMutationAction(recordID, status: .failed(error.localizedDescription))
+            throw error
+        }
+    }
+
+    func deleteResource(
+        for resource: ResourceNavigationItem,
+        row: KubernetesUnstructuredResource
+    ) async throws {
+        let target = try mutationTarget(for: resource, row: row, requiredVerb: "delete")
+        let recordID = startMutationAction(
+            kind: target.discoveredResource.kind == "Namespace" ? .delete : .delete,
+            contextID: target.contextID,
+            namespace: target.namespace,
+            resourceKind: target.discoveredResource.kind,
+            resourceName: target.name,
+            detail: "Delete requested"
+        )
+
+        do {
+            _ = try await target.service.delete(
+                contextName: target.contextID,
+                kubeconfig: target.kubeconfig,
+                resource: target.discoveredResource,
+                namespace: target.namespace,
+                name: target.name
+            )
+            finishMutationAction(recordID, status: .succeeded)
+            loadResourceList(for: resource, force: true)
+        } catch {
+            finishMutationAction(recordID, status: .failed(error.localizedDescription))
+            throw error
+        }
+    }
+
+    func applyManifestYAML(_ yaml: String, actionKind: MutationActionKind = .apply) async throws -> KubernetesResourceDetail {
+        let target = try manifestMutationTarget(for: yaml)
+        let recordID = startMutationAction(
+            kind: actionKind,
+            contextID: target.contextID,
+            namespace: target.namespace,
+            resourceKind: target.resource.kind,
+            resourceName: target.name,
+            detail: "Server-side apply"
+        )
+
+        do {
+            let detail = try await target.service.applyManifest(
+                contextName: target.contextID,
+                kubeconfig: target.kubeconfig,
+                resource: target.resource,
+                namespace: target.namespace,
+                name: target.name,
+                yaml: yaml,
+                dryRun: false
+            )
+            finishMutationAction(recordID, status: .succeeded)
+            if let item = ResourceNavigationItem.navigationItem(forOwnerKind: target.resource.kind) {
+                loadResourceList(for: item, force: true)
+            }
+            return detail
+        } catch {
+            finishMutationAction(recordID, status: .failed(error.localizedDescription))
+            throw error
+        }
+    }
+
+    func previewApplyManifestYAML(_ yaml: String) async throws -> KubernetesManifestApplyPreview {
+        let target = try manifestMutationTarget(for: yaml)
+        let dryRunResource = try await target.service.applyManifest(
+            contextName: target.contextID,
+            kubeconfig: target.kubeconfig,
+            resource: target.resource,
+            namespace: target.namespace,
+            name: target.name,
+            yaml: yaml,
+            dryRun: true
+        )
+
+        let liveYAML: String
+        if target.resource.verbs.contains("get"), let resourceDetailService {
+            do {
+                liveYAML = try await resourceDetailService.resourceDetail(
+                    contextName: target.contextID,
+                    kubeconfig: target.kubeconfig,
+                    resource: target.resource,
+                    namespace: target.namespace,
+                    name: target.name
+                ).yaml
+            } catch {
+                liveYAML = ""
+            }
+        } else {
+            liveYAML = ""
+        }
+
+        return KubernetesManifestApplyPreview(
+            contextID: target.contextID,
+            resource: target.resource,
+            namespace: target.namespace,
+            name: target.name,
+            dryRunResource: dryRunResource,
+            diff: KubernetesYAMLDiff.between(old: liveYAML, new: dryRunResource.yaml)
+        )
     }
 
     private func loadResourceDetail(
@@ -3667,6 +3941,153 @@ final class AppModel: ObservableObject {
             namespace: namespace,
             name: name
         )
+    }
+
+    private func mutationTarget(
+        for resource: ResourceNavigationItem,
+        row: KubernetesUnstructuredResource,
+        requiredVerb: String
+    ) throws -> MutationActionTarget {
+        guard let mutationActionService else {
+            throw MutationActionRequestError.unavailable
+        }
+        guard selectedConnectionState == .connected else {
+            throw MutationActionRequestError.disconnected
+        }
+        guard let selectedClusterID else {
+            throw MutationActionRequestError.missingCluster
+        }
+        guard let discoveredResource = resource.discoveredResource(in: selectedDiscovery) else {
+            throw MutationActionRequestError.missingResource
+        }
+        guard discoveredResource.verbs.contains(requiredVerb) else {
+            throw MutationActionRequestError.unsupportedAction("The Kubernetes API did not advertise \(requiredVerb) support for \(discoveredResource.kind).")
+        }
+        guard let name = row.metadata.name, !name.isEmpty else {
+            throw MutationActionRequestError.missingName
+        }
+
+        let namespace = namespaceForDetailRequest(row: row, resource: discoveredResource)
+        if discoveredResource.namespaced, namespace == nil {
+            throw MutationActionRequestError.missingResource
+        }
+
+        return MutationActionTarget(
+            service: mutationActionService,
+            contextID: selectedClusterID,
+            kubeconfig: loadedKubeconfig,
+            discoveredResource: discoveredResource,
+            namespace: namespace,
+            name: name
+        )
+    }
+
+    private func manifestMutationTarget(for yaml: String) throws -> ManifestMutationTarget {
+        guard let mutationActionService else {
+            throw MutationActionRequestError.unavailable
+        }
+        guard selectedConnectionState == .connected else {
+            throw MutationActionRequestError.disconnected
+        }
+        guard let selectedClusterID else {
+            throw MutationActionRequestError.missingCluster
+        }
+        guard let discovery = selectedDiscovery else {
+            throw MutationActionRequestError.missingDiscovery
+        }
+
+        let manifest = try KubernetesMutationManifest(yaml: yaml)
+        guard let resource = discovery.discoveredResources.first(where: {
+            $0.groupVersion == manifest.apiVersion && $0.kind == manifest.kind
+        }) else {
+            throw MutationActionRequestError.invalidManifestTarget
+        }
+        try manifest.validateApplyTarget(resource: resource)
+        guard resource.verbs.contains("patch") else {
+            throw MutationActionRequestError.unsupportedAction("The Kubernetes API did not advertise patch support for \(resource.kind).")
+        }
+        guard let name = manifest.name, !name.isEmpty else {
+            throw MutationActionRequestError.missingName
+        }
+
+        return ManifestMutationTarget(
+            service: mutationActionService,
+            contextID: selectedClusterID,
+            kubeconfig: loadedKubeconfig,
+            resource: resource,
+            namespace: resource.namespaced ? manifest.namespace : nil,
+            name: name
+        )
+    }
+
+    private func finishSuccessfulResourceMutation(
+        recordID: MutationActionRecord.ID,
+        resource: ResourceNavigationItem,
+        row: KubernetesUnstructuredResource,
+        target: MutationActionTarget,
+        detail: KubernetesResourceDetail
+    ) async {
+        finishMutationAction(recordID, status: .succeeded)
+
+        if let query = resourceDetailQuery(for: resource, row: row) {
+            let summary: KubernetesResourceDetailSummary
+            if let resourceDetailService {
+                summary = await Self.expandedEnvironmentSummary(
+                    for: detail,
+                    query: query,
+                    kubeconfig: target.kubeconfig,
+                    resourceDetailService: resourceDetailService,
+                    configMapResource: ResourceNavigationItem.configMaps.discoveredResource(in: selectedDiscovery),
+                    secretResource: ResourceNavigationItem.secrets.discoveredResource(in: selectedDiscovery)
+                )
+            } else {
+                summary = detail.summary
+            }
+            finishResourceDetail(query: query, detail: detail, summary: summary)
+        }
+
+        loadResourceList(for: resource, force: true)
+    }
+
+    private func startMutationAction(
+        kind: MutationActionKind,
+        contextID: ClusterSummary.ID,
+        namespace: String?,
+        resourceKind: String,
+        resourceName: String,
+        detail: String
+    ) -> MutationActionRecord.ID {
+        let id = UUID()
+        mutationActionHistory.insert(
+            MutationActionRecord(
+                id: id,
+                kind: kind,
+                contextID: contextID,
+                namespace: namespace,
+                resourceKind: resourceKind,
+                resourceName: resourceName,
+                detail: detail,
+                startedAt: Date(),
+                finishedAt: nil,
+                status: .running
+            ),
+            at: 0
+        )
+        if mutationActionHistory.count > 50 {
+            mutationActionHistory.removeLast(mutationActionHistory.count - 50)
+        }
+        return id
+    }
+
+    private func finishMutationAction(
+        _ id: MutationActionRecord.ID,
+        status: MutationActionStatus
+    ) {
+        guard let index = mutationActionHistory.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        mutationActionHistory[index].status = status
+        mutationActionHistory[index].finishedAt = Date()
     }
 
     private func resourceEventsQuery(for detail: ResourceDetailSnapshot) -> ResourceEventsQuery? {

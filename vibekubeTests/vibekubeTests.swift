@@ -1211,6 +1211,84 @@ struct vibekubeTests {
         #expect(snapshot.yaml.contains(#"resourceVersion: "11""#))
     }
 
+    @Test func safeMutationServiceBuildsScaleRestartDeleteAndApplyRequests() async throws {
+        let mutationService = RecordingMutationService(
+            resourceDetail: try podResourceDetail(name: "echo-web", namespace: "vibekube-demo", resourceVersion: "12")
+        )
+        let service = KubernetesSafeMutationService(mutationService: mutationService)
+        let deployment = mutationDiscoveredResource(
+            groupVersion: "apps/v1",
+            name: "deployments",
+            kind: "Deployment",
+            namespaced: true,
+            verbs: ["patch", "delete"]
+        )
+
+        _ = try await service.scale(
+            contextName: "kind-vibekube-dev",
+            kubeconfig: kubeconfig(),
+            resource: deployment,
+            namespace: "vibekube-demo",
+            name: "echo-web",
+            replicas: 3
+        )
+        _ = try await service.restartRollout(
+            contextName: "kind-vibekube-dev",
+            kubeconfig: kubeconfig(),
+            resource: deployment,
+            namespace: "vibekube-demo",
+            name: "echo-web",
+            restartedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        _ = try await service.delete(
+            contextName: "kind-vibekube-dev",
+            kubeconfig: kubeconfig(),
+            resource: deployment,
+            namespace: "vibekube-demo",
+            name: "echo-web"
+        )
+        _ = try await service.applyManifest(
+            contextName: "kind-vibekube-dev",
+            kubeconfig: kubeconfig(),
+            resource: deployment,
+            namespace: "vibekube-demo",
+            name: "echo-web",
+            yaml: "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: echo-web\n  namespace: vibekube-demo\n",
+            dryRun: true
+        )
+
+        let requests = await mutationService.requests
+        #expect(requests.count == 4)
+
+        let scale: KubernetesMutationRequest = try #require(requests.first)
+        #expect(scale.verb == .patch)
+        #expect(scale.contentType == "application/merge-patch+json")
+        #expect(scale.namespace == "vibekube-demo")
+        #expect(scale.name == "echo-web")
+        let scaleBody = try #require(scale.body)
+        let scaleObject = try #require(JSONSerialization.jsonObject(with: scaleBody) as? [String: Any])
+        let scaleSpec = try #require(scaleObject["spec"] as? [String: Any])
+        #expect(scaleSpec["replicas"] as? Int == 3)
+
+        let restart: KubernetesMutationRequest = try #require(requests.dropFirst().first)
+        #expect(restart.verb == .patch)
+        #expect(restart.contentType == "application/merge-patch+json")
+        let restartText = String(data: try #require(restart.body), encoding: .utf8) ?? ""
+        #expect(restartText.contains("kubectl.kubernetes.io/restartedAt"))
+
+        let delete: KubernetesMutationRequest = try #require(requests.dropFirst(2).first)
+        #expect(delete.verb == .delete)
+        #expect(delete.body == nil)
+
+        let apply: KubernetesMutationRequest = try #require(requests.dropFirst(3).first)
+        #expect(apply.verb == .patch)
+        #expect(apply.contentType == "application/apply-patch+yaml")
+        #expect(apply.dryRun)
+        #expect(apply.queryItems.contains(URLQueryItem(name: "fieldManager", value: "Vibekube")))
+        #expect(apply.queryItems.contains(URLQueryItem(name: "force", value: "false")))
+        #expect(apply.queryItems.contains(URLQueryItem(name: "dryRun", value: "All")))
+    }
+
     @MainActor
     @Test func appModelLoadsResourceEventsForSelectedDetail() async throws {
         let model = AppModel(
@@ -2368,6 +2446,36 @@ private actor RecordingMutationPreviewService: KubernetesMutationPreviewServicin
 
     func firstApplyRequest() -> KubernetesMutationPreview? {
         applyRequests.first
+    }
+}
+
+private actor RecordingMutationService: KubernetesMutationServicing {
+    private(set) var requests: [KubernetesMutationRequest] = []
+    private let resourceDetail: KubernetesResourceDetail
+
+    init(resourceDetail: KubernetesResourceDetail) {
+        self.resourceDetail = resourceDetail
+    }
+
+    func mutate(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        request: KubernetesMutationRequest
+    ) async throws -> KubernetesMutationResult {
+        requests.append(request)
+        return KubernetesMutationResult(
+            statusCode: request.verb == .delete ? 200 : 201,
+            status: request.verb == .delete ? KubernetesStatus(
+                kind: "Status",
+                apiVersion: "v1",
+                status: "Success",
+                message: nil,
+                reason: nil,
+                details: nil,
+                code: 200
+            ) : nil,
+            resource: request.verb == .delete ? nil : resourceDetail
+        )
     }
 }
 
@@ -3935,6 +4043,27 @@ private func dashboardDiscoveredResource(for item: ResourceNavigationItem) -> Ku
     return KubernetesDiscoveredResource(
         groupVersion: groupVersion,
         resource: dashboardAPIResource(for: item)
+    )
+}
+
+private func mutationDiscoveredResource(
+    groupVersion: String,
+    name: String,
+    kind: String,
+    namespaced: Bool,
+    verbs: [String]
+) -> KubernetesDiscoveredResource {
+    KubernetesDiscoveredResource(
+        groupVersion: groupVersion,
+        resource: KubernetesAPIResource(
+            name: name,
+            singularName: "",
+            namespaced: namespaced,
+            kind: kind,
+            verbs: verbs,
+            shortNames: nil,
+            categories: nil
+        )
     )
 }
 

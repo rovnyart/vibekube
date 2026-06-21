@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ResourceListView: View {
     @EnvironmentObject private var appModel: AppModel
@@ -14,6 +15,7 @@ struct ResourceListView: View {
     @State private var rowResourceVersions: [KubernetesUnstructuredResource.ID: String] = [:]
     @State private var recentlyUpdatedRowIDs: Set<KubernetesUnstructuredResource.ID> = []
     @State private var rowUpdateClearTasks: [KubernetesUnstructuredResource.ID: Task<Void, Never>] = [:]
+    @State private var isApplyYAMLSheetPresented = false
 
     let item: ResourceNavigationItem
 
@@ -47,6 +49,18 @@ struct ResourceListView: View {
             }
         } message: {
             Text(appModel.execLaunchErrorMessage ?? "")
+        }
+        .sheet(isPresented: $isApplyYAMLSheetPresented) {
+            ResourceApplyYAMLSheet(
+                defaultNamespace: defaultApplyNamespace,
+                previewYAML: { yaml in
+                    try await appModel.previewApplyManifestYAML(yaml)
+                },
+                applyYAML: { yaml, actionKind in
+                    try await appModel.applyManifestYAML(yaml, actionKind: actionKind)
+                }
+            )
+            .environmentObject(appModel)
         }
         .accessibilityIdentifier("resource.list.\(item.id)")
     }
@@ -559,6 +573,17 @@ struct ResourceListView: View {
             }
 
             Button {
+                isApplyYAMLSheetPresented = true
+            } label: {
+                Label("Apply YAML", systemImage: "doc.badge.plus")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.bordered)
+            .disabled(!appModel.canRunMutations)
+            .help(appModel.canRunMutations ? "Create or apply a YAML manifest" : "Connect to a cluster before applying YAML")
+            .accessibilityIdentifier("resource.list.applyYAML")
+
+            Button {
                 appModel.loadResourceList(for: item, force: true)
             } label: {
                 Label("Refresh", systemImage: "arrow.clockwise")
@@ -571,6 +596,14 @@ struct ResourceListView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .background(.bar)
+    }
+
+    private var defaultApplyNamespace: String {
+        let selection = appModel.selectedNamespaceSelection
+        if selection != AppModel.allNamespacesSelection {
+            return selection
+        }
+        return appModel.selectedCluster?.namespace ?? "default"
     }
 
     private var loadedSnapshot: ResourceListSnapshot? {
@@ -1977,6 +2010,12 @@ private struct ResourceDetailView: View {
             ResourceDetailEnvironmentView(summary: snapshot.summary)
         case .yaml:
             yamlContent(snapshot)
+        case .actions:
+            ResourceDetailActionsView(
+                item: item,
+                row: row,
+                snapshot: snapshot
+            )
         case .metadata:
             ResourceDetailMetadataView(summary: snapshot.summary)
         case .conditions:
@@ -2305,6 +2344,1055 @@ private struct ResourceDetailPanelTabButton: View {
             Color.primary.opacity(0.035)
         } else {
             Color.clear
+        }
+    }
+}
+
+private struct ResourceDetailActionsView: View {
+    @EnvironmentObject private var appModel: AppModel
+    @State private var replicaText = ""
+    @State private var deleteConfirmationText = ""
+    @State private var isRunningScale = false
+    @State private var isRunningRestart = false
+    @State private var isRunningDelete = false
+    @State private var errorMessage: String?
+
+    let item: ResourceNavigationItem
+    let row: KubernetesUnstructuredResource
+    let snapshot: ResourceDetailSnapshot
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                availabilityBanner
+
+                if supportsScale {
+                    ActionSectionSurface(title: "Scale", systemImage: "arrow.up.and.down") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 10) {
+                                Stepper(value: replicaBinding, in: 0...999) {
+                                    Text("Replicas")
+                                        .font(.callout.weight(.medium))
+                                }
+                                .frame(width: 210)
+
+                                TextField("0", text: $replicaText)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.body.monospacedDigit())
+                                    .frame(width: 76)
+
+                                Button {
+                                    runScale()
+                                } label: {
+                                    Label(isRunningScale ? "Scaling" : "Scale", systemImage: isRunningScale ? "hourglass" : "checkmark.circle")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(!canRunScale)
+                            }
+
+                            Text("Current target: \(currentReplicas.map(String.init) ?? "-")")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                if supportsRestart {
+                    ActionSectionSurface(title: "Rollout Restart", systemImage: "arrow.triangle.2.circlepath") {
+                        HStack(alignment: .center, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Patch the pod template restart annotation.")
+                                    .font(.callout)
+                                Text("Kubernetes will create a new rollout for controllers that own pods.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Button {
+                                runRestart()
+                            } label: {
+                                Label(isRunningRestart ? "Restarting" : "Restart", systemImage: isRunningRestart ? "hourglass" : "arrow.triangle.2.circlepath")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!canRunRestart)
+                        }
+                    }
+                }
+
+                ActionSectionSurface(title: "Delete", systemImage: "trash") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Type `\(deleteConfirmationPhrase)` to delete \(resourceTitle).")
+                            .font(.callout)
+
+                        HStack(spacing: 10) {
+                            TextField(deleteConfirmationPhrase, text: $deleteConfirmationText)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 320)
+
+                            Button(role: .destructive) {
+                                runDelete()
+                            } label: {
+                                Label(isRunningDelete ? "Deleting" : "Delete", systemImage: isRunningDelete ? "hourglass" : "trash")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                            .disabled(!canRunDelete)
+                        }
+
+                        if !appModel.canDeleteResource(item, row: row) {
+                            Text("Delete is disabled because this resource is unavailable, disconnected, or the API did not advertise delete support.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                MutationHistorySection(
+                    records: appModel.mutationActionHistory.filter { record in
+                        record.contextID == snapshot.query.contextID &&
+                            record.resourceKind == snapshot.query.resource.kind &&
+                            record.resourceName == row.displayName
+                    },
+                    emptyText: "No actions recorded for this resource."
+                )
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+        .onAppear {
+            if replicaText.isEmpty {
+                replicaText = currentReplicas.map(String.init) ?? "1"
+            }
+        }
+        .alert(
+            "Action Failed",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .accessibilityIdentifier("resource.detail.actions")
+    }
+
+    @ViewBuilder
+    private var availabilityBanner: some View {
+        if !appModel.canRunMutations {
+            Label("Connect to a cluster before changing resources.", systemImage: "lock")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+
+    private var resourceTitle: String {
+        "\(snapshot.query.resource.kind)/\(row.displayName)"
+    }
+
+    private var supportsScale: Bool {
+        ["Deployment", "StatefulSet"].contains(snapshot.query.resource.kind)
+    }
+
+    private var supportsRestart: Bool {
+        ["Deployment", "StatefulSet", "DaemonSet"].contains(snapshot.query.resource.kind)
+    }
+
+    private var currentReplicas: Int? {
+        snapshot.summary.status.flatMap { status in
+            let parts = status.split(separator: "/")
+            guard parts.count == 2 else { return nil }
+            return Int(parts[1].split(separator: " ").first ?? "")
+        } ?? row.spec?["replicas"]?.intValue
+    }
+
+    private var parsedReplicas: Int? {
+        Int(replicaText.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private var canRunScale: Bool {
+        appModel.canScaleResource(item, row: row) &&
+            parsedReplicas != nil &&
+            parsedReplicas != currentReplicas &&
+            !isRunningScale
+    }
+
+    private var canRunRestart: Bool {
+        appModel.canRestartRollout(item, row: row) && !isRunningRestart
+    }
+
+    private var canRunDelete: Bool {
+        appModel.canDeleteResource(item, row: row) &&
+            deleteConfirmationText == deleteConfirmationPhrase &&
+            !isRunningDelete
+    }
+
+    private var deleteConfirmationPhrase: String {
+        snapshot.query.resource.kind == "Namespace" ? "delete \(row.displayName)" : row.displayName
+    }
+
+    private var replicaBinding: Binding<Int> {
+        Binding(
+            get: { parsedReplicas ?? currentReplicas ?? 1 },
+            set: { replicaText = String($0) }
+        )
+    }
+
+    private func runScale() {
+        guard let replicas = parsedReplicas else {
+            return
+        }
+        isRunningScale = true
+        Task {
+            do {
+                _ = try await appModel.scaleResource(for: item, row: row, replicas: replicas)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isRunningScale = false
+        }
+    }
+
+    private func runRestart() {
+        isRunningRestart = true
+        Task {
+            do {
+                _ = try await appModel.restartRollout(for: item, row: row)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isRunningRestart = false
+        }
+    }
+
+    private func runDelete() {
+        isRunningDelete = true
+        Task {
+            do {
+                try await appModel.deleteResource(for: item, row: row)
+                deleteConfirmationText = ""
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isRunningDelete = false
+        }
+    }
+}
+
+private struct ResourceApplyYAMLSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var mode: ApplyYAMLMode = .editor
+    @State private var yaml: String
+    @State private var searchText = ""
+    @State private var selectedSearchOrdinal: Int?
+    @State private var searchNavigationToken = 0
+    @State private var isSearchVisible = false
+    @State private var isPreviewing = false
+    @State private var isApplying = false
+    @State private var errorMessage: String?
+    @State private var preview: KubernetesManifestApplyPreview?
+    @State private var previewedYAML: String?
+    @State private var namespaceName: String
+    @State private var configMapName = "example-config"
+    @State private var configMapNamespace: String
+    @State private var configMapEntries: [KeyValueDraft] = [KeyValueDraft(key: "APP_MODE", value: "demo")]
+    @State private var secretName = "example-secret"
+    @State private var secretNamespace: String
+    @State private var secretEntries: [KeyValueDraft] = [KeyValueDraft(key: "TOKEN", value: "change-me")]
+    @FocusState private var isSearchFieldFocused: Bool
+
+    let defaultNamespace: String
+    let previewYAML: (String) async throws -> KubernetesManifestApplyPreview
+    let applyYAML: (String, MutationActionKind) async throws -> KubernetesResourceDetail
+
+    init(
+        defaultNamespace: String,
+        previewYAML: @escaping (String) async throws -> KubernetesManifestApplyPreview,
+        applyYAML: @escaping (String, MutationActionKind) async throws -> KubernetesResourceDetail
+    ) {
+        self.defaultNamespace = defaultNamespace
+        self.previewYAML = previewYAML
+        self.applyYAML = applyYAML
+        _yaml = State(initialValue: Self.namespaceYAML(name: defaultNamespace))
+        _namespaceName = State(initialValue: defaultNamespace)
+        _configMapNamespace = State(initialValue: defaultNamespace)
+        _secretNamespace = State(initialValue: defaultNamespace)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+
+            Divider()
+
+            HStack(spacing: 0) {
+                sidebar
+
+                Divider()
+
+                editorPane
+            }
+            .frame(minWidth: 920, minHeight: 620)
+        }
+        .alert(
+            "Apply Failed",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .onChange(of: yaml) {
+            if previewedYAML != yaml {
+                resetPreview()
+            }
+        }
+        .accessibilityIdentifier("resource.applyYAML.sheet")
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "doc.badge.plus")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Apply YAML")
+                    .font(.headline)
+                Text("Server-side apply with fieldManager=Vibekube")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                openYAMLFile()
+            } label: {
+                Label("Open File", systemImage: "folder")
+            }
+            .buttonStyle(.bordered)
+
+            Button("Cancel") {
+                dismiss()
+            }
+            .keyboardShortcut(.cancelAction)
+
+            Button {
+                if canApplyPreview {
+                    runApply()
+                } else {
+                    runPreview()
+                }
+            } label: {
+                Label(primaryActionTitle, systemImage: primaryActionImage)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isPreviewing || isApplying || yaml.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .keyboardShortcut(.defaultAction)
+        }
+        .padding(16)
+        .background(.bar)
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Picker("Mode", selection: $mode) {
+                ForEach(ApplyYAMLMode.allCases) { mode in
+                    Label(mode.title, systemImage: mode.systemImage)
+                        .tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .onChange(of: mode) {
+                syncTemplateYAML()
+            }
+
+            switch mode {
+            case .editor:
+                Text("Paste or open any single Kubernetes manifest. Vibekube will match apiVersion/kind through discovery.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            case .namespace:
+                templateField(title: "Name", text: $namespaceName)
+                    .onChange(of: namespaceName) { syncTemplateYAML() }
+            case .configMap:
+                templateField(title: "Name", text: $configMapName)
+                    .onChange(of: configMapName) { syncTemplateYAML() }
+                templateField(title: "Namespace", text: $configMapNamespace)
+                    .onChange(of: configMapNamespace) { syncTemplateYAML() }
+                keyValueEditor(entries: $configMapEntries, secure: false)
+            case .secret:
+                templateField(title: "Name", text: $secretName)
+                    .onChange(of: secretName) { syncTemplateYAML() }
+                templateField(title: "Namespace", text: $secretNamespace)
+                    .onChange(of: secretNamespace) { syncTemplateYAML() }
+                keyValueEditor(entries: $secretEntries, secure: true)
+            }
+
+            Spacer()
+        }
+        .padding(16)
+        .frame(width: 300, alignment: .topLeading)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var editorPane: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text(mode.editorTitle)
+                    .font(.callout.weight(.semibold))
+
+                Spacer()
+
+                if isSearchVisible {
+                    TextField("Find", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 220)
+                        .focused($isSearchFieldFocused)
+                        .onChange(of: searchText) {
+                            selectedSearchOrdinal = matches.isEmpty ? nil : 1
+                            searchNavigationToken += 1
+                        }
+                        .onSubmit {
+                            advanceSearch()
+                        }
+
+                    Text(searchCountText)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 48, alignment: .trailing)
+                }
+
+                Button {
+                    isSearchVisible.toggle()
+                    isSearchFieldFocused = isSearchVisible
+                    if !isSearchVisible {
+                        searchText = ""
+                        selectedSearchOrdinal = nil
+                    }
+                } label: {
+                    Label("Find", systemImage: "magnifyingglass")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .help("Find in YAML")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            Divider()
+
+            HSplitView {
+                ManifestYAMLEditorView(
+                    text: $yaml,
+                    searchQuery: searchText,
+                    selectedSearchOrdinal: selectedSearchOrdinal,
+                    searchNavigationToken: searchNavigationToken,
+                    onFindShortcut: {
+                        isSearchVisible = true
+                        isSearchFieldFocused = true
+                    }
+                )
+                .frame(minWidth: 360)
+                .accessibilityIdentifier("resource.applyYAML.editor")
+
+                ApplyYAMLPreviewPane(
+                    preview: preview,
+                    isPreviewCurrent: canApplyPreview,
+                    isPreviewing: isPreviewing
+                )
+                .frame(minWidth: 320, idealWidth: 380)
+            }
+        }
+    }
+
+    private var canApplyPreview: Bool {
+        preview != nil && previewedYAML == yaml
+    }
+
+    private var primaryActionTitle: String {
+        if isPreviewing {
+            "Previewing"
+        } else if isApplying {
+            "Applying"
+        } else if canApplyPreview {
+            "Apply"
+        } else {
+            "Preview"
+        }
+    }
+
+    private var primaryActionImage: String {
+        if isPreviewing || isApplying {
+            "hourglass"
+        } else if canApplyPreview {
+            "checkmark.circle"
+        } else {
+            "eye"
+        }
+    }
+
+    private var matches: [ManifestSearchMatch] {
+        ManifestSearchIndex.matches(in: yaml, query: searchText)
+    }
+
+    private var searchCountText: String {
+        guard !matches.isEmpty else {
+            return "0/0"
+        }
+        return "\(selectedSearchOrdinal ?? 1)/\(matches.count)"
+    }
+
+    private func templateField(title: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            TextField(title, text: text)
+                .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    private func keyValueEditor(entries: Binding<[KeyValueDraft]>, secure: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Data")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    entries.wrappedValue.append(KeyValueDraft(key: "", value: ""))
+                    syncTemplateYAML()
+                } label: {
+                    Label("Add", systemImage: "plus")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+
+            ForEach(entries) { entry in
+                HStack(spacing: 6) {
+                    TextField("KEY", text: binding(for: entry.id, keyPath: \.key, in: entries))
+                        .textFieldStyle(.roundedBorder)
+                    if secure {
+                        SecureField("Value", text: binding(for: entry.id, keyPath: \.value, in: entries))
+                            .textFieldStyle(.roundedBorder)
+                    } else {
+                        TextField("Value", text: binding(for: entry.id, keyPath: \.value, in: entries))
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    Button(role: .destructive) {
+                        entries.wrappedValue.removeAll { $0.id == entry.id }
+                        syncTemplateYAML()
+                    } label: {
+                        Label("Remove", systemImage: "minus.circle")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+        }
+        .onChange(of: entries.wrappedValue) {
+            syncTemplateYAML()
+        }
+    }
+
+    private func binding(
+        for id: KeyValueDraft.ID,
+        keyPath: WritableKeyPath<KeyValueDraft, String>,
+        in entries: Binding<[KeyValueDraft]>
+    ) -> Binding<String> {
+        Binding(
+            get: {
+                entries.wrappedValue.first { $0.id == id }?[keyPath: keyPath] ?? ""
+            },
+            set: { value in
+                guard let index = entries.wrappedValue.firstIndex(where: { $0.id == id }) else {
+                    return
+                }
+                entries.wrappedValue[index][keyPath: keyPath] = value
+            }
+        )
+    }
+
+    private func advanceSearch() {
+        guard !matches.isEmpty else {
+            selectedSearchOrdinal = nil
+            return
+        }
+        let next = ((selectedSearchOrdinal ?? 0) % matches.count) + 1
+        selectedSearchOrdinal = next
+        searchNavigationToken += 1
+    }
+
+    private func openYAMLFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.yaml, .text]
+        if panel.runModal() == .OK,
+           let url = panel.url,
+           let text = try? String(contentsOf: url, encoding: .utf8) {
+            yaml = text
+            mode = .editor
+            resetPreview()
+        }
+    }
+
+    private func runPreview() {
+        isPreviewing = true
+        Task {
+            do {
+                preview = try await previewYAML(yaml)
+                previewedYAML = yaml
+            } catch {
+                errorMessage = error.localizedDescription
+                resetPreview()
+            }
+            isPreviewing = false
+        }
+    }
+
+    private func runApply() {
+        guard canApplyPreview else {
+            runPreview()
+            return
+        }
+        isApplying = true
+        Task {
+            do {
+                _ = try await applyYAML(yaml, mode.actionKind)
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isApplying = false
+        }
+    }
+
+    private func syncTemplateYAML() {
+        switch mode {
+        case .editor:
+            break
+        case .namespace:
+            yaml = Self.namespaceYAML(name: namespaceName)
+        case .configMap:
+            yaml = Self.configMapYAML(name: configMapName, namespace: configMapNamespace, entries: configMapEntries)
+        case .secret:
+            yaml = Self.secretYAML(name: secretName, namespace: secretNamespace, entries: secretEntries)
+        }
+        resetPreview()
+    }
+
+    private func resetPreview() {
+        preview = nil
+        previewedYAML = nil
+    }
+
+    private static func namespaceYAML(name: String) -> String {
+        """
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: \(yamlScalar(name))
+        """
+    }
+
+    private static func configMapYAML(name: String, namespace: String, entries: [KeyValueDraft]) -> String {
+        var lines = [
+            "apiVersion: v1",
+            "kind: ConfigMap",
+            "metadata:",
+            "  name: \(yamlScalar(name))",
+            "  namespace: \(yamlScalar(namespace))",
+            "data:"
+        ]
+        for entry in entries where !entry.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines.append("  \(yamlKey(entry.key)): \(yamlScalar(entry.value))")
+        }
+        if lines.last == "data:" {
+            lines.append("  EXAMPLE: demo")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func secretYAML(name: String, namespace: String, entries: [KeyValueDraft]) -> String {
+        var lines = [
+            "apiVersion: v1",
+            "kind: Secret",
+            "metadata:",
+            "  name: \(yamlScalar(name))",
+            "  namespace: \(yamlScalar(namespace))",
+            "type: Opaque",
+            "stringData:"
+        ]
+        for entry in entries where !entry.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines.append("  \(yamlKey(entry.key)): \(yamlScalar(entry.value))")
+        }
+        if lines.last == "stringData:" {
+            lines.append("  TOKEN: change-me")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func yamlKey(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.range(of: #"^[A-Za-z_][A-Za-z0-9_.-]*$"#, options: .regularExpression) != nil {
+            return trimmed
+        }
+        return yamlScalar(trimmed)
+    }
+
+    private static func yamlScalar(_ value: String) -> String {
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
+    }
+}
+
+private struct ApplyYAMLPreviewPane: View {
+    let preview: KubernetesManifestApplyPreview?
+    let isPreviewCurrent: Bool
+    let isPreviewing: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+
+            Divider()
+
+            content
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+        .accessibilityIdentifier("resource.applyYAML.preview")
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Image(systemName: headerImage)
+                .foregroundStyle(headerTint)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(headerTitle)
+                    .font(.callout.weight(.semibold))
+                Text(headerSubtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isPreviewing {
+            VStack(spacing: 10) {
+                ProgressView()
+                Text("Running server-side dry run")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let preview {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(preview.targetTitle)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                    Text(isPreviewCurrent ? "Ready to apply" : "YAML changed; preview again before applying")
+                        .font(.caption)
+                        .foregroundStyle(isPreviewCurrent ? .green : .orange)
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+
+                if preview.diff.hasChanges {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(preview.diff.lines.enumerated()), id: \.offset) { _, line in
+                                ApplyYAMLDiffLineView(line: line)
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+                } else {
+                    EmptyStateView(
+                        title: "No Changes",
+                        subtitle: "The server dry-run matched the live resource.",
+                        systemImage: "checkmark.circle"
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+        } else {
+            EmptyStateView(
+                title: "Preview Required",
+                subtitle: "Run a server-side dry run before applying YAML.",
+                systemImage: "eye"
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var headerImage: String {
+        if isPreviewing {
+            "hourglass"
+        } else if preview == nil {
+            "eye"
+        } else if isPreviewCurrent {
+            "checkmark.circle"
+        } else {
+            "exclamationmark.triangle"
+        }
+    }
+
+    private var headerTitle: String {
+        if isPreviewing {
+            "Previewing"
+        } else if preview == nil {
+            "No Preview"
+        } else if isPreviewCurrent {
+            "Dry Run Passed"
+        } else {
+            "Preview Stale"
+        }
+    }
+
+    private var headerSubtitle: String {
+        if let preview {
+            return preview.targetTitle
+        }
+        return "Preview before apply"
+    }
+
+    private var headerTint: Color {
+        if isPreviewing {
+            .orange
+        } else if preview == nil {
+            .secondary
+        } else if isPreviewCurrent {
+            .green
+        } else {
+            .orange
+        }
+    }
+}
+
+private struct ApplyYAMLDiffLineView: View {
+    let line: KubernetesYAMLDiffLine
+
+    var body: some View {
+        Text(line.unifiedText.isEmpty ? " " : line.unifiedText)
+            .font(.caption.monospaced())
+            .foregroundStyle(foreground)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 1)
+            .background(background)
+            .textSelection(.enabled)
+    }
+
+    private var foreground: Color {
+        switch line.kind {
+        case .context:
+            .secondary
+        case .addition:
+            .green
+        case .removal:
+            .red
+        }
+    }
+
+    private var background: Color {
+        switch line.kind {
+        case .context:
+            .clear
+        case .addition:
+            Color.green.opacity(0.10)
+        case .removal:
+            Color.red.opacity(0.10)
+        }
+    }
+}
+
+private enum ApplyYAMLMode: String, CaseIterable, Identifiable {
+    case editor
+    case namespace
+    case configMap
+    case secret
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .editor:
+            "YAML"
+        case .namespace:
+            "Namespace"
+        case .configMap:
+            "ConfigMap"
+        case .secret:
+            "Secret"
+        }
+    }
+
+    var editorTitle: String {
+        switch self {
+        case .editor:
+            "Manifest"
+        case .namespace:
+            "Generated Namespace YAML"
+        case .configMap:
+            "Generated ConfigMap YAML"
+        case .secret:
+            "Generated Secret YAML"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .editor:
+            "doc.text"
+        case .namespace:
+            "folder"
+        case .configMap:
+            "curlybraces.square"
+        case .secret:
+            "key"
+        }
+    }
+
+    var actionKind: MutationActionKind {
+        switch self {
+        case .editor:
+            .apply
+        case .namespace:
+            .createNamespace
+        case .configMap:
+            .createConfigMap
+        case .secret:
+            .createSecret
+        }
+    }
+}
+
+private struct KeyValueDraft: Identifiable, Equatable {
+    var id = UUID()
+    var key: String
+    var value: String
+}
+
+private struct ActionSectionSurface<Content: View>: View {
+    let title: String
+    let systemImage: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+
+            content
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.72), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.secondary.opacity(0.16))
+        }
+    }
+}
+
+private struct MutationHistorySection: View {
+    let records: [MutationActionRecord]
+    let emptyText: String
+
+    var body: some View {
+        ActionSectionSurface(title: "Local History", systemImage: "clock.arrow.circlepath") {
+            if records.isEmpty {
+                Text(emptyText)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(records.prefix(8)) { record in
+                        MutationHistoryRow(record: record)
+
+                        if record.id != records.prefix(8).last?.id {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct MutationHistoryRow: View {
+    let record: MutationActionRecord
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: record.kind.systemImage)
+                .foregroundStyle(statusTint)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(record.kind.title)
+                    .font(.callout.weight(.semibold))
+                Text("\(record.targetTitle) · \(record.detail)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Text(record.status.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(statusTint)
+
+            Text(record.finishedAt ?? record.startedAt, style: .time)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 8)
+        .help(record.status.message ?? record.detail)
+    }
+
+    private var statusTint: Color {
+        switch record.status {
+        case .running:
+            .orange
+        case .succeeded:
+            .green
+        case .failed:
+            .red
         }
     }
 }

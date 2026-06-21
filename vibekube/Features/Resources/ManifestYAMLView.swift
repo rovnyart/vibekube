@@ -1030,7 +1030,7 @@ private struct ManifestYAMLTextView: NSViewRepresentable {
     }
 }
 
-private struct ManifestYAMLEditorView: NSViewRepresentable {
+struct ManifestYAMLEditorView: NSViewRepresentable {
     @Binding var text: String
     var searchQuery: String = ""
     var selectedSearchOrdinal: Int?
