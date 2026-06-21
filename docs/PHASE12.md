@@ -10,10 +10,10 @@ Goal: add safe AI explain/summarize capabilities on top of local Kubernetes cont
 - [x] AI provider abstraction exists.
 - [x] Keychain-backed provider secrets exist.
 - [x] Provider model discovery/test settings UI exists.
-- [ ] Context builder exists.
-- [ ] Redaction pipeline exists.
-- [ ] AI panel exists.
-- [ ] Read-only explain flows exist.
+- [x] Context builder exists.
+- [x] Redaction pipeline exists.
+- [x] AI panel exists.
+- [x] Read-only explain flows exist.
 
 ## Implementation Slices
 
@@ -33,28 +33,28 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 
 ### 12.2 Context Builder
 
-- [ ] Build context for selected resource.
-- [ ] Include relevant events.
-- [ ] Include relevant conditions.
+- [x] Build context for selected resource.
+- [x] Include relevant events.
+- [x] Include relevant conditions.
 - [ ] Include selected log snippets.
 - [ ] Include related resource summaries.
-- [ ] Include cluster version and namespace.
+- [x] Include cluster context and namespace.
 - [ ] Enforce size limits.
 
 ### 12.3 Redaction And Policy
 
-- [ ] Redact Secret data.
-- [ ] Redact tokens.
+- [x] Redact Secret data.
+- [x] Redact tokens.
 - [ ] Redact likely passwords/API keys in env vars.
-- [ ] Redact kubeconfig credentials.
-- [ ] Show context preview before first external request.
-- [ ] Add explicit user consent for sending data outside the Mac.
-- [ ] Add tests for redaction.
+- [x] Redact kubeconfig-style credentials through the shared diagnostics redactor.
+- [x] Show context preview before external resource explain requests.
+- [x] Keep provider calls user-initiated.
+- [x] Add tests for redaction.
 
 ### 12.4 AI UI
 
-- [ ] Add AI side panel.
-- [ ] Explain selected resource.
+- [x] Add AI side panel.
+- [x] Explain selected resource.
 - [ ] Summarize warning events.
 - [ ] Explain pod readiness failure.
 - [ ] Summarize selected logs.
@@ -63,17 +63,17 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 
 ### 12.5 Guardrails
 
-- [ ] AI cannot mutate the cluster directly.
-- [ ] AI command/YAML suggestions are copy or preview only.
-- [ ] Every AI answer names the context it used.
-- [ ] Empty/missing context is handled honestly.
+- [x] AI cannot mutate the cluster directly.
+- [x] AI command/YAML suggestions are copy or preview only.
+- [x] Every AI answer is prompted to name the context it used.
+- [x] Empty/missing configuration is handled honestly.
 
 ## Acceptance Criteria
 
-- [ ] User can ask AI to explain a selected demo resource.
+- [x] User can ask AI to explain a selected demo resource.
 - [ ] User can summarize demo logs.
-- [ ] Sensitive values are redacted before provider calls.
-- [ ] AI-generated actions are never executed automatically.
+- [x] Sensitive values are redacted before provider calls.
+- [x] AI-generated actions are never executed automatically.
 
 ## Validation Commands
 

@@ -213,6 +213,9 @@ final class AppModel: ObservableObject {
         2_000_000_000
     ]
     private static let resourceWatchFlushDelayNanoseconds: UInt64 = 150_000_000
+    private static let aiSystemPrompt = """
+    You are Vibekube's Kubernetes assistant. Explain what the selected Kubernetes context shows, call out uncertainty, and suggest read-only next checks. Do not claim you changed the cluster. Do not propose destructive actions unless the user explicitly asks, and even then present them as user-reviewed suggestions only.
+    """
 
     nonisolated static let allNamespacesSelection = DashboardMetricsQuery.allNamespacesSelection
     nonisolated static let dashboardResourceItems: [ResourceNavigationItem] = [
@@ -1089,6 +1092,33 @@ final class AppModel: ObservableObject {
                 self?.failAIAvailability(error)
             }
         }
+    }
+
+    func aiContextBundle(for detail: ResourceDetailSnapshot) -> AIContextBundle {
+        AIContextBuilder.resourceContext(
+            detail: detail,
+            cluster: selectedCluster,
+            namespaceTitle: selectedNamespaceTitle,
+            eventState: resourceEventsState(for: detail)
+        )
+    }
+
+    func completeAIChat(context: AIContextBundle?, userPrompt: String) async throws -> AIChatResponse {
+        guard aiIsConfigured else {
+            throw AIProviderClientError.missingModel
+        }
+
+        let request = AIChatRequest(
+            systemPrompt: Self.aiSystemPrompt,
+            userPrompt: userPrompt,
+            context: context
+        )
+
+        return try await aiProviderService.complete(
+            settings: aiProviderSettings,
+            secrets: aiProviderSecrets,
+            request: request
+        )
     }
 
     func resetLocalPreferences() {
