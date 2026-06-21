@@ -117,5 +117,6 @@ protocol UserPreferencesProviding {
     var tableDensity: TableDensity { get set }
     var appAppearance: AppAppearance { get set }
     var externalTerminalApp: ExternalTerminalApp { get set }
+    var aiProviderSettings: AIProviderSettings { get set }
     mutating func resetLocalPreferences()
 }

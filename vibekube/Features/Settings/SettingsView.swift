@@ -5,6 +5,9 @@ struct SettingsView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var exportStatus: String?
     @State private var kubeconfigPathDraft = ""
+    @State private var aiAPIKeyDraft = ""
+    @State private var aiHeadersDraft: [AISecretHeader] = []
+    @State private var aiSecretStatus: String?
     @State private var showsResetLocalPreferencesConfirmation = false
 
     private let logLineLimitOptions = [1_000, 5_000, 10_000, 20_000, 50_000]
@@ -74,6 +77,8 @@ struct SettingsView: View {
                         Toggle("Use live resource watches", isOn: resourceWatchesEnabledBinding)
                     }
                 }
+
+                aiSettingsSection
 
                 SectionSurface(title: "Appearance", systemImage: "paintbrush") {
                     Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 12) {
@@ -263,14 +268,19 @@ struct SettingsView: View {
         .accessibilityIdentifier("settings.view")
         .onAppear {
             kubeconfigPathDraft = appModel.kubeconfigPathOverride ?? ""
+            syncAISecretDrafts()
         }
         .onChange(of: appModel.kubeconfigPathOverride) { _, newValue in
             kubeconfigPathDraft = newValue ?? ""
+        }
+        .onChange(of: appModel.aiProviderSecrets) {
+            syncAISecretDrafts()
         }
         .alert("Reset Local Preferences?", isPresented: $showsResetLocalPreferencesConfirmation) {
             Button("Reset", role: .destructive) {
                 appModel.resetLocalPreferences()
                 kubeconfigPathDraft = appModel.kubeconfigPathOverride ?? ""
+                syncAISecretDrafts()
                 exportStatus = "Local preferences reset"
             }
 
@@ -290,6 +300,190 @@ struct SettingsView: View {
         }
     }
 
+    private var aiSettingsSection: some View {
+        SectionSurface(title: "AI", systemImage: "sparkles") {
+            VStack(alignment: .leading, spacing: 14) {
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 12) {
+                    GridRow {
+                        Text("Provider shape")
+                            .foregroundStyle(.secondary)
+
+                        Picker("Provider shape", selection: aiProviderShapeBinding) {
+                            ForEach(AIProviderShape.allCases) { shape in
+                                Text(shape.title).tag(shape)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .frame(width: 360, alignment: .leading)
+                    }
+
+                    GridRow {
+                        Text("Preset")
+                            .foregroundStyle(.secondary)
+
+                        Picker("Preset", selection: aiProviderPresetBinding) {
+                            ForEach(AIProviderPreset.allCases) { preset in
+                                Text(preset.title).tag(preset)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 220, alignment: .leading)
+                    }
+
+                    GridRow {
+                        Text("Base URL")
+                            .foregroundStyle(.secondary)
+
+                        TextField("https://provider.example/v1", text: aiBaseURLBinding)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.callout.monospaced())
+                    }
+
+                    GridRow {
+                        Text("API key")
+                            .foregroundStyle(.secondary)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            SecureField("Saved to Keychain", text: $aiAPIKeyDraft)
+                                .textFieldStyle(.roundedBorder)
+
+                            HStack(spacing: 8) {
+                                Button {
+                                    saveAISecrets()
+                                } label: {
+                                    Label("Save Secrets", systemImage: "key")
+                                }
+                                .disabled(!hasAISecretDraft)
+
+                                Button(role: .destructive) {
+                                    clearAISecrets()
+                                } label: {
+                                    Label("Clear", systemImage: "trash")
+                                }
+                                .disabled(!appModel.aiProviderSecrets.hasAPIKey && aiHeadersDraft.isEmpty && aiAPIKeyDraft.isEmpty)
+
+                                if appModel.aiProviderSecrets.hasAPIKey {
+                                    Label("Stored in Keychain", systemImage: "checkmark.circle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.green)
+                                }
+
+                                if let aiSecretStatus {
+                                    Text(aiSecretStatus)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Extra headers")
+                            .font(.headline)
+
+                        Spacer()
+
+                        Button {
+                            aiHeadersDraft.append(AISecretHeader(name: "", value: ""))
+                        } label: {
+                            Label("Add Header", systemImage: "plus")
+                        }
+                        .controlSize(.small)
+                    }
+
+                    if aiHeadersDraft.isEmpty {
+                        Text("Optional provider headers are saved in Keychain with the API key.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        VStack(spacing: 8) {
+                            ForEach($aiHeadersDraft) { $header in
+                                HStack(spacing: 8) {
+                                    TextField("Header name", text: $header.name)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.callout.monospaced())
+
+                                    SecureField("Header value", text: $header.value)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.callout.monospaced())
+
+                                    Button(role: .destructive) {
+                                        aiHeadersDraft.removeAll { $0.id == header.id }
+                                    } label: {
+                                        Label("Remove", systemImage: "minus.circle")
+                                            .labelStyle(.iconOnly)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help("Remove header")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Button {
+                            appModel.fetchAIModels()
+                        } label: {
+                            Label("Fetch Models", systemImage: "arrow.clockwise")
+                        }
+                        .disabled(!canFetchAIModels)
+
+                        Button {
+                            appModel.testAIProviderAvailability()
+                        } label: {
+                            Label("Test", systemImage: "bolt.badge.checkmark")
+                        }
+                        .disabled(!appModel.aiProviderSecrets.hasAPIKey || !appModel.aiProviderSettings.hasBaseURL)
+
+                        aiAvailabilityLabel
+                    }
+                    .controlSize(.small)
+
+                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 10) {
+                        GridRow {
+                            Text("Model")
+                                .foregroundStyle(.secondary)
+
+                            Picker("Model", selection: aiModelBinding) {
+                                Text(modelPlaceholderTitle).tag("")
+                                ForEach(aiModels) { model in
+                                    Text(model.displayName).tag(model.id)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(width: 360, alignment: .leading)
+                            .disabled(aiModels.isEmpty)
+                        }
+
+                        GridRow {
+                            Text("Status")
+                                .foregroundStyle(.secondary)
+                            Text(appModel.aiIsConfigured ? "Configured" : "Incomplete")
+                                .foregroundStyle(appModel.aiIsConfigured ? .green : .secondary)
+                        }
+                    }
+
+                    if case .failed(let message) = appModel.aiModelDiscoveryState {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+        }
+    }
+
     private var fileLoggingBinding: Binding<Bool> {
         Binding(
             get: { appModel.diagnosticsFileLoggingEnabled },
@@ -299,6 +493,102 @@ struct SettingsView: View {
                 }
             }
         )
+    }
+
+    private var aiProviderShapeBinding: Binding<AIProviderShape> {
+        Binding(
+            get: { appModel.aiProviderSettings.shape },
+            set: { shape in
+                DispatchQueue.main.async {
+                    appModel.setAIProviderShape(shape)
+                }
+            }
+        )
+    }
+
+    private var aiProviderPresetBinding: Binding<AIProviderPreset> {
+        Binding(
+            get: { appModel.aiProviderSettings.preset },
+            set: { preset in
+                DispatchQueue.main.async {
+                    appModel.setAIProviderPreset(preset)
+                }
+            }
+        )
+    }
+
+    private var aiBaseURLBinding: Binding<String> {
+        Binding(
+            get: { appModel.aiProviderSettings.baseURLString },
+            set: { baseURLString in
+                DispatchQueue.main.async {
+                    appModel.setAIBaseURLString(baseURLString)
+                }
+            }
+        )
+    }
+
+    private var aiModelBinding: Binding<String> {
+        Binding(
+            get: { appModel.aiProviderSettings.selectedModelID ?? "" },
+            set: { modelID in
+                DispatchQueue.main.async {
+                    appModel.setAISelectedModelID(modelID)
+                }
+            }
+        )
+    }
+
+    private var aiModels: [AIModelInfo] {
+        if case .loaded(let models) = appModel.aiModelDiscoveryState {
+            return models
+        }
+        return []
+    }
+
+    private var modelPlaceholderTitle: String {
+        switch appModel.aiModelDiscoveryState {
+        case .idle:
+            "Fetch models first"
+        case .loading:
+            "Loading models..."
+        case .loaded:
+            "Select model"
+        case .failed:
+            "Model list unavailable"
+        }
+    }
+
+    private var hasAISecretDraft: Bool {
+        !aiAPIKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !aiHeadersDraft.isEmpty
+    }
+
+    private var canFetchAIModels: Bool {
+        appModel.aiProviderSettings.hasBaseURL &&
+            appModel.aiProviderSecrets.hasAPIKey &&
+            appModel.aiModelDiscoveryState != .loading
+    }
+
+    private var aiAvailabilityLabel: some View {
+        Group {
+            switch appModel.aiAvailabilityState {
+            case .unknown:
+                Label("Not tested", systemImage: "circle")
+                    .foregroundStyle(.secondary)
+            case .checking:
+                Label("Checking", systemImage: "clock")
+                    .foregroundStyle(.secondary)
+            case .available(let message):
+                Label(message, systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            case .unavailable(let message):
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+            }
+        }
+        .font(.caption)
+        .lineLimit(2)
     }
 
     private var includeClusterNamesBinding: Binding<Bool> {
@@ -444,6 +734,28 @@ struct SettingsView: View {
     private func resetKubeconfigPath() {
         kubeconfigPathDraft = ""
         appModel.setKubeconfigPathOverride(nil)
+    }
+
+    private func syncAISecretDrafts() {
+        aiAPIKeyDraft = appModel.aiProviderSecrets.apiKey
+        aiHeadersDraft = appModel.aiProviderSecrets.headers
+    }
+
+    private func saveAISecrets() {
+        appModel.saveAIProviderSecrets(
+            apiKey: aiAPIKeyDraft,
+            headers: aiHeadersDraft.filter {
+                !$0.normalizedName.isEmpty || !$0.normalizedValue.isEmpty
+            }
+        )
+        aiSecretStatus = "Saved"
+    }
+
+    private func clearAISecrets() {
+        appModel.clearAIProviderSecrets()
+        aiAPIKeyDraft = ""
+        aiHeadersDraft = []
+        aiSecretStatus = "Cleared"
     }
 
     private func chooseKubeconfigFile() {

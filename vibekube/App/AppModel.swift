@@ -166,6 +166,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var tableDensity: TableDensity
     @Published private(set) var appAppearance: AppAppearance
     @Published private(set) var externalTerminalApp: ExternalTerminalApp
+    @Published private(set) var aiProviderSettings: AIProviderSettings
+    @Published private(set) var aiProviderSecrets: AIProviderSecrets
+    @Published private(set) var aiModelDiscoveryState: AIModelDiscoveryState
+    @Published private(set) var aiAvailabilityState: AIAvailabilityState
     @Published private(set) var resourceLabelFilter: ResourceLabelFilter?
     @Published private(set) var resourceOwnerFilter: ResourceOwnerFilter?
     @Published private(set) var resourceNameFilter: ResourceNameFilter?
@@ -183,6 +187,8 @@ final class AppModel: ObservableObject {
     private let portForwardService: KubernetesPortForwardServicing?
     private let localPortChecker: LocalPortChecking
     private let execLauncher: KubernetesExecLaunching?
+    private let aiProviderService: AIProviderServicing
+    private let aiSecretStore: AISecretStoring
     private let diagnosticsLogger: DiagnosticsLogger
     private var userPreferences: UserPreferencesProviding
     private var loadedKubeconfig: Kubeconfig
@@ -196,6 +202,8 @@ final class AppModel: ObservableObject {
     private var resourceEventsTask: Task<Void, Never>?
     private var dashboardMetricsTask: Task<Void, Never>?
     private var podLogTask: Task<Void, Never>?
+    private var aiModelDiscoveryTask: Task<Void, Never>?
+    private var aiAvailabilityTask: Task<Void, Never>?
     private var portForwardHandlesBySessionID: [PortForwardSession.ID: KubernetesPortForwardHandle]
     private var envSecretValueTasksByQuery: [ResourceEnvSecretValueQuery: Task<Void, Never>]
     nonisolated static let defaultPodLogLineLimit = 5_000
@@ -230,6 +238,8 @@ final class AppModel: ObservableObject {
                 logService: usePreviewData ? PreviewKubernetesLogService() : nil,
                 portForwardService: usePreviewData ? nil : KubectlPortForwardService(),
                 execLauncher: usePreviewData ? nil : TerminalKubernetesExecLauncher(),
+                aiProviderService: AIProviderClient(),
+                aiSecretStore: InMemoryAISecretStore(),
                 userPreferences: InMemoryUserPreferences()
             )
         } else {
@@ -256,6 +266,8 @@ final class AppModel: ObservableObject {
                 logService: KubernetesLogService(execCredentialProvider: execCredentialProvider),
                 portForwardService: KubectlPortForwardService(),
                 execLauncher: TerminalKubernetesExecLauncher(),
+                aiProviderService: AIProviderClient(),
+                aiSecretStore: AIKeychainSecretStore(),
                 userPreferences: UserDefaultsUserPreferences()
             )
             reloadKubeconfig()
@@ -277,6 +289,8 @@ final class AppModel: ObservableObject {
         portForwardService: KubernetesPortForwardServicing? = nil,
         localPortChecker: LocalPortChecking = SocketLocalPortChecker(),
         execLauncher: KubernetesExecLaunching? = nil,
+        aiProviderService: AIProviderServicing = AIProviderClient(),
+        aiSecretStore: AISecretStoring = InMemoryAISecretStore(),
         userPreferences: UserPreferencesProviding? = nil,
         loadedKubeconfig: Kubeconfig? = nil,
         discoveryByContextID: [ClusterSummary.ID: KubernetesDiscoverySnapshot] = [:],
@@ -315,6 +329,8 @@ final class AppModel: ObservableObject {
         self.portForwardService = portForwardService
         self.localPortChecker = localPortChecker
         self.execLauncher = execLauncher
+        self.aiProviderService = aiProviderService
+        self.aiSecretStore = aiSecretStore
         self.diagnosticsLogger = diagnosticsLogger
         self.userPreferences = userPreferences
         self.loadedKubeconfig = loadedKubeconfig ?? .empty
@@ -343,6 +359,10 @@ final class AppModel: ObservableObject {
         self.tableDensity = userPreferences.tableDensity
         self.appAppearance = userPreferences.appAppearance
         self.externalTerminalApp = userPreferences.externalTerminalApp
+        self.aiProviderSettings = userPreferences.aiProviderSettings
+        self.aiProviderSecrets = (try? aiSecretStore.loadSecrets()) ?? .empty
+        self.aiModelDiscoveryState = .idle
+        self.aiAvailabilityState = .unknown
         self.resourceLabelFilter = nil
         self.resourceOwnerFilter = nil
         self.resourceNameFilter = nil
@@ -357,6 +377,8 @@ final class AppModel: ObservableObject {
         self.resourceEventsTask = nil
         self.dashboardMetricsTask = nil
         self.podLogTask = nil
+        self.aiModelDiscoveryTask = nil
+        self.aiAvailabilityTask = nil
         self.portForwardHandlesBySessionID = [:]
         self.envSecretValueTasksByQuery = [:]
 
@@ -483,6 +505,10 @@ final class AppModel: ObservableObject {
 
     var canRunMutations: Bool {
         mutationActionService != nil && selectedConnectionState == .connected
+    }
+
+    var aiIsConfigured: Bool {
+        aiProviderSettings.isComplete && aiProviderSecrets.hasAPIKey
     }
 
     private var appVersionDescription: String {
@@ -933,9 +959,142 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func setAIProviderShape(_ shape: AIProviderShape) {
+        guard aiProviderSettings.shape != shape else {
+            return
+        }
+
+        var settings = aiProviderSettings
+        settings.shape = shape
+        settings.preset = shape == .anthropicCompatible ? .anthropic : .custom
+        settings.baseURLString = settings.preset.defaultBaseURLString
+        settings.selectedModelID = nil
+        saveAIProviderSettings(settings, reason: "AI provider shape changed.")
+    }
+
+    func setAIProviderPreset(_ preset: AIProviderPreset) {
+        guard aiProviderSettings.preset != preset else {
+            return
+        }
+
+        var settings = aiProviderSettings
+        settings.preset = preset
+        settings.shape = preset.shape
+        if preset != .custom {
+            settings.baseURLString = preset.defaultBaseURLString
+        }
+        settings.selectedModelID = nil
+        saveAIProviderSettings(settings, reason: "AI provider preset changed.")
+    }
+
+    func setAIBaseURLString(_ baseURLString: String) {
+        guard aiProviderSettings.baseURLString != baseURLString else {
+            return
+        }
+
+        var settings = aiProviderSettings
+        settings.baseURLString = baseURLString
+        settings.preset = AIProviderPreset.allCases.first {
+            $0.defaultBaseURLString == baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        } ?? .custom
+        settings.selectedModelID = nil
+        saveAIProviderSettings(settings, reason: "AI provider base URL changed.")
+    }
+
+    func setAISelectedModelID(_ modelID: String?) {
+        let normalized = modelID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selectedModelID = normalized?.isEmpty == false ? normalized : nil
+        guard aiProviderSettings.selectedModelID != selectedModelID else {
+            return
+        }
+
+        var settings = aiProviderSettings
+        settings.selectedModelID = selectedModelID
+        saveAIProviderSettings(settings, reason: "AI model selection changed.", resetAvailability: false)
+    }
+
+    func saveAIProviderSecrets(apiKey: String, headers: [AISecretHeader]) {
+        let secrets = AIProviderSecrets(apiKey: apiKey, headers: headers)
+        do {
+            try aiSecretStore.saveSecrets(secrets)
+            aiProviderSecrets = secrets
+            invalidateAIProviderReachability()
+            recordDiagnostic(
+                .info,
+                category: "ai",
+                message: "AI provider secrets saved.",
+                metadata: ["customHeaderCount": "\(secrets.usableHeaders.count)"]
+            )
+        } catch {
+            aiAvailabilityState = .unavailable(error.localizedDescription)
+            recordDiagnostic(
+                .error,
+                category: "ai",
+                message: "Failed to save AI provider secrets.",
+                metadata: ["error": error.localizedDescription]
+            )
+        }
+    }
+
+    func clearAIProviderSecrets() {
+        do {
+            try aiSecretStore.deleteSecrets()
+            aiProviderSecrets = .empty
+            invalidateAIProviderReachability()
+            recordDiagnostic(.info, category: "ai", message: "AI provider secrets cleared.")
+        } catch {
+            aiAvailabilityState = .unavailable(error.localizedDescription)
+            recordDiagnostic(
+                .error,
+                category: "ai",
+                message: "Failed to clear AI provider secrets.",
+                metadata: ["error": error.localizedDescription]
+            )
+        }
+    }
+
+    func fetchAIModels() {
+        aiModelDiscoveryTask?.cancel()
+        aiAvailabilityTask?.cancel()
+        aiModelDiscoveryState = .loading
+        aiAvailabilityState = .checking
+
+        let settings = aiProviderSettings
+        let secrets = aiProviderSecrets
+        aiModelDiscoveryTask = Task { [weak self, aiProviderService] in
+            do {
+                let models = try await aiProviderService.listModels(settings: settings, secrets: secrets)
+                self?.finishAIModelDiscovery(models)
+            } catch is CancellationError {
+                self?.cancelAIModelDiscovery()
+            } catch {
+                self?.failAIModelDiscovery(error)
+            }
+        }
+    }
+
+    func testAIProviderAvailability() {
+        aiAvailabilityTask?.cancel()
+        aiAvailabilityState = .checking
+
+        let settings = aiProviderSettings
+        let secrets = aiProviderSecrets
+        aiAvailabilityTask = Task { [weak self, aiProviderService] in
+            do {
+                let message = try await aiProviderService.testConnection(settings: settings, secrets: secrets)
+                self?.finishAIAvailability(message)
+            } catch is CancellationError {
+                self?.cancelAIAvailability()
+            } catch {
+                self?.failAIAvailability(error)
+            }
+        }
+    }
+
     func resetLocalPreferences() {
         let previousKubeconfigPathOverride = kubeconfigPathOverride
         userPreferences.resetLocalPreferences()
+        try? aiSecretStore.deleteSecrets()
 
         selectedNamespaceByContextID = userPreferences.selectedNamespaceByContextID
         diagnosticsFileLoggingEnabled = userPreferences.diagnosticsFileLoggingEnabled
@@ -949,6 +1108,9 @@ final class AppModel: ObservableObject {
         tableDensity = userPreferences.tableDensity
         appAppearance = userPreferences.appAppearance
         externalTerminalApp = userPreferences.externalTerminalApp
+        aiProviderSettings = userPreferences.aiProviderSettings
+        aiProviderSecrets = .empty
+        invalidateAIProviderReachability()
         configureDiagnostics()
 
         cancelResourceWatchTasks()
@@ -4196,6 +4358,92 @@ final class AppModel: ObservableObject {
         Task { [diagnosticsLogger] in
             await diagnosticsLogger.configure(settings)
         }
+    }
+
+    private func saveAIProviderSettings(
+        _ settings: AIProviderSettings,
+        reason: String,
+        resetAvailability: Bool = true
+    ) {
+        aiProviderSettings = settings
+        userPreferences.aiProviderSettings = settings
+        aiModelDiscoveryTask?.cancel()
+        if resetAvailability {
+            invalidateAIProviderReachability()
+        }
+        recordDiagnostic(
+            .info,
+            category: "ai",
+            message: reason,
+            metadata: [
+                "shape": settings.shape.rawValue,
+                "preset": settings.preset.rawValue,
+                "hasModel": settings.selectedModelID == nil ? "false" : "true"
+            ]
+        )
+    }
+
+    private func invalidateAIProviderReachability() {
+        aiModelDiscoveryTask?.cancel()
+        aiAvailabilityTask?.cancel()
+        aiModelDiscoveryState = .idle
+        aiAvailabilityState = .unknown
+    }
+
+    private func finishAIModelDiscovery(_ models: [AIModelInfo]) {
+        aiModelDiscoveryState = .loaded(models)
+        aiAvailabilityState = .available("\(models.count.formatted()) models available.")
+        if let selectedModelID = aiProviderSettings.selectedModelID,
+           !models.contains(where: { $0.id == selectedModelID }) {
+            setAISelectedModelID(nil)
+        }
+        recordDiagnostic(
+            .info,
+            category: "ai",
+            message: "AI models loaded.",
+            metadata: ["count": "\(models.count)"]
+        )
+    }
+
+    private func cancelAIModelDiscovery() {
+        if aiModelDiscoveryState == .loading {
+            aiModelDiscoveryState = .idle
+        }
+        if aiAvailabilityState == .checking {
+            aiAvailabilityState = .unknown
+        }
+    }
+
+    private func failAIModelDiscovery(_ error: Error) {
+        aiModelDiscoveryState = .failed(error.localizedDescription)
+        aiAvailabilityState = .unavailable(error.localizedDescription)
+        recordDiagnostic(
+            .warning,
+            category: "ai",
+            message: "AI model discovery failed.",
+            metadata: ["error": error.localizedDescription]
+        )
+    }
+
+    private func finishAIAvailability(_ message: String) {
+        aiAvailabilityState = .available(message)
+        recordDiagnostic(.info, category: "ai", message: "AI provider availability test succeeded.")
+    }
+
+    private func cancelAIAvailability() {
+        if aiAvailabilityState == .checking {
+            aiAvailabilityState = .unknown
+        }
+    }
+
+    private func failAIAvailability(_ error: Error) {
+        aiAvailabilityState = .unavailable(error.localizedDescription)
+        recordDiagnostic(
+            .warning,
+            category: "ai",
+            message: "AI provider availability test failed.",
+            metadata: ["error": error.localizedDescription]
+        )
     }
 
     private func recordDiagnostic(

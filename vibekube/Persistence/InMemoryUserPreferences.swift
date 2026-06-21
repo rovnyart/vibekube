@@ -15,6 +15,7 @@ struct InMemoryUserPreferences: UserPreferencesProviding {
     var tableDensity: TableDensity = .comfortable
     var appAppearance: AppAppearance = .system
     var externalTerminalApp: ExternalTerminalApp = .terminal
+    var aiProviderSettings: AIProviderSettings = .default
 
     mutating func resetLocalPreferences() {
         self = InMemoryUserPreferences()

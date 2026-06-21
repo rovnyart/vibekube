@@ -16,6 +16,7 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         static let tableDensity = "vibekube.table.density"
         static let appAppearance = "vibekube.appearance"
         static let externalTerminalApp = "vibekube.exec.externalTerminalApp"
+        static let aiProviderSettings = "vibekube.ai.providerSettings"
 
         static let all = [
             selectedContextID,
@@ -31,7 +32,8 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
             kubeconfigPathOverride,
             tableDensity,
             appAppearance,
-            externalTerminalApp
+            externalTerminalApp,
+            aiProviderSettings
         ]
     }
 
@@ -173,6 +175,23 @@ struct UserDefaultsUserPreferences: UserPreferencesProviding {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Key.externalTerminalApp)
+        }
+    }
+
+    var aiProviderSettings: AIProviderSettings {
+        get {
+            guard let data = defaults.data(forKey: Key.aiProviderSettings),
+                  let settings = try? JSONDecoder().decode(AIProviderSettings.self, from: data) else {
+                return .default
+            }
+            return settings
+        }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue) else {
+                defaults.removeObject(forKey: Key.aiProviderSettings)
+                return
+            }
+            defaults.set(data, forKey: Key.aiProviderSettings)
         }
     }
 

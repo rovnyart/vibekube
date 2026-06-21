@@ -1,13 +1,15 @@
 # Phase 12: AI Foundations
 
-Status: Not started.
+Status: In progress.
 
 Goal: add safe AI explain/summarize capabilities on top of local Kubernetes context without allowing hidden cluster mutations.
 
 ## Current Progress
 
 - [x] Phase plan exists.
-- [ ] AI provider abstraction exists.
+- [x] AI provider abstraction exists.
+- [x] Keychain-backed provider secrets exist.
+- [x] Provider model discovery/test settings UI exists.
 - [ ] Context builder exists.
 - [ ] Redaction pipeline exists.
 - [ ] AI panel exists.
@@ -17,15 +19,17 @@ Goal: add safe AI explain/summarize capabilities on top of local Kubernetes cont
 
 ### 12.1 AI Architecture
 
-- [ ] Define `AIProvider`.
-- [ ] Define `AIRequest`.
-- [ ] Define `AIResponse`.
-- [ ] Define `AIContextBundle`.
-- [ ] Define provider configuration model.
-- [ ] Add cancellation and retry behavior.
-- [ ] Keep AI separate from Kubernetes mutation services.
+- [x] Define `AIProvider`.
+- [x] Define `AIRequest`.
+- [x] Define `AIResponse`.
+- [x] Define `AIContextBundle`.
+- [x] Define provider configuration model.
+- [x] Add cancellation behavior.
+- [x] Keep AI separate from Kubernetes mutation services.
+- [x] Store API keys and custom provider headers in Keychain.
+- [x] Discover models from provider APIs before model selection is enabled.
 
-Checkpoint: stop before choosing or wiring any external provider.
+Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compatible key auth with model discovery. Stop before sending Kubernetes context to any provider.
 
 ### 12.2 Context Builder
 
