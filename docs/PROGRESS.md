@@ -25,7 +25,7 @@ This file tracks implementation status across all phases. Keep this updated when
 
 The implementation is intentionally allowed to take small cross-phase slices when user-visible gaps are found. That is why logs, release packaging, Teleport/TLS hardening, namespace search, and Env rendering landed before every item in Phases 4-6 was complete.
 
-The current product milestone is Vibekube 0.1.x: a fast, read-only, distributable Kubernetes cockpit for real clusters.
+The current product milestone is Vibekube 0.5.0: a fast, read-only, distributable Kubernetes cockpit for real clusters.
 
 Recommended next focus:
 
@@ -73,7 +73,7 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Preserve visible table order while inspecting watched resources.
 - [x] Keep active watches recovering after idle/background transport timeouts.
 - [x] Show subtle updated-row feedback for watched resource changes.
-- [x] Add 0.1.x clean-machine release checklist and privacy note.
+- [x] Add clean-machine release checklist and privacy note.
 - [x] Complete the read-only secret-surface audit across kubeconfig parsing, API/client errors, diagnostics, Secret YAML, and Secret reveal logging.
 - [x] Validate daily use on a non-development work Mac since version 0.3.0.
 - [x] Decide credential storage and sandbox strategy for the current direct-distribution release.

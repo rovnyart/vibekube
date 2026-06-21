@@ -49,6 +49,21 @@ note() {
     echo "==> $*"
 }
 
+assess_gatekeeper() {
+    local path="$1"
+    local attempt
+
+    for attempt in 1 2 3; do
+        if spctl --assess --type open --context context:primary-signature --verbose=4 "$path"; then
+            return 0
+        fi
+
+        [[ "$attempt" -eq 3 ]] || sleep 2
+    done
+
+    return 1
+}
+
 project_value() {
     local key="$1"
     /usr/bin/ruby - "$PROJECT_FILE" "$key" <<'RUBY'
@@ -295,7 +310,7 @@ if [[ "$skip_notarize" -eq 0 && -n "$NOTARY_PROFILE" ]]; then
     xcrun stapler validate "$dmg_path"
 
     note "Assessing notarized DMG with Gatekeeper"
-    spctl --assess --type open --verbose=4 "$dmg_path"
+    assess_gatekeeper "$dmg_path"
 elif [[ "$skip_notarize" -eq 1 ]]; then
     echo "warning: notarization skipped by --skip-notarize; this DMG is not ready for public online distribution." >&2
 else

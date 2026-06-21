@@ -2,6 +2,37 @@
 
 All notable user-facing changes are tracked here.
 
+## 0.5.0 - 2026-06-21
+
+Changes since 0.4.0:
+
+### Added
+
+- Container-aware Pod exec actions for opening an external-terminal `kubectl exec` shell from Pod workflows.
+- Shell picker for Pod exec, with common shell choices exposed before launching the external terminal.
+- Pod-local exec launch history in Pod detail, including command, container, timestamp, and failed launch attempts.
+- Clearer debug-action failure explanations for exec and port-forward failures, including RBAC and streaming-protocol hints.
+- Echo demo workload now serves static content, making browser-based port-forward validation straightforward.
+- Connection progress now distinguishes kubeconfig exec-auth signing-in work from generic connecting state.
+- API-client test coverage for connection success, auth failure, timeout/cancellation, malformed responses, and exec-auth progress.
+
+### Changed
+
+- Pod exec entry points were consolidated and clarified: pod-level actions use a default shell, while per-container actions stay available where container choice matters.
+- Phase 9 workload debugging is now complete for the read-only release, covering event-aware debug summaries, port-forwarding, external exec, and local launch history.
+- Dashboard expansion is intentionally canceled for now; the release keeps the small, fast dashboard shape instead of reintroducing expensive cluster-wide panels.
+- Release-hardening docs now explicitly cover sandbox strategy, temporary client-certificate keychain use, credential-storage boundaries, crash reporting, telemetry, diagnostics, and AI-placeholder decisions.
+- Clean-machine validation is recorded from daily use on a non-development work Mac since 0.3.0.
+
+### Fixed
+
+- Active port-forward sessions are stopped on app quit.
+- Port-forward start now detects local port conflicts before launching `kubectl`.
+- Stopped port-forward sessions are kept visible long enough to understand their final state.
+- Port-forward and exec helper command lookup now uses the common Homebrew/system path environment.
+- Secret handling now redacts more surfaces, including diagnostics messages, Kubernetes status errors, exec-plugin stderr, Secret YAML payload fields, and Secret reveal logging.
+- Dashboard-related roadmap/docs no longer imply we should build the previously laggy rich dashboard path for this release.
+
 ## 0.4.0 - 2026-06-17
 
 Changes since 0.3.0:

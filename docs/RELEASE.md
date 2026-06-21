@@ -16,7 +16,7 @@ This document describes how to build a signed DMG for direct macOS distribution.
 
 ## Current Build
 
-The project is currently set to `0.4.0` with build `11`.
+The project is currently set to `0.5.0` with build `12`.
 
 ```sh
 NOTARY_PROFILE=vibekube-notary scripts/release current
@@ -87,12 +87,12 @@ codesign --verify --deep --strict --verbose=2 Vibekube.app
 hdiutil verify Vibekube-X.Y.Z.dmg
 codesign --verify --verbose=2 Vibekube-X.Y.Z.dmg
 xcrun stapler validate Vibekube-X.Y.Z.dmg
-spctl --assess --type open --verbose=4 Vibekube-X.Y.Z.dmg
+spctl --assess --type open --context context:primary-signature --verbose=4 Vibekube-X.Y.Z.dmg
 ```
 
 The `stapler` and `spctl` checks only run when notarization is enabled.
 
-## 0.1.x Release Checklist
+## Release Checklist
 
 Use [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) before publishing a DMG outside the development machine.
 

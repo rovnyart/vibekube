@@ -1,4 +1,4 @@
-# Vibekube 0.1.x Release Checklist
+# Vibekube Release Checklist
 
 Use this checklist before publishing a DMG outside the development machine.
 

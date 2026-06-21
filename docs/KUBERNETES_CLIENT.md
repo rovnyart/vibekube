@@ -1,6 +1,6 @@
 # Kubernetes Client Design
 
-Status: Living design note, updated through the 0.1.x release-hardening track.
+Status: Living design note, updated through the read-only release-hardening track.
 
 This document captures client behavior that should stay true across implementation phases. The most important rule: Vibekube should behave like `kubectl` and established clients wherever kubeconfig semantics already define the right thing.
 
