@@ -29,6 +29,7 @@ Goal: add safe AI explain/summarize capabilities on top of local Kubernetes cont
 - [x] Keep AI separate from Kubernetes mutation services.
 - [x] Store API keys and custom provider headers in Keychain.
 - [x] Discover models from provider APIs before model selection is enabled.
+- [x] Add provider request tests for endpoint construction, auth headers, custom headers, chat payloads, and configuration gating.
 
 Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compatible key auth with model discovery. Stop before sending Kubernetes context to any provider.
 
@@ -82,6 +83,7 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 ```sh
 dev/k8s/scripts/start.sh
 xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test
+xcodebuild -scheme vibekube -configuration Debug -only-testing:vibekubeTests/AIProviderClientTests test
 ```
 
 Manual provider/model evaluation: [`AI_EVALUATION.md`](AI_EVALUATION.md).

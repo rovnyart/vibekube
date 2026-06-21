@@ -982,7 +982,9 @@ final class AppModel: ObservableObject {
 
         var settings = aiProviderSettings
         settings.preset = preset
-        settings.shape = preset.shape
+        if preset != .custom {
+            settings.shape = preset.shape
+        }
         if preset != .custom {
             settings.baseURLString = preset.defaultBaseURLString
         }
