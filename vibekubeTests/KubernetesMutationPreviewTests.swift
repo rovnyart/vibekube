@@ -251,6 +251,159 @@ struct KubernetesMutationPreviewTests {
         }
     }
 
+    @Test func previewsRenderedManifestWithManagedFieldsAndResourceQuantities() async throws {
+        let resource = deploymentResource()
+        let live = try resourceDetail(
+            """
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "metadata": {
+                "name": "echo-web",
+                "namespace": "vibekube-demo",
+                "resourceVersion": "10",
+                "managedFields": [
+                  {
+                    "manager": "kubectl",
+                    "operation": "Apply",
+                    "apiVersion": "apps/v1",
+                    "fieldsV1": {
+                      "f:metadata": {
+                        "f:labels": {
+                          "k:{\\"app\\":\\"echo-web\\"}": {}
+                        }
+                      },
+                      "f:spec": {
+                        "f:template": {
+                          "f:spec": {
+                            "f:containers": {
+                              "k:{\\"name\\":\\"web\\"}": {
+                                ".": {},
+                                "f:resources": {}
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "containers": [
+                      {
+                        "name": "web",
+                        "image": "nginx",
+                        "resources": {
+                          "requests": {
+                            "cpu": "64m",
+                            "memory": "64Mi"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+            """
+        )
+        let dryRun = try resourceDetail(
+            """
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "metadata": {
+                "name": "echo-web",
+                "namespace": "vibekube-demo",
+                "resourceVersion": "11"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "containers": [
+                      {
+                        "name": "web",
+                        "image": "nginx",
+                        "resources": {
+                          "requests": {
+                            "cpu": "128m",
+                            "memory": "128Mi"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+            """
+        )
+        let mutationService = RecordingMutationService { request in
+            let body = try #require(request.body)
+            let value = try JSONDecoder().decode(KubernetesJSONValue.self, from: body)
+            let container = value["spec"]?["template"]?["spec"]?["containers"]?.arrayValue?.first
+            let cpu = container?["resources"]?["requests"]?["cpu"]?.stringValue
+            let memory = container?["resources"]?["requests"]?["memory"]?.stringValue
+            #expect(cpu == "128m")
+            #expect(memory == "128Mi")
+            return KubernetesMutationResult(statusCode: 200, status: nil, resource: dryRun)
+        }
+        let previewService = KubernetesMutationPreviewService(
+            mutationService: mutationService,
+            resourceDetailService: StaticResourceDetailService(detail: live)
+        )
+
+        let proposedYAML = live.yaml
+            .replacingOccurrences(of: "cpu: 64m", with: "cpu: 128m")
+            .replacingOccurrences(of: "memory: 64Mi", with: "memory: 128Mi")
+        #expect(proposedYAML.contains(#""k:{\"name\":\"web\"}":"#))
+        #expect(proposedYAML.contains("cpu: 128m"))
+        #expect(proposedYAML.contains("memory: 128Mi"))
+
+        let preview = try await previewService.previewExistingResource(
+            contextName: "demo",
+            kubeconfig: kubeconfig(),
+            resource: resource,
+            namespace: "vibekube-demo",
+            name: "echo-web",
+            proposedYAML: proposedYAML
+        )
+
+        #expect(preview.diff.hasChanges)
+        #expect(await mutationService.requestCount() == 1)
+    }
+
+    @Test func parserHandlesRenderedManagedFieldsKeys() throws {
+        var parser = SimpleYAMLParser()
+
+        let value = try parser.parse(
+            """
+            fieldsV1:
+              f:spec:
+                f:template:
+                  f:spec:
+                    f:containers:
+                      "k:{\\"name\\":\\"web\\"}":
+                        ".":
+                          {}
+                        f:resources:
+                          {}
+            """
+        )
+
+        let fields = try #require(value.mapping?["fieldsV1"]?.mapping)
+        let containerFields = fields["f:spec"]?
+            .mapping?["f:template"]?
+            .mapping?["f:spec"]?
+            .mapping?["f:containers"]?
+            .mapping
+        #expect(containerFields?["k:{\"name\":\"web\"}"] != nil)
+        #expect(containerFields?["k:{\"name\":\"web\"}"]?.mapping?["."] == .mapping([:]))
+    }
+
     private func deploymentResource() -> KubernetesDiscoveredResource {
         KubernetesDiscoveredResource(
             groupVersion: "apps/v1",

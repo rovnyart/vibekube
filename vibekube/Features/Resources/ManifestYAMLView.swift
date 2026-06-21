@@ -183,13 +183,7 @@ struct ManifestYAMLView: View {
 
     private var editContent: some View {
         VStack(spacing: 0) {
-            TextEditor(text: $draftYAML)
-                .font(.system(.body, design: .monospaced))
-                .textSelection(.enabled)
-                .scrollContentBackground(.hidden)
-                .background(Color(nsColor: .textBackgroundColor))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
+            ManifestYAMLEditorView(text: $draftYAML)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityIdentifier("resource.detail.yaml.editor")
 
@@ -680,9 +674,345 @@ private struct ManifestYAMLTextView: NSViewRepresentable {
     }
 }
 
+private struct ManifestYAMLEditorView: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = .textBackgroundColor
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.hasVerticalRuler = true
+        scrollView.rulersVisible = true
+
+        let textView = ManifestYAMLEditingTextView(frame: .zero)
+        textView.delegate = context.coordinator
+        textView.isEditable = true
+        textView.isSelectable = true
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.allowsUndo = true
+        textView.drawsBackground = true
+        textView.backgroundColor = .textBackgroundColor
+        textView.insertionPointColor = .labelColor
+        textView.textContainerInset = NSSize(width: 12, height: 10)
+        textView.font = ManifestYAMLAttributedRenderer.font
+        textView.textColor = .labelColor
+        textView.usesFindBar = true
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isContinuousSpellCheckingEnabled = false
+        textView.minSize = NSSize(width: 0, height: scrollView.contentSize.height)
+        textView.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = true
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.containerSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.typingAttributes = ManifestYAMLAttributedRenderer.editorTypingAttributes
+        textView.setAccessibilityIdentifier("resource.detail.yaml.editor.text")
+
+        scrollView.documentView = textView
+        let rulerView = ManifestYAMLLineNumberRulerView(textView: textView)
+        scrollView.verticalRulerView = rulerView
+        context.coordinator.textView = textView
+        context.coordinator.rulerView = rulerView
+        context.coordinator.apply(text)
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = context.coordinator.textView else {
+            return
+        }
+
+        if textView.string != text {
+            context.coordinator.apply(text)
+        } else {
+            context.coordinator.highlightVisibleLine()
+        }
+
+        context.coordinator.rulerView?.needsDisplay = true
+        Self.resizeDocumentView(textView, in: scrollView)
+    }
+
+    private static func resizeDocumentView(_ textView: NSTextView, in scrollView: NSScrollView) {
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else {
+            return
+        }
+
+        layoutManager.ensureLayout(for: textContainer)
+        let usedRect = layoutManager.usedRect(for: textContainer)
+        let inset = textView.textContainerInset
+        let width = max(scrollView.contentSize.width, ceil(usedRect.width + inset.width * 2 + 24))
+        let height = max(scrollView.contentSize.height, ceil(usedRect.height + inset.height * 2 + 24))
+        let size = NSSize(width: max(1, width), height: max(1, height))
+
+        if textView.frame.size != size {
+            textView.setFrameSize(size)
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        @Binding private var text: String
+        weak var textView: NSTextView?
+        weak var rulerView: ManifestYAMLLineNumberRulerView?
+        private var isApplying = false
+
+        init(text: Binding<String>) {
+            _text = text
+        }
+
+        func apply(_ value: String) {
+            guard let textView else { return }
+
+            isApplying = true
+            let selectedRange = textView.selectedRange()
+            textView.textStorage?.setAttributedString(
+                ManifestYAMLAttributedRenderer.editorAttributedString(yaml: value)
+            )
+            textView.selectedRange = selectedRange.clamped(to: textView.string.utf16.count)
+            textView.typingAttributes = ManifestYAMLAttributedRenderer.editorTypingAttributes
+            highlightVisibleLine()
+            rulerView?.needsDisplay = true
+            isApplying = false
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard !isApplying, let textView else {
+                return
+            }
+
+            text = textView.string
+            applySyntaxPreservingSelection()
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            highlightVisibleLine()
+        }
+
+        func textView(
+            _ textView: NSTextView,
+            shouldChangeTextIn affectedCharRange: NSRange,
+            replacementString: String?
+        ) -> Bool {
+            guard let replacementString else {
+                return true
+            }
+
+            if replacementString == "\t" {
+                textView.insertText("  ", replacementRange: affectedCharRange)
+                return false
+            }
+
+            if replacementString == "\n" {
+                textView.insertText("\n\(currentLineIndent(in: textView, range: affectedCharRange))", replacementRange: affectedCharRange)
+                return false
+            }
+
+            return true
+        }
+
+        func highlightVisibleLine() {
+            guard let textView,
+                  let textStorage = textView.textStorage else {
+                return
+            }
+
+            textStorage.removeAttribute(
+                .backgroundColor,
+                range: NSRange(location: 0, length: textStorage.length)
+            )
+            let lineRange = (textView.string as NSString).lineRange(for: textView.selectedRange())
+            guard lineRange.length > 0 else {
+                return
+            }
+
+            textStorage.addAttribute(
+                .backgroundColor,
+                value: NSColor.controlAccentColor.withAlphaComponent(0.08),
+                range: lineRange.clamped(to: textStorage.length)
+            )
+        }
+
+        private func applySyntaxPreservingSelection() {
+            guard let textView else { return }
+
+            let selectedRange = textView.selectedRange()
+            isApplying = true
+            textView.textStorage?.setAttributedString(
+                ManifestYAMLAttributedRenderer.editorAttributedString(yaml: textView.string)
+            )
+            textView.selectedRange = selectedRange.clamped(to: textView.string.utf16.count)
+            textView.typingAttributes = ManifestYAMLAttributedRenderer.editorTypingAttributes
+            highlightVisibleLine()
+            rulerView?.needsDisplay = true
+            isApplying = false
+        }
+
+        private func currentLineIndent(in textView: NSTextView, range: NSRange) -> String {
+            let nsText = textView.string as NSString
+            let location = min(range.location, nsText.length)
+            let lineRange = nsText.lineRange(for: NSRange(location: location, length: 0))
+            let line = nsText.substring(with: lineRange)
+
+            var indent = ""
+            for character in line {
+                if character == " " {
+                    indent.append(character)
+                } else {
+                    break
+                }
+            }
+
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasSuffix(":") || trimmed == "-" {
+                indent += "  "
+            }
+
+            return indent
+        }
+    }
+}
+
+private final class ManifestYAMLEditingTextView: NSTextView {
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+
+    override func paste(_ sender: Any?) {
+        guard let pasted = NSPasteboard.general.string(forType: .string) else {
+            super.paste(sender)
+            return
+        }
+
+        insertText(pasted.replacingOccurrences(of: "\t", with: "  "), replacementRange: selectedRange())
+    }
+}
+
+private final class ManifestYAMLLineNumberRulerView: NSRulerView {
+    private weak var textView: NSTextView?
+    private let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+    private let textColor = NSColor.tertiaryLabelColor
+
+    init(textView: NSTextView) {
+        self.textView = textView
+        super.init(scrollView: textView.enclosingScrollView, orientation: .verticalRuler)
+        clientView = textView
+        ruleThickness = 48
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(invalidateDisplay),
+            name: NSView.boundsDidChangeNotification,
+            object: textView.enclosingScrollView?.contentView
+        )
+    }
+
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    override func drawHashMarksAndLabels(in rect: NSRect) {
+        guard let textView,
+              let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else {
+            return
+        }
+
+        NSColor.controlBackgroundColor.setFill()
+        rect.fill()
+
+        let visibleRect = textView.visibleRect
+        let glyphRange = layoutManager.glyphRange(
+            forBoundingRect: visibleRect,
+            in: textContainer
+        )
+        let lineNumberAttributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor
+        ]
+        var lineNumber = lineNumberForGlyph(at: glyphRange.location, layoutManager: layoutManager)
+
+        layoutManager.enumerateLineFragments(
+            forGlyphRange: glyphRange
+        ) { _, usedRect, _, glyphRange, _ in
+            let characterRange = layoutManager.characterRange(
+                forGlyphRange: glyphRange,
+                actualGlyphRange: nil
+            )
+            guard characterRange.length > 0 else {
+                return
+            }
+
+            let label = "\(lineNumber)" as NSString
+            let labelSize = label.size(withAttributes: lineNumberAttributes)
+            let y = usedRect.minY + textView.textContainerOrigin.y + (usedRect.height - labelSize.height) / 2
+            let x = self.ruleThickness - labelSize.width - 8
+            label.draw(
+                at: NSPoint(x: x, y: y),
+                withAttributes: lineNumberAttributes
+            )
+            lineNumber += 1
+        }
+    }
+
+    @objc private func invalidateDisplay() {
+        needsDisplay = true
+    }
+
+    private func lineNumberForGlyph(
+        at glyphIndex: Int,
+        layoutManager: NSLayoutManager
+    ) -> Int {
+        guard let textView else {
+            return 1
+        }
+
+        let glyphCount = layoutManager.numberOfGlyphs
+        guard glyphCount > 0 else {
+            return 1
+        }
+
+        let safeGlyphIndex = min(max(glyphIndex, 0), glyphCount - 1)
+        let characterIndex = layoutManager.characterIndexForGlyph(at: safeGlyphIndex)
+        let prefix = (textView.string as NSString).substring(
+            to: min(characterIndex, textView.string.utf16.count)
+        )
+        return prefix.reduce(1) { count, character in
+            character == "\n" ? count + 1 : count
+        }
+    }
+}
+
 private enum ManifestYAMLAttributedRenderer {
     static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
     private static let lineNumberFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+    static let editorTypingAttributes: [NSAttributedString.Key: Any] = [
+        .font: font,
+        .foregroundColor: NSColor.labelColor
+    ]
 
     static func attributedString(
         yaml: String,
@@ -718,6 +1048,24 @@ private enum ManifestYAMLAttributedRenderer {
                 ? NSColor.controlAccentColor.withAlphaComponent(0.42)
                 : NSColor.systemYellow.withAlphaComponent(0.28)
             attributed.addAttribute(.backgroundColor, value: color, range: range)
+        }
+
+        return attributed
+    }
+
+    static func editorAttributedString(yaml: String) -> NSAttributedString {
+        let lines = yaml.isEmpty
+            ? [""]
+            : yaml.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let attributed = NSMutableAttributedString(
+            string: yaml,
+            attributes: editorTypingAttributes
+        )
+        var offset = 0
+
+        for line in lines {
+            applySyntax(to: attributed, line: line, baseUTF16Offset: offset)
+            offset += line.utf16.count + 1
         }
 
         return attributed

@@ -135,7 +135,7 @@ Current detail behavior:
 - Detail requests are cached in memory by context, resource, namespace, and name.
 - Namespaced detail requests prefer the row's `metadata.namespace`, which keeps `All Namespaces` list results accurate.
 - If a namespaced row has no namespace while `All Namespaces` is selected, Vibekube does not guess and leaves the detail state idle.
-- The manifest viewer is read-only and renders a deterministic YAML-like view from the returned object.
+- The manifest viewer renders a deterministic YAML-like view from the returned object. In the safe-mutations track, the YAML tab also supports a draft edit mode that can run server-side dry-run previews without applying changes.
 - The manifest viewer includes line numbers, lightweight syntax highlighting, find navigation, copy-to-clipboard, and save/export.
 - Secret manifests redact top-level `data`, `stringData`, and `binaryData` by default.
 - Events, conditions, and relationships belong to the dedicated detail phase.

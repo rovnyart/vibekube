@@ -16,7 +16,7 @@ This file tracks implementation status across all phases. Keep this updated when
 | 7 | [Logs](PHASE7.md) | Review checkpoint | Pod detail inspector has rich logs: tail/since controls, live streaming with smart follow, timestamps, safe JSONL formatting, search, grep, copy, save, download-all, fullscreen, and previous-container logs |
 | 8 | [Watches And Real-Time Updates](PHASE8.md) | Review checkpoint | Active watchable resource lists have watch merging, durable reconnect/backoff, live/stale/failure status, burst coalescing, version-aware detail refresh, narrow selected-resource detail watches, interaction-stable table ordering, subtle updated-row feedback, and manual validation |
 | 9 | [Workload Debugging Basics](PHASE9.md) | Complete | Workload Overview includes event-aware debug summaries, visible `kubectl`-backed port-forward sessions, container-aware external-terminal Pod exec actions, and pod-local exec launch history |
-| 10 | [Safe Mutations](PHASE10.md) | Started | YAML detail editing can run server-side dry-run diff previews with target validation, Status error causes, conflict handling, and no apply action yet |
+| 10 | [Safe Mutations](PHASE10.md) | Started | YAML detail editing has a highlighted draft editor with server-side dry-run diff previews, target validation, Status error causes, conflict handling, rendered-YAML round-trip coverage, and no apply action yet |
 | 11 | [Preferences, Security, Packaging](PHASE11.md) | Complete for read-only release | Release script, versioning, About version display, signing/notarization docs, diagnostics settings/export, kubeconfig path, appearance, table density, external terminal, log buffer, default namespace, resource watch, Secret reveal settings, reset preferences, privacy docs, secret-surface audit, clean-machine validation, sandbox/credential-storage decisions, no-automatic-crash-reporting policy, no pre-Phase-12 AI placeholder decision, and real Teleport/TLS validation exist |
 | 12 | [AI Foundations](PHASE12.md) | Not started | Waiting for stable resource context model |
 | 13 | [Advanced AI Operations](PHASE13.md) | Not started | Waiting for AI foundation |
@@ -82,7 +82,7 @@ Current stop rule: after any visible UI slice, stop for manual review before mov
 - [x] Clear Swift concurrency warnings before starting mutation/write paths.
 - [x] Add mutation API foundation with dry-run request support and Kubernetes Status error handling.
 - [x] Add non-UI mutation preview foundation with YAML validation, server dry-run, diff output, and conflict mapping.
-- [x] Add visible YAML draft editing with server-side dry-run diff preview and validation/error surfacing, without apply.
+- [x] Add visible highlighted YAML draft editing with server-side dry-run diff preview, rendered-YAML parser coverage, and validation/error surfacing, without apply.
 - [ ] Add safe mutations.
 - [ ] Add AI explain/summarize flows.
 

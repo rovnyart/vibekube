@@ -64,6 +64,12 @@ struct SimpleYAMLParser {
             return .null
         }
 
+        if lines[index].indent == indent, isStandaloneInlineCollection(lines[index].content) {
+            let value = parseScalar(lines[index].content)
+            index += 1
+            return value
+        }
+
         if lines[index].content.hasPrefix("-") {
             return try parseSequence(indent: indent)
         }
@@ -180,9 +186,20 @@ struct SimpleYAMLParser {
     private func parseKeyValue(_ content: String) -> (key: String, value: String)? {
         var isInSingleQuote = false
         var isInDoubleQuote = false
+        var isEscaped = false
 
         for index in content.indices {
             let character = content[index]
+            if isEscaped {
+                isEscaped = false
+                continue
+            }
+
+            if character == "\\", isInDoubleQuote {
+                isEscaped = true
+                continue
+            }
+
             if character == "'", !isInDoubleQuote {
                 isInSingleQuote.toggle()
             } else if character == "\"", !isInSingleQuote {
@@ -217,13 +234,30 @@ struct SimpleYAMLParser {
         return .scalar(unquote(value))
     }
 
+    private func isStandaloneInlineCollection(_ value: String) -> Bool {
+        value == "{}" || value == "[]"
+    }
+
     private func stripComment(from line: String) -> String {
         var isInSingleQuote = false
         var isInDoubleQuote = false
+        var isEscaped = false
         var previous: Character?
 
         for index in line.indices {
             let character = line[index]
+            if isEscaped {
+                isEscaped = false
+                previous = character
+                continue
+            }
+
+            if character == "\\", isInDoubleQuote {
+                isEscaped = true
+                previous = character
+                continue
+            }
+
             if character == "'", !isInDoubleQuote {
                 isInSingleQuote.toggle()
             } else if character == "\"", !isInSingleQuote {
@@ -242,12 +276,45 @@ struct SimpleYAMLParser {
     private func unquote(_ value: String) -> String {
         guard value.count >= 2 else { return value }
         if value.first == "\"", value.last == "\"" {
-            return String(value.dropFirst().dropLast())
+            return unescapeDoubleQuoted(String(value.dropFirst().dropLast()))
         }
         if value.first == "'", value.last == "'" {
             return String(value.dropFirst().dropLast())
         }
         return value
+    }
+
+    private func unescapeDoubleQuoted(_ value: String) -> String {
+        var result = ""
+        var isEscaped = false
+
+        for character in value {
+            if isEscaped {
+                switch character {
+                case "n":
+                    result.append("\n")
+                case "r":
+                    result.append("\r")
+                case "t":
+                    result.append("\t")
+                case "\"", "\\":
+                    result.append(character)
+                default:
+                    result.append(character)
+                }
+                isEscaped = false
+            } else if character == "\\" {
+                isEscaped = true
+            } else {
+                result.append(character)
+            }
+        }
+
+        if isEscaped {
+            result.append("\\")
+        }
+
+        return result
     }
 }
 

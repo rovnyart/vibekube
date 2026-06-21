@@ -15,7 +15,8 @@ Goal: add common write operations with strong previews, confirmations, RBAC awar
 - [x] Kubernetes `Status` mutation errors surface HTTP code, reason, field causes, and retry hints.
 - [x] Dry-run is supported at the request layer and exposed in the YAML detail editor as a no-apply preview.
 - [x] Non-UI mutation preview foundation parses YAML, validates target identity, runs server-side dry-run, fetches live state, and produces a diff.
-- [x] YAML detail tab can edit a draft manifest and render server-side dry-run diff or validation errors without mutating the cluster.
+- [x] YAML detail tab can edit a highlighted draft manifest and render server-side dry-run diff or validation errors without mutating the cluster.
+- [x] Rendered Kubernetes YAML from existing resources can be round-tripped through preview, including managedFields keys and resource quantity edits.
 
 ## Implementation Slices
 
@@ -43,7 +44,7 @@ Checkpoint: mutation client/service foundation is implemented and tested without
 - [x] Detect conflicts/resourceVersion issues.
 - [x] Show RBAC/permission failures clearly.
 
-Checkpoint: existing-resource YAML edits now have visible draft editing, server-side dry-run preview, diff rendering, validation causes, conflict handling, and permission/error surfacing. Confirmation flow and real apply actions are still pending.
+Checkpoint: existing-resource YAML edits now have a highlighted editor with line numbers, indentation help, server-side dry-run preview, diff rendering, validation causes, conflict handling, and permission/error surfacing. Rendered resource YAML round-trips through the preview parser for managedFields and resource quantity edits. Confirmation flow and real apply actions are still pending.
 
 ### 10.3 Common Actions
 
@@ -74,6 +75,7 @@ Checkpoint: existing-resource YAML edits now have visible draft editing, server-
 - [x] Dry-run tests against mock server.
 - [x] Diff rendering tests.
 - [x] AppModel preview wiring tests.
+- [x] Rendered YAML preview regression tests for managedFields and resource quantities.
 - [ ] Confirmation flow UI tests.
 - [ ] Integration tests against disposable kind cluster.
 
