@@ -63,7 +63,12 @@ struct AIResourceAssistantView: View {
     @State private var errorMessage: String?
     @State private var selectedContextSectionID: AIContextSection.ID?
     @State private var sentContext: AIContextBundle?
+    @State private var sendTask: Task<Void, Never>?
+    @State private var autoFollowsChat = true
+    @State private var showsJumpToBottom = false
     @FocusState private var composerFocused: Bool
+
+    private let chatBottomID = "ai-chat-bottom"
 
     let detail: ResourceDetailSnapshot
     var close: (() -> Void)?
@@ -85,6 +90,9 @@ struct AIResourceAssistantView: View {
         .frame(minWidth: 980, idealWidth: 1220, maxWidth: .infinity, minHeight: 660, idealHeight: 820, maxHeight: .infinity)
         .task(id: detail.query.id) {
             appModel.loadResourceEvents(for: detail)
+        }
+        .onDisappear {
+            stopGenerating()
         }
     }
 
@@ -174,33 +182,70 @@ struct AIResourceAssistantView: View {
     private var chatPane: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
-                        if messages.isEmpty {
-                            promptSuggestions
-                                .padding(.top, 8)
-                        }
+                ZStack(alignment: .bottom) {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 14) {
+                            AIChatScrollObserver { isAtBottom in
+                                autoFollowsChat = isAtBottom
+                                showsJumpToBottom = !isAtBottom
+                            }
+                            .frame(width: 0, height: 0)
 
-                        ForEach(messages) { message in
-                            AIChatBubble(message: message)
-                                .id(message.id)
-                        }
+                            if messages.isEmpty {
+                                promptSuggestions
+                                    .padding(.top, 8)
+                            }
 
-                        if isSending, messages.last?.role != .assistant {
-                            AIThinkingCard()
-                        }
+                            ForEach(messages) { message in
+                                AIChatBubble(message: message)
+                                    .id(message.id)
+                            }
 
-                        if let errorMessage {
-                            AIErrorCard(message: errorMessage)
+                            if isSending, messages.last?.role != .assistant {
+                                AIThinkingCard()
+                            }
+
+                            if let errorMessage {
+                                AIErrorCard(message: errorMessage)
+                            }
+
+                            Color.clear
+                                .frame(height: 1)
+                                .id(chatBottomID)
                         }
+                        .padding(18)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(18)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .background(.regularMaterial.opacity(0.42))
-                .onChange(of: messages.map(\.text).joined(separator: "\u{0}")) {
-                    if let last = messages.last {
-                        proxy.scrollTo(last.id, anchor: .bottom)
+                    .background(.regularMaterial.opacity(0.42))
+                    .onChange(of: messages.map(\.text).joined(separator: "\u{0}")) {
+                        scrollToBottomIfNeeded(proxy: proxy)
+                    }
+                    .onChange(of: isSending) {
+                        scrollToBottomIfNeeded(proxy: proxy)
+                    }
+
+                    if showsJumpToBottom {
+                        Button {
+                            autoFollowsChat = true
+                            showsJumpToBottom = false
+                            withAnimation(.snappy(duration: 0.18)) {
+                                proxy.scrollTo(chatBottomID, anchor: .bottom)
+                            }
+                        } label: {
+                            Label("Jump to bottom", systemImage: "arrow.down")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.plain)
+                        .background(.thinMaterial, in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(Color.accentColor.opacity(0.26))
+                        }
+                        .shadow(color: Color.black.opacity(0.12), radius: 18, x: 0, y: 8)
+                        .padding(.bottom, 14)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
             }
@@ -286,13 +331,18 @@ struct AIResourceAssistantView: View {
                     }
 
                 Button {
-                    sendPrompt()
+                    if isSending {
+                        stopGenerating()
+                    } else {
+                        sendPrompt()
+                    }
                 } label: {
-                    Label(isSending ? "Streaming" : "Send", systemImage: isSending ? "hourglass" : "paperplane.fill")
+                    Label(isSending ? "Stop" : "Send", systemImage: isSending ? "stop.fill" : "paperplane.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(isSending || draftPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .tint(isSending ? .red : nil)
+                .disabled(!isSending && draftPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .keyboardShortcut(.return, modifiers: .command)
             }
 
@@ -347,6 +397,16 @@ struct AIResourceAssistantView: View {
         sentContext ?? appModel.aiContextBundle(for: detail)
     }
 
+    private func scrollToBottomIfNeeded(proxy: ScrollViewProxy) {
+        guard autoFollowsChat else {
+            showsJumpToBottom = true
+            return
+        }
+        withAnimation(.snappy(duration: 0.16)) {
+            proxy.scrollTo(chatBottomID, anchor: .bottom)
+        }
+    }
+
     private func sendPrompt() {
         let prompt = draftPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty, !isSending else {
@@ -356,6 +416,8 @@ struct AIResourceAssistantView: View {
         draftPrompt = ""
         errorMessage = nil
         isSending = true
+        autoFollowsChat = true
+        showsJumpToBottom = false
         messages.append(AIChatTranscriptMessage(role: .user, text: prompt))
         messages.append(
             AIChatTranscriptMessage(
@@ -366,9 +428,10 @@ struct AIResourceAssistantView: View {
         )
         let toolID = messages.last?.id
 
-        Task {
+        let task = Task {
             do {
                 let gatheredContext = await appModel.gatherAIContext(for: detail, userPrompt: prompt)
+                try Task.checkCancellation()
                 await MainActor.run {
                     sentContext = gatheredContext.context
                     selectedContextSectionID = gatheredContext.context.sections.first(where: { $0.title == "Related Pod Health" })?.id
@@ -386,17 +449,33 @@ struct AIResourceAssistantView: View {
                 }
                 let stream = try appModel.streamAIChat(context: gatheredContext.context, userPrompt: prompt)
                 var didReceiveText = false
+                var pendingText = ""
+                var lastFlush = Date.distantPast
                 for try await chunk in stream {
-                    await MainActor.run {
-                        guard let assistantID,
-                              let index = messages.firstIndex(where: { $0.id == assistantID }) else {
-                            return
+                    try Task.checkCancellation()
+                    if !chunk.textDelta.isEmpty {
+                        didReceiveText = true
+                        pendingText += chunk.textDelta
+                    }
+                    let shouldFlush = !pendingText.isEmpty &&
+                        (chunk.isFinished || Date().timeIntervalSince(lastFlush) >= 0.08)
+                    if shouldFlush {
+                        let text = pendingText
+                        pendingText = ""
+                        lastFlush = Date()
+                        await appendAssistantText(text, assistantID: assistantID)
+                    }
+                    if chunk.isFinished {
+                        if !pendingText.isEmpty {
+                            let text = pendingText
+                            pendingText = ""
+                            await appendAssistantText(text, assistantID: assistantID)
                         }
-                        if !chunk.textDelta.isEmpty {
-                            didReceiveText = true
-                            messages[index].text += chunk.textDelta
-                        }
-                        if chunk.isFinished {
+                        await MainActor.run {
+                            guard let assistantID,
+                                  let index = messages.firstIndex(where: { $0.id == assistantID }) else {
+                                return
+                            }
                             messages[index].isStreaming = false
                             isSending = false
                         }
@@ -412,6 +491,11 @@ struct AIResourceAssistantView: View {
                         }
                     }
                     isSending = false
+                    sendTask = nil
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    finishStoppedResponse()
                 }
             } catch {
                 await MainActor.run {
@@ -421,7 +505,41 @@ struct AIResourceAssistantView: View {
                     }
                     errorMessage = error.localizedDescription
                     isSending = false
+                    sendTask = nil
                 }
+            }
+        }
+        sendTask = task
+    }
+
+    private func appendAssistantText(_ text: String, assistantID: AIChatTranscriptMessage.ID?) async {
+        await MainActor.run {
+            guard let assistantID,
+                  let index = messages.firstIndex(where: { $0.id == assistantID }) else {
+                return
+            }
+            messages[index].text += text
+        }
+    }
+
+    private func stopGenerating() {
+        guard isSending || sendTask != nil else {
+            return
+        }
+        sendTask?.cancel()
+        finishStoppedResponse()
+    }
+
+    private func finishStoppedResponse() {
+        sendTask = nil
+        isSending = false
+        for index in messages.indices where messages[index].isStreaming {
+            messages[index].isStreaming = false
+            if messages[index].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                messages[index].text = "Stopped."
+            } else if messages[index].role == .tool,
+                      messages[index].text == "- Gathering read-only cluster context before asking the provider." {
+                messages[index].text = "- Stopped before asking the provider."
             }
         }
     }
@@ -444,6 +562,84 @@ private struct AIModelStatusChip: View {
             .padding(.vertical, 5)
             .foregroundStyle(tint)
             .background(tint.opacity(0.12), in: Capsule())
+    }
+}
+
+private struct AIChatScrollObserver: NSViewRepresentable {
+    var onBottomStateChanged: (Bool) -> Void
+
+    func makeNSView(context: Context) -> AIChatScrollObserverView {
+        let view = AIChatScrollObserverView()
+        view.onBottomStateChanged = onBottomStateChanged
+        DispatchQueue.main.async {
+            view.attachToScrollView()
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: AIChatScrollObserverView, context: Context) {
+        nsView.onBottomStateChanged = onBottomStateChanged
+        DispatchQueue.main.async {
+            nsView.attachToScrollView()
+            nsView.publishBottomState()
+        }
+    }
+}
+
+private final class AIChatScrollObserverView: NSView {
+    var onBottomStateChanged: ((Bool) -> Void)?
+
+    private weak var observedScrollView: NSScrollView?
+    private var boundsObserver: NSObjectProtocol?
+    private var lastIsAtBottom: Bool?
+
+    deinit {
+        detach()
+    }
+
+    func attachToScrollView() {
+        guard let scrollView = enclosingScrollView,
+              scrollView !== observedScrollView else {
+            return
+        }
+
+        detach()
+        observedScrollView = scrollView
+        scrollView.contentView.postsBoundsChangedNotifications = true
+
+        boundsObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            self?.publishBottomState()
+        }
+
+        publishBottomState()
+    }
+
+    func publishBottomState() {
+        guard let scrollView = observedScrollView ?? enclosingScrollView else {
+            return
+        }
+
+        let visibleMaxY = scrollView.contentView.bounds.maxY
+        let contentHeight = scrollView.documentView?.bounds.height ?? scrollView.contentView.bounds.height
+        let isAtBottom = max(0, contentHeight - visibleMaxY) <= 28
+        guard isAtBottom != lastIsAtBottom else {
+            return
+        }
+
+        lastIsAtBottom = isAtBottom
+        onBottomStateChanged?(isAtBottom)
+    }
+
+    private func detach() {
+        if let boundsObserver {
+            NotificationCenter.default.removeObserver(boundsObserver)
+        }
+        boundsObserver = nil
+        observedScrollView = nil
     }
 }
 

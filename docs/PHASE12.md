@@ -17,6 +17,7 @@ Goal: add safe AI explain/summarize capabilities on top of local Kubernetes cont
 - [x] Resizable AI assistant window exists.
 - [x] AI answers render Markdown and highlighted code blocks.
 - [x] OpenAI-compatible streaming chat transport exists.
+- [x] Streaming AI responses can be stopped from the composer.
 - [x] Read-only explain flows exist.
 - [x] Resource-scoped AI gathers read-only cluster evidence before provider calls.
 - [x] Pod logs and events are loaded on demand when the prompt needs runtime context.
@@ -82,6 +83,8 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 - [x] Replace raw context wall with section navigation and highlighted code surfaces.
 - [x] Render AI answers as Markdown with code-block copy controls.
 - [x] Show live streaming answer state with animated provider activity.
+- [x] Let the user stop an in-flight model response.
+- [x] Auto-follow streaming chat output until the user scrolls away, then show a Jump to bottom control.
 - [x] Show the actual sent context after read-only gathering so the user can audit what the provider saw.
 
 ### 12.5 Guardrails
@@ -98,6 +101,8 @@ Checkpoint: provider settings now support OpenAI-compatible and Anthropic-compat
 - [x] User can summarize demo logs.
 - [x] Sensitive values are redacted before provider calls.
 - [x] AI-generated actions are never executed automatically.
+- [x] User can stop a streaming provider response.
+- [x] Chat auto-scroll does not fight the user after they scroll away from the bottom.
 - [x] Provider-backed manual evaluation passes with a real test key/model.
 
 ## Validation Commands

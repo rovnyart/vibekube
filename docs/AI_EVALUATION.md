@@ -16,6 +16,9 @@ Use this checklist when changing AI prompts, provider behavior, context building
 - Confirm the tools card lists only read-only inspection work and any read failures; it must not mutate the cluster.
 - Confirm streamed answers appear incrementally and render Markdown headings, lists, emphasis, and code blocks cleanly.
 - Confirm code blocks have syntax highlighting and a copy control.
+- While an answer is streaming, confirm the composer button becomes Stop and stops the provider response without freezing the assistant.
+- Confirm chat output auto-scrolls while untouched; after manually scrolling upward, auto-scroll should pause and a Jump to bottom control should appear.
+- Confirm Jump to bottom returns the transcript to the latest output and hides the control.
 
 ## Scenarios
 

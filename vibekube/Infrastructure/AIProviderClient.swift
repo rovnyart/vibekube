@@ -85,7 +85,7 @@ struct AIProviderClient: AIProviderServicing {
         request chatRequest: AIChatRequest
     ) -> AsyncThrowingStream<AIChatStreamChunk, Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     switch settings.shape {
                     case .openAICompatible:
@@ -96,6 +96,9 @@ struct AIProviderClient: AIProviderServicing {
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
             }
         }
     }
