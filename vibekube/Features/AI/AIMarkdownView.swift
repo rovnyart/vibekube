@@ -14,11 +14,6 @@ struct AIMarkdownView: View {
             ForEach(blocks) { block in
                 view(for: block)
             }
-
-            if isStreaming {
-                LiquidThinkingView()
-                    .padding(.top, 2)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .textSelection(.enabled)
@@ -173,41 +168,6 @@ struct AICodeBlockView: View {
                 copied = false
             }
         }
-    }
-}
-
-struct LiquidThinkingView: View {
-    @State private var phase = false
-
-    var body: some View {
-        HStack(spacing: 7) {
-            ForEach(0..<3, id: \.self) { index in
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.accentColor.opacity(0.72),
-                                Color.cyan.opacity(0.62),
-                                Color.green.opacity(0.54)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: phase ? 18 : 8, height: 8)
-                    .opacity(phase ? 0.95 : 0.58)
-                    .animation(
-                        .easeInOut(duration: 0.72)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(index) * 0.16),
-                        value: phase
-                    )
-            }
-        }
-        .onAppear {
-            phase = true
-        }
-        .accessibilityLabel("Streaming")
     }
 }
 

@@ -277,8 +277,6 @@ struct AIResourceAssistantView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                LiquidThinkingView()
-                    .opacity(0.72)
             }
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], alignment: .leading, spacing: 10) {
@@ -382,9 +380,6 @@ struct AIResourceAssistantView: View {
                 }
 
                 Spacer()
-                if isSending {
-                    LiquidThinkingView()
-                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -1145,7 +1140,8 @@ private struct AIChatBubble: View {
 private struct AIThinkingCard: View {
     var body: some View {
         HStack(spacing: 12) {
-            LiquidThinkingView()
+            ProgressView()
+                .controlSize(.small)
             Text("Asking provider")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
