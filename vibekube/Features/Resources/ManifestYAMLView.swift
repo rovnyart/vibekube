@@ -2,26 +2,64 @@ import AppKit
 import SwiftUI
 import WebKit
 
+struct ManifestYAMLMutationTarget: Equatable {
+    var clusterName: String
+    var namespace: String?
+    var apiVersion: String
+    var kind: String
+    var name: String
+
+    var displayTitle: String {
+        "\(kind)/\(name)"
+    }
+
+    var scopeText: String {
+        if let namespace, !namespace.isEmpty {
+            return "\(clusterName) · \(namespace) · \(apiVersion)"
+        }
+        return "\(clusterName) · cluster-scoped · \(apiVersion)"
+    }
+
+    var confirmationDescription: String {
+        if let namespace, !namespace.isEmpty {
+            return "\(kind)/\(name) in namespace \(namespace) on \(clusterName)"
+        }
+        return "cluster-scoped \(kind)/\(name) on \(clusterName)"
+    }
+}
+
 struct ManifestYAMLView: View {
     @State private var searchText = ""
     @State private var selectedMatchIndex = 0
     @State private var copiedToClipboard = false
     @State private var isEditing = false
     @State private var draftYAML: String
+    @State private var editSearchText = ""
+    @State private var selectedEditMatchIndex = 0
+    @State private var editSearchNavigationToken = 0
     @State private var previewState: ManifestMutationPreviewState = .idle
+    @State private var isPreviewExpanded = false
+    @State private var showsApplyConfirmation = false
+    @State private var isApplying = false
 
     let yaml: String
+    var mutationTarget: ManifestYAMLMutationTarget?
     var saveYAML: (() -> Void)?
     var previewMutation: ((String) async throws -> KubernetesMutationPreview)?
+    var applyMutation: ((KubernetesMutationPreview) async throws -> KubernetesResourceDetail)?
 
     init(
         yaml: String,
+        mutationTarget: ManifestYAMLMutationTarget? = nil,
         saveYAML: (() -> Void)? = nil,
-        previewMutation: ((String) async throws -> KubernetesMutationPreview)? = nil
+        previewMutation: ((String) async throws -> KubernetesMutationPreview)? = nil,
+        applyMutation: ((KubernetesMutationPreview) async throws -> KubernetesResourceDetail)? = nil
     ) {
         self.yaml = yaml
+        self.mutationTarget = mutationTarget
         self.saveYAML = saveYAML
         self.previewMutation = previewMutation
+        self.applyMutation = applyMutation
         _draftYAML = State(initialValue: yaml)
     }
 
@@ -48,19 +86,36 @@ struct ManifestYAMLView: View {
             selectedMatchIndex = 0
             copiedToClipboard = false
             draftYAML = yaml
+            editSearchText = ""
+            selectedEditMatchIndex = 0
+            editSearchNavigationToken = 0
             previewState = .idle
+            isPreviewExpanded = false
+            isApplying = false
         }
         .onChange(of: searchText) {
             selectedMatchIndex = 0
         }
+        .onChange(of: editSearchText) {
+            selectedEditMatchIndex = 0
+        }
         .onChange(of: draftYAML) {
             if !previewState.isLoading {
                 previewState = .idle
+                isPreviewExpanded = false
+            }
+            if selectedEditMatchIndex >= editMatches.count {
+                selectedEditMatchIndex = max(0, editMatches.count - 1)
             }
         }
         .onChange(of: matches.count) { _, count in
             if selectedMatchIndex >= count {
                 selectedMatchIndex = max(0, count - 1)
+            }
+        }
+        .onChange(of: editMatches.count) { _, count in
+            if selectedEditMatchIndex >= count {
+                selectedEditMatchIndex = max(0, count - 1)
             }
         }
         .accessibilityIdentifier("resource.detail.yaml")
@@ -82,8 +137,63 @@ struct ManifestYAMLView: View {
                 .accessibilityIdentifier("resource.detail.yaml.preview")
 
                 Button {
+                    showsApplyConfirmation = true
+                } label: {
+                    Label(isApplying ? "Applying" : "Apply", systemImage: isApplying ? "hourglass" : "checkmark.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+                .disabled(!canApplyPreview)
+                .help(applyHelpText)
+                .accessibilityIdentifier("resource.detail.yaml.apply")
+
+                Divider()
+                    .frame(height: 18)
+
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+
+                TextField("Find Draft", text: $editSearchText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 120, idealWidth: 160, maxWidth: 220)
+                    .onSubmit {
+                        jumpToSelectedEditMatch()
+                    }
+                    .accessibilityIdentifier("resource.detail.yaml.editSearch")
+
+                Text(editMatchSummary)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(editMatches.isEmpty ? .tertiary : .secondary)
+                    .frame(minWidth: 48, alignment: .trailing)
+
+                Button {
+                    selectPreviousEditMatch()
+                } label: {
+                    Label("Previous Draft Match", systemImage: "chevron.up")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .disabled(editMatches.isEmpty)
+                .help("Previous Draft Match")
+                .accessibilityIdentifier("resource.detail.yaml.previousEditMatch")
+
+                Button {
+                    selectNextEditMatch()
+                } label: {
+                    Label("Next Draft Match", systemImage: "chevron.down")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .disabled(editMatches.isEmpty)
+                .help("Next Draft Match")
+                .accessibilityIdentifier("resource.detail.yaml.nextEditMatch")
+
+                Spacer(minLength: 8)
+
+                Button {
                     draftYAML = yaml
                     previewState = .idle
+                    isPreviewExpanded = false
                 } label: {
                     Label("Reset", systemImage: "arrow.counterclockwise")
                         .labelStyle(.iconOnly)
@@ -180,22 +290,76 @@ struct ManifestYAMLView: View {
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.bar)
+        .confirmationDialog(
+            "Apply YAML changes?",
+            isPresented: $showsApplyConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Apply Changes") {
+                Task {
+                    await applyPreview()
+                }
+            }
+            .disabled(!canApplyPreview)
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(applyConfirmationMessage)
+        }
     }
 
     private var editContent: some View {
+        Group {
+            if previewState.isIdle {
+                editorView
+            } else {
+                HSplitView {
+                    editorView
+                        .frame(minWidth: 360)
+
+                    ManifestMutationPreviewPane(
+                        state: previewState,
+                        target: mutationTarget,
+                        canApply: canApplyPreview,
+                        isApplying: isApplying,
+                        onApply: {
+                            showsApplyConfirmation = true
+                        },
+                        onExpand: {
+                            isPreviewExpanded = true
+                        }
+                    )
+                    .frame(minWidth: 360, idealWidth: 460, maxWidth: .infinity)
+                }
+            }
+        }
+        .sheet(isPresented: $isPreviewExpanded) {
+            ManifestMutationPreviewPane(
+                state: previewState,
+                target: mutationTarget,
+                canApply: canApplyPreview,
+                isApplying: isApplying,
+                onApply: {
+                    closeExpandedPreviewAndConfirmApply()
+                },
+                onExpand: nil
+            )
+            .frame(minWidth: 820, minHeight: 560)
+        }
+    }
+
+    private var editorView: some View {
         VStack(spacing: 0) {
-            ManifestYAMLEditorView(text: $draftYAML)
+            ManifestYAMLEditorView(
+                text: $draftYAML,
+                searchQuery: editSearchText,
+                selectedSearchOrdinal: selectedEditMatch?.ordinal,
+                searchNavigationToken: editSearchNavigationToken
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .layoutPriority(1)
                 .clipped()
                 .accessibilityIdentifier("resource.detail.yaml.editor")
-
-            if !previewState.isIdle {
-                Divider()
-
-                ManifestMutationPreviewPane(state: previewState)
-                    .frame(minHeight: 180, idealHeight: 220, maxHeight: 280)
-            }
         }
     }
 
@@ -215,6 +379,49 @@ struct ManifestYAMLView: View {
         return matches[selectedMatchIndex]
     }
 
+    private var editMatches: [ManifestSearchMatch] {
+        ManifestSearchIndex.matches(in: draftYAML, query: editSearchText)
+    }
+
+    private var selectedEditMatch: ManifestSearchMatch? {
+        guard editMatches.indices.contains(selectedEditMatchIndex) else {
+            return nil
+        }
+
+        return editMatches[selectedEditMatchIndex]
+    }
+
+    private var loadedPreview: KubernetesMutationPreview? {
+        if case .loaded(let preview) = previewState {
+            return preview
+        }
+        return nil
+    }
+
+    private var canApplyPreview: Bool {
+        guard let loadedPreview else {
+            return false
+        }
+
+        return applyMutation != nil &&
+            loadedPreview.diff.hasChanges &&
+            !previewState.isLoading &&
+            !isApplying
+    }
+
+    private var applyHelpText: String {
+        if applyMutation == nil {
+            return "Apply unavailable"
+        }
+        guard let loadedPreview else {
+            return "Preview first"
+        }
+        if !loadedPreview.diff.hasChanges {
+            return "No changes to apply"
+        }
+        return "Apply previewed changes"
+    }
+
     private var matchSummary: String {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
@@ -226,6 +433,24 @@ struct ManifestYAMLView: View {
         }
 
         return "\(selectedMatchIndex + 1)/\(matches.count)"
+    }
+
+    private var editMatchSummary: String {
+        let query = editSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            return ""
+        }
+
+        guard !editMatches.isEmpty else {
+            return "0/0"
+        }
+
+        return "\(selectedEditMatchIndex + 1)/\(editMatches.count)"
+    }
+
+    private var applyConfirmationMessage: String {
+        let target = mutationTarget?.confirmationDescription ?? "the selected Kubernetes resource"
+        return "This will update \(target). Preview has already passed a server-side dry run. The change will be sent to the cluster."
     }
 
     private func selectPreviousMatch() {
@@ -244,6 +469,39 @@ struct ManifestYAMLView: View {
         selectedMatchIndex = selectedMatchIndex == matches.count - 1 ? 0 : selectedMatchIndex + 1
     }
 
+    private func selectPreviousEditMatch() {
+        guard !editMatches.isEmpty else {
+            return
+        }
+
+        selectedEditMatchIndex = selectedEditMatchIndex == 0 ? editMatches.count - 1 : selectedEditMatchIndex - 1
+        jumpToSelectedEditMatch()
+    }
+
+    private func selectNextEditMatch() {
+        guard !editMatches.isEmpty else {
+            return
+        }
+
+        selectedEditMatchIndex = selectedEditMatchIndex == editMatches.count - 1 ? 0 : selectedEditMatchIndex + 1
+        jumpToSelectedEditMatch()
+    }
+
+    private func jumpToSelectedEditMatch() {
+        guard selectedEditMatch != nil else {
+            return
+        }
+
+        editSearchNavigationToken += 1
+    }
+
+    private func closeExpandedPreviewAndConfirmApply() {
+        isPreviewExpanded = false
+        DispatchQueue.main.async {
+            showsApplyConfirmation = true
+        }
+    }
+
     private func copyYAML() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(yaml, forType: .string)
@@ -258,6 +516,8 @@ struct ManifestYAMLView: View {
     private func startEditing() {
         draftYAML = yaml
         previewState = .idle
+        isPreviewExpanded = false
+        isApplying = false
         isEditing = true
     }
 
@@ -265,6 +525,8 @@ struct ManifestYAMLView: View {
         isEditing = false
         draftYAML = yaml
         previewState = .idle
+        isPreviewExpanded = false
+        isApplying = false
     }
 
     @MainActor
@@ -309,6 +571,40 @@ struct ManifestYAMLView: View {
             previewState = .failed(message: error.localizedDescription, causes: [])
         }
     }
+
+    @MainActor
+    private func applyPreview() async {
+        guard let applyMutation else {
+            previewState = .failed(message: "Apply unavailable.", causes: [])
+            return
+        }
+        guard let preview = loadedPreview else {
+            previewState = .failed(message: "Preview changes before applying.", causes: [])
+            return
+        }
+
+        isApplying = true
+        do {
+            let applied = try await applyMutation(preview)
+            draftYAML = applied.yaml
+            previewState = .idle
+            isPreviewExpanded = false
+            isEditing = false
+        } catch let error as KubernetesMutationPreviewError {
+            previewState = .failed(
+                message: error.localizedDescription,
+                causes: error.fieldCauses
+            )
+        } catch let error as LocalizedError {
+            previewState = .failed(
+                message: error.errorDescription ?? error.localizedDescription,
+                causes: []
+            )
+        } catch {
+            previewState = .failed(message: error.localizedDescription, causes: [])
+        }
+        isApplying = false
+    }
 }
 
 private enum ManifestMutationPreviewState {
@@ -334,6 +630,11 @@ private enum ManifestMutationPreviewState {
 
 private struct ManifestMutationPreviewPane: View {
     let state: ManifestMutationPreviewState
+    let target: ManifestYAMLMutationTarget?
+    let canApply: Bool
+    let isApplying: Bool
+    var onApply: (() -> Void)?
+    var onExpand: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -348,18 +649,49 @@ private struct ManifestMutationPreviewPane: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: headerImage)
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(headerTint)
 
-            Text(headerTitle)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(headerTitle)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
 
             Spacer()
+
+            if let onExpand {
+                Button {
+                    onExpand()
+                } label: {
+                    Label("Expand Preview", systemImage: "arrow.up.left.and.arrow.down.right")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .help("Expand Preview")
+                .accessibilityIdentifier("resource.detail.yaml.expandPreview")
+            }
+
+            Button {
+                onApply?()
+            } label: {
+                Label(isApplying ? "Applying" : "Apply", systemImage: isApplying ? "hourglass" : "checkmark.circle")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+            .disabled(!canApply || onApply == nil)
+            .help(canApply ? "Apply previewed changes" : "Preview changes before applying")
+            .accessibilityIdentifier("resource.detail.yaml.applyFromPreview")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 
     @ViewBuilder
@@ -368,8 +700,13 @@ private struct ManifestMutationPreviewPane: View {
         case .idle:
             EmptyView()
         case .loading:
-            ProgressView("Previewing")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 8) {
+                ProgressView()
+                Text("Running server-side dry run")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .loaded(let preview):
             if preview.diff.hasChanges {
                 ScrollView {
@@ -382,14 +719,25 @@ private struct ManifestMutationPreviewPane: View {
                 }
                 .accessibilityIdentifier("resource.detail.yaml.diff")
             } else {
-                Text("No changes")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(.green)
+                    Text("No changes")
+                        .font(.callout.weight(.semibold))
+                    Text("The dry-run resource matches the live resource.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         case .failed(let message, let causes):
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
+                    Label("Preview or apply failed", systemImage: "exclamationmark.triangle")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.red)
+
                     Text(message)
                         .font(.callout)
                         .foregroundStyle(.primary)
@@ -431,6 +779,23 @@ private struct ManifestMutationPreviewPane: View {
             preview.diff.hasChanges ? "Dry-run Diff" : "Dry-run Preview"
         case .failed:
             "Preview Failed"
+        }
+    }
+
+    private var subtitle: String {
+        switch state {
+        case .loaded(let preview) where preview.diff.hasChanges:
+            let additions = preview.diff.lines.filter { $0.kind == .addition }.count
+            let removals = preview.diff.lines.filter { $0.kind == .removal }.count
+            return "\(target?.displayTitle ?? "Selected resource") · +\(additions) -\(removals)"
+        case .loaded:
+            return "\(target?.displayTitle ?? "Selected resource") · dry run succeeded"
+        case .failed:
+            return target?.scopeText ?? "Validation failed before apply"
+        case .loading:
+            return target?.scopeText ?? "Server-side validation"
+        case .idle:
+            return target?.scopeText ?? ""
         }
     }
 
@@ -679,6 +1044,9 @@ private struct ManifestYAMLTextView: NSViewRepresentable {
 
 private struct ManifestYAMLEditorView: NSViewRepresentable {
     @Binding var text: String
+    var searchQuery: String = ""
+    var selectedSearchOrdinal: Int?
+    var searchNavigationToken: Int = 0
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text)
@@ -701,6 +1069,12 @@ private struct ManifestYAMLEditorView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.setText(text, in: webView)
+        context.coordinator.setSearch(
+            query: searchQuery,
+            ordinal: selectedSearchOrdinal,
+            navigationToken: searchNavigationToken,
+            in: webView
+        )
     }
 
     private static func htmlDocument(initialText: String) -> String {
@@ -841,7 +1215,7 @@ const editor = document.getElementById("editor");
 const highlight = document.getElementById("highlight");
 const gutter = document.getElementById("gutter");
 const currentLine = document.getElementById("currentLine");
-let isApplyingNativeText = false;
+var isApplyingNativeText = false;
 
 function escapeHTML(value) {
     return value
@@ -977,6 +1351,33 @@ window.vibekubeSetText = function(value) {
     isApplyingNativeText = false;
 };
 
+window.vibekubeSelectSearch = function(query, ordinal) {
+    if (!query || !ordinal) return;
+
+    const haystack = editor.value.toLocaleLowerCase();
+    const needle = query.toLocaleLowerCase();
+    let from = 0;
+    let found = -1;
+    for (let count = 1; count <= ordinal; count += 1) {
+        found = haystack.indexOf(needle, from);
+        if (found < 0) return;
+        from = found + Math.max(needle.length, 1);
+    }
+
+    const end = found + query.length;
+    editor.focus({ preventScroll: true });
+    editor.setSelectionRange(found, end);
+
+    const line = editor.value.slice(0, found).split("\n").length - 1;
+    const lineTop = line * 17;
+    const lineBottom = lineTop + 17;
+    if (lineTop < editor.scrollTop || lineBottom > editor.scrollTop + editor.clientHeight) {
+        editor.scrollTop = Math.max(0, lineTop - 34);
+    }
+    syncScroll();
+    updateCurrentLine();
+};
+
 editor.addEventListener("input", () => {
     render();
     postChange();
@@ -1027,6 +1428,8 @@ window.webkit.messageHandlers.editor.postMessage({ type: "ready" });
         private var isLoaded = false
         private var pendingText: String?
         private var renderedText: String?
+        private var pendingSearch: (query: String, ordinal: Int?)?
+        private var renderedSearchToken = 0
 
         init(text: Binding<String>) {
             _text = text
@@ -1046,6 +1449,33 @@ window.webkit.messageHandlers.editor.postMessage({ type: "ready" });
             webView.evaluateJavaScript("window.vibekubeSetText(\(ManifestYAMLEditorView.jsonStringLiteral(value)));")
         }
 
+        func setSearch(
+            query: String,
+            ordinal: Int?,
+            navigationToken: Int,
+            in webView: WKWebView
+        ) {
+            guard navigationToken != renderedSearchToken else {
+                return
+            }
+
+            guard isLoaded else {
+                pendingSearch = (query, ordinal)
+                return
+            }
+
+            renderedSearchToken = navigationToken
+            pendingSearch = nil
+            guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  let ordinal else {
+                return
+            }
+
+            webView.evaluateJavaScript(
+                "window.vibekubeSelectSearch(\(ManifestYAMLEditorView.jsonStringLiteral(query)), \(ordinal));"
+            )
+        }
+
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let body = message.body as? [String: Any],
                   let type = body["type"] as? String else {
@@ -1058,6 +1488,14 @@ window.webkit.messageHandlers.editor.postMessage({ type: "ready" });
                     setText(pendingText, in: webView)
                 } else {
                     renderedText = text
+                }
+                if let pendingSearch, let webView {
+                    setSearch(
+                        query: pendingSearch.query,
+                        ordinal: pendingSearch.ordinal,
+                        navigationToken: renderedSearchToken + 1,
+                        in: webView
+                    )
                 }
                 return
             }

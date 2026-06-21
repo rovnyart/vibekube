@@ -418,6 +418,10 @@ final class AppModel: ObservableObject {
         mutationPreviewService != nil && selectedConnectionState == .connected
     }
 
+    var canApplyMutations: Bool {
+        canPreviewMutations
+    }
+
     private var appVersionDescription: String {
         let bundle = Bundle.main
         let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
@@ -1794,6 +1798,48 @@ final class AppModel: ObservableObject {
             name: name,
             proposedYAML: proposedYAML
         )
+    }
+
+    func applyMutation(
+        for resource: ResourceNavigationItem,
+        row: KubernetesUnstructuredResource,
+        preview: KubernetesMutationPreview
+    ) async throws -> KubernetesResourceDetail {
+        guard let mutationPreviewService else {
+            throw MutationPreviewRequestError.unavailable
+        }
+        guard selectedConnectionState == .connected else {
+            throw MutationPreviewRequestError.disconnected
+        }
+        guard let selectedClusterID else {
+            throw MutationPreviewRequestError.missingCluster
+        }
+        guard let query = resourceDetailQuery(for: resource, row: row) else {
+            throw MutationPreviewRequestError.missingResource
+        }
+
+        let kubeconfig = loadedKubeconfig
+        let appliedResource = try await mutationPreviewService.applyExistingResource(
+            contextName: selectedClusterID,
+            kubeconfig: kubeconfig,
+            preview: preview
+        )
+        let summary: KubernetesResourceDetailSummary
+        if let resourceDetailService {
+            summary = await Self.expandedEnvironmentSummary(
+                for: appliedResource,
+                query: query,
+                kubeconfig: kubeconfig,
+                resourceDetailService: resourceDetailService,
+                configMapResource: ResourceNavigationItem.configMaps.discoveredResource(in: selectedDiscovery),
+                secretResource: ResourceNavigationItem.secrets.discoveredResource(in: selectedDiscovery)
+            )
+        } else {
+            summary = appliedResource.summary
+        }
+        finishResourceDetail(query: query, detail: appliedResource, summary: summary)
+        loadResourceList(for: resource, force: true)
+        return appliedResource
     }
 
     private func loadResourceDetail(

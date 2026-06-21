@@ -9,13 +9,14 @@ Goal: add common write operations with strong previews, confirmations, RBAC awar
 - [x] Phase plan exists.
 - [x] Mutation API exists.
 - [x] Dry-run/diff support exists.
-- [ ] Confirmations exist.
+- [x] Confirmations exist for existing-resource YAML apply.
 - [ ] Scale/restart/delete/apply flows exist.
 - [ ] Local action history exists.
 - [x] Kubernetes `Status` mutation errors surface HTTP code, reason, field causes, and retry hints.
 - [x] Dry-run is supported at the request layer and exposed in the YAML detail editor as a no-apply preview.
 - [x] Non-UI mutation preview foundation parses YAML, validates target identity, runs server-side dry-run, fetches live state, and produces a diff.
 - [x] YAML detail tab can edit a highlighted draft manifest and render server-side dry-run diff or validation errors without mutating the cluster.
+- [x] Existing-resource YAML edits can be searched, previewed in a split or expanded diff, confirmed, applied, and refreshed back into the detail/list UI.
 - [x] Rendered Kubernetes YAML from existing resources can be round-tripped through preview, including managedFields keys and resource quantity edits.
 
 ## Implementation Slices
@@ -44,7 +45,7 @@ Checkpoint: mutation client/service foundation is implemented and tested without
 - [x] Detect conflicts/resourceVersion issues.
 - [x] Show RBAC/permission failures clearly.
 
-Checkpoint: existing-resource YAML edits now have a highlighted editor with line numbers, indentation help, server-side dry-run preview, diff rendering, validation causes, conflict handling, and permission/error surfacing. Rendered resource YAML round-trips through the preview parser for managedFields and resource quantity edits. Confirmation flow and real apply actions are still pending.
+Checkpoint: existing-resource YAML edits now have a highlighted editor with line numbers, indentation help, draft search, server-side dry-run preview, split and expanded diff rendering, validation causes, conflict handling, permission/error surfacing, confirmation-gated apply, and post-apply detail/list refresh. Rendered resource YAML round-trips through the preview parser for managedFields and resource quantity edits.
 
 ### 10.3 Common Actions
 
@@ -52,7 +53,7 @@ Checkpoint: existing-resource YAML edits now have a highlighted editor with line
 - [ ] Scale StatefulSet.
 - [ ] Restart rollout.
 - [ ] Delete resource.
-- [ ] Edit YAML.
+- [x] Edit existing-resource YAML.
 - [ ] Create resource from YAML.
 - [ ] Apply YAML file.
 - [ ] Create namespace.
@@ -62,9 +63,9 @@ Checkpoint: existing-resource YAML edits now have a highlighted editor with line
 
 ### 10.4 Safety UX
 
-- [ ] Confirm cluster/context.
-- [ ] Confirm namespace.
-- [ ] Confirm kind/name.
+- [x] Confirm cluster/context for existing-resource YAML apply.
+- [x] Confirm namespace for existing-resource YAML apply.
+- [x] Confirm kind/name for existing-resource YAML apply.
 - [ ] Require typed confirmation for destructive actions.
 - [ ] Disable unsupported actions based on discovery/RBAC.
 - [ ] Record local action history.
@@ -75,6 +76,7 @@ Checkpoint: existing-resource YAML edits now have a highlighted editor with line
 - [x] Dry-run tests against mock server.
 - [x] Diff rendering tests.
 - [x] AppModel preview wiring tests.
+- [x] AppModel apply wiring tests.
 - [x] Rendered YAML preview regression tests for managedFields and resource quantities.
 - [ ] Confirmation flow UI tests.
 - [ ] Integration tests against disposable kind cluster.
@@ -84,7 +86,7 @@ Checkpoint: existing-resource YAML edits now have a highlighted editor with line
 - [ ] User can safely scale a demo deployment.
 - [ ] User can restart a rollout.
 - [ ] User can delete a disposable resource with clear confirmation.
-- [ ] User can preview and apply YAML.
+- [x] User can preview and apply existing-resource YAML.
 - [ ] Failed mutations leave the UI in a clear, recoverable state.
 
 ## Validation Commands
@@ -95,3 +97,9 @@ kubectl -n vibekube-demo scale deploy/echo-web --replicas=3
 kubectl -n vibekube-demo rollout restart deploy/echo-web
 xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test
 ```
+
+## Validation Log
+
+- 2026-06-21: Focused mutation tests passed:
+  `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/KubernetesMutationPreviewTests -only-testing:vibekubeTests/vibekubeTests/appModelAppliesPreviewedMutationForSelectedResourceRow -only-testing:vibekubeTests/vibekubeTests/appModelPreviewsMutationForSelectedResourceRow`
+- 2026-06-21: Manual Computer Use QA against `kind-vibekube-dev` edited `Deployment/echo-web` YAML, searched the draft, previewed the server dry-run diff, expanded the diff, confirmed apply, and verified the live resource returned to `64Mi` memory with `kubectl`.

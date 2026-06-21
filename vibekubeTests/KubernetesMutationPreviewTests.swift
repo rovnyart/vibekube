@@ -83,6 +83,61 @@ struct KubernetesMutationPreviewTests {
         #expect(await mutationService.requestCount() == 1)
     }
 
+    @Test func appliesPreviewedExistingResourceWithoutDryRun() async throws {
+        let resource = deploymentResource()
+        let applied = try resourceDetail(
+            """
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "metadata": {
+                "name": "echo-web",
+                "namespace": "vibekube-demo",
+                "resourceVersion": "12"
+              },
+              "spec": {
+                "replicas": 3
+              }
+            }
+            """
+        )
+        let mutationService = RecordingMutationService { request in
+            #expect(request.verb == .put)
+            #expect(request.resource == resource)
+            #expect(request.namespace == "vibekube-demo")
+            #expect(request.name == "echo-web")
+            #expect(!request.dryRun)
+            return KubernetesMutationResult(statusCode: 200, status: nil, resource: applied)
+        }
+        let previewService = KubernetesMutationPreviewService(
+            mutationService: mutationService,
+            resourceDetailService: StaticResourceDetailService(detail: applied)
+        )
+        let preview = KubernetesMutationPreview(
+            liveResource: applied,
+            proposedResource: applied,
+            dryRunResource: applied,
+            mutationRequest: KubernetesMutationRequest(
+                verb: .put,
+                resource: resource,
+                namespace: "vibekube-demo",
+                name: "echo-web",
+                body: Data(#"{"kind":"Deployment"}"#.utf8),
+                dryRun: true
+            ),
+            diff: KubernetesYAMLDiff.between(old: "replicas: 1", new: "replicas: 3")
+        )
+
+        let appliedResult = try await previewService.applyExistingResource(
+            contextName: "demo",
+            kubeconfig: kubeconfig(),
+            preview: preview
+        )
+
+        #expect(appliedResult.summary.resourceVersion == "12")
+        #expect(await mutationService.requestCount() == 1)
+    }
+
     @Test func rejectsInvalidYAMLBeforeDryRun() async throws {
         let mutationService = RecordingMutationService { _ in
             Issue.record("Dry-run should not be called for invalid YAML")

@@ -9,6 +9,12 @@ protocol KubernetesMutationPreviewServicing {
         name: String,
         proposedYAML: String
     ) async throws -> KubernetesMutationPreview
+
+    func applyExistingResource(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        preview: KubernetesMutationPreview
+    ) async throws -> KubernetesResourceDetail
 }
 
 struct KubernetesMutationPreview: Equatable {
@@ -130,6 +136,8 @@ enum KubernetesMutationPreviewError: LocalizedError, Equatable {
     case dryRunReturnedEmpty
     case serverRejected(KubernetesMutationError)
     case conflict(KubernetesMutationConflict)
+    case applyReturnedStatus(KubernetesStatus)
+    case applyReturnedEmpty
 
     var errorDescription: String? {
         switch self {
@@ -149,6 +157,10 @@ enum KubernetesMutationPreviewError: LocalizedError, Equatable {
             error.localizedDescription
         case .conflict(let conflict):
             conflict.message
+        case .applyReturnedStatus(let status):
+            DiagnosticsRedactor.redactedText(status.message ?? status.reason ?? "Apply returned Kubernetes Status.")
+        case .applyReturnedEmpty:
+            "Apply completed without returning an updated resource."
         }
     }
 
@@ -158,7 +170,9 @@ enum KubernetesMutationPreviewError: LocalizedError, Equatable {
             error.fieldCauses
         case .conflict(let conflict):
             conflict.fieldCauses
-        case .invalidYAML, .missingField, .identityMismatch, .namespaceNotAllowed, .dryRunReturnedStatus, .dryRunReturnedEmpty:
+        case .applyReturnedStatus(let status):
+            status.fieldCauses
+        case .invalidYAML, .missingField, .identityMismatch, .namespaceNotAllowed, .dryRunReturnedStatus, .dryRunReturnedEmpty, .applyReturnedEmpty:
             []
         }
     }
@@ -238,6 +252,44 @@ final class KubernetesMutationPreviewService: KubernetesMutationPreviewServicing
             mutationRequest: mutationRequest,
             diff: KubernetesYAMLDiff.between(old: liveResource.yaml, new: dryRunResource.yaml)
         )
+    }
+
+    func applyExistingResource(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        preview: KubernetesMutationPreview
+    ) async throws -> KubernetesResourceDetail {
+        var request = preview.mutationRequest
+        request.dryRun = false
+
+        let result: KubernetesMutationResult
+        do {
+            result = try await mutationService.mutate(
+                contextName: contextName,
+                kubeconfig: kubeconfig,
+                request: request
+            )
+        } catch let error as KubernetesMutationError where error.isConflict {
+            throw KubernetesMutationPreviewError.conflict(
+                KubernetesMutationConflict(
+                    message: error.localizedDescription,
+                    retryAfterSeconds: error.retryAfterSeconds,
+                    fieldCauses: error.fieldCauses
+                )
+            )
+        } catch let error as KubernetesMutationError {
+            throw KubernetesMutationPreviewError.serverRejected(error)
+        }
+
+        if let status = result.status {
+            throw KubernetesMutationPreviewError.applyReturnedStatus(status)
+        }
+
+        guard let resource = result.resource else {
+            throw KubernetesMutationPreviewError.applyReturnedEmpty
+        }
+
+        return resource
     }
 }
 

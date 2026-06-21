@@ -1179,6 +1179,39 @@ struct vibekubeTests {
     }
 
     @MainActor
+    @Test func appModelAppliesPreviewedMutationForSelectedResourceRow() async throws {
+        let mutationPreview = try podMutationPreview(resource: dashboardDiscoveredResource(for: .pods))
+        let previewService = RecordingMutationPreviewService(preview: mutationPreview)
+        let model = AppModel(
+            clusters: ClusterSummary.preview,
+            connectionService: SucceedingConnectionService(),
+            mutationPreviewService: previewService,
+            loadedKubeconfig: kubeconfig()
+        )
+
+        model.connectSelectedCluster()
+        try await waitForConnectionState(model, .connected)
+
+        let row = try podResource(name: "web-0", namespace: "vibekube-demo")
+        let applied = try await model.applyMutation(
+            for: .pods,
+            row: row,
+            preview: mutationPreview
+        )
+
+        #expect(applied.summary.resourceVersion == "11")
+        #expect(await previewService.firstApplyRequest()?.mutationRequest.dryRun == true)
+
+        let state = model.resourceDetailState(for: .pods, row: row)
+        guard case .loaded(let snapshot) = state else {
+            Issue.record("Expected loaded detail after apply")
+            return
+        }
+        #expect(snapshot.summary.resourceVersion == "11")
+        #expect(snapshot.yaml.contains(#"resourceVersion: "11""#))
+    }
+
+    @MainActor
     @Test func appModelLoadsResourceEventsForSelectedDetail() async throws {
         let model = AppModel(
             clusters: ClusterSummary.preview,
@@ -2293,6 +2326,7 @@ private actor RecordingMutationPreviewService: KubernetesMutationPreviewServicin
     }
 
     private var requests: [Request] = []
+    private var applyRequests: [KubernetesMutationPreview] = []
     private let preview: KubernetesMutationPreview
 
     init(preview: KubernetesMutationPreview) {
@@ -2321,6 +2355,19 @@ private actor RecordingMutationPreviewService: KubernetesMutationPreviewServicin
 
     func firstRequest() -> Request? {
         requests.first
+    }
+
+    func applyExistingResource(
+        contextName: String,
+        kubeconfig: Kubeconfig,
+        preview: KubernetesMutationPreview
+    ) async throws -> KubernetesResourceDetail {
+        applyRequests.append(preview)
+        return preview.dryRunResource
+    }
+
+    func firstApplyRequest() -> KubernetesMutationPreview? {
+        applyRequests.first
     }
 }
 

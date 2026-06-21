@@ -9,6 +9,7 @@ struct ResourceListView: View {
     @State private var selectedResourceID: KubernetesUnstructuredResource.ID?
     @State private var openDetailRows: [KubernetesUnstructuredResource] = []
     @State private var selectedDetailRowID: KubernetesUnstructuredResource.ID?
+    @State private var selectedDetailPanels: [KubernetesUnstructuredResource.ID: ResourceDetailPanel] = [:]
     @State private var visibleRowOrder: [KubernetesUnstructuredResource.ID] = []
     @State private var rowResourceVersions: [KubernetesUnstructuredResource.ID: String] = [:]
     @State private var recentlyUpdatedRowIDs: Set<KubernetesUnstructuredResource.ID> = []
@@ -105,6 +106,7 @@ struct ResourceListView: View {
                         .frame(minHeight: 220, idealHeight: 360, maxHeight: .infinity)
 
                     ResourceDetailTabsView(
+                        selectedPanels: $selectedDetailPanels,
                         item: item,
                         rows: openDetailRows,
                         selectedRowID: selectedDetailRowID,
@@ -799,6 +801,7 @@ struct ResourceListView: View {
         }
 
         openDetailRows = openDetailRows.compactMap { rowByID[$0.id] }
+        selectedDetailPanels = selectedDetailPanels.filter { rowByID[$0.key] != nil }
 
         if let selectedDetailRowID,
            !openDetailRows.contains(where: { $0.id == selectedDetailRowID }) {
@@ -1660,6 +1663,8 @@ private struct ResourceNameFilterBadge: View {
 }
 
 private struct ResourceDetailTabsView: View {
+    @Binding var selectedPanels: [KubernetesUnstructuredResource.ID: ResourceDetailPanel]
+
     let item: ResourceNavigationItem
     let rows: [KubernetesUnstructuredResource]
     let selectedRowID: KubernetesUnstructuredResource.ID?
@@ -1673,7 +1678,11 @@ private struct ResourceDetailTabsView: View {
             Divider()
 
             if let selectedRow {
-                ResourceDetailView(item: item, row: selectedRow)
+                ResourceDetailView(
+                    selectedPanel: panelBinding(for: selectedRow.id),
+                    item: item,
+                    row: selectedRow
+                )
                     .id(selectedRow.id)
             } else {
                 EmptyStateView(
@@ -1686,6 +1695,9 @@ private struct ResourceDetailTabsView: View {
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
+        .onChange(of: rows.map(\.id)) { _, ids in
+            selectedPanels = selectedPanels.filter { ids.contains($0.key) }
+        }
     }
 
     private var tabBar: some View {
@@ -1734,6 +1746,17 @@ private struct ResourceDetailTabsView: View {
         }
 
         return rows.first { $0.id == selectedRowID } ?? rows.first
+    }
+
+    private func panelBinding(for id: KubernetesUnstructuredResource.ID) -> Binding<ResourceDetailPanel> {
+        Binding(
+            get: {
+                selectedPanels[id] ?? .overview
+            },
+            set: { panel in
+                selectedPanels[id] = panel
+            }
+        )
     }
 }
 
@@ -1787,7 +1810,7 @@ private struct ResourceDetailTabButton: View {
 
 private struct ResourceDetailView: View {
     @EnvironmentObject private var appModel: AppModel
-    @State private var selectedPanel: ResourceDetailPanel = .overview
+    @Binding var selectedPanel: ResourceDetailPanel
     @State private var yamlSaveErrorMessage: String?
 
     let item: ResourceNavigationItem
@@ -1964,10 +1987,26 @@ private struct ResourceDetailView: View {
     private func yamlContent(_ snapshot: ResourceDetailSnapshot) -> some View {
         ManifestYAMLView(
             yaml: snapshot.yaml,
+            mutationTarget: yamlMutationTarget(snapshot),
             saveYAML: {
                 saveYAML(snapshot.yaml)
             },
-            previewMutation: yamlPreviewAction
+            previewMutation: yamlPreviewAction,
+            applyMutation: yamlApplyAction
+        )
+    }
+
+    private func yamlMutationTarget(_ snapshot: ResourceDetailSnapshot) -> ManifestYAMLMutationTarget? {
+        guard appModel.canPreviewMutations else {
+            return nil
+        }
+
+        return ManifestYAMLMutationTarget(
+            clusterName: snapshot.query.contextID,
+            namespace: snapshot.query.namespace,
+            apiVersion: snapshot.summary.apiVersion ?? item.discoveredResource(in: appModel.selectedDiscovery)?.groupVersion ?? "",
+            kind: snapshot.summary.kind ?? item.discoveredResource(in: appModel.selectedDiscovery)?.kind ?? item.title,
+            name: snapshot.summary.name ?? snapshot.query.name
         )
     }
 
@@ -1981,6 +2020,20 @@ private struct ResourceDetailView: View {
                 for: item,
                 row: row,
                 proposedYAML: proposedYAML
+            )
+        }
+    }
+
+    private var yamlApplyAction: ((KubernetesMutationPreview) async throws -> KubernetesResourceDetail)? {
+        guard appModel.canApplyMutations else {
+            return nil
+        }
+
+        return { preview in
+            try await appModel.applyMutation(
+                for: item,
+                row: row,
+                preview: preview
             )
         }
     }
