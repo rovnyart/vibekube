@@ -45,7 +45,7 @@ Checkpoint: mutation client/service foundation is implemented and tested without
 - [x] Detect conflicts/resourceVersion issues.
 - [x] Show RBAC/permission failures clearly.
 
-Checkpoint: existing-resource YAML edits now have a highlighted editor with line numbers, indentation help, draft search, server-side dry-run preview, split and expanded diff rendering, validation causes, conflict handling, permission/error surfacing, confirmation-gated apply, and post-apply detail/list refresh. Rendered resource YAML round-trips through the preview parser for managedFields and resource quantity edits.
+Checkpoint: existing-resource YAML edits now have a highlighted editor with line numbers, indentation help, keyboard-friendly draft search, server-side dry-run preview, split and expanded diff rendering, validation causes, conflict handling, permission/error surfacing, confirmation-gated apply, and post-apply detail/list refresh. Rendered resource YAML round-trips through the preview parser for managedFields and resource quantity edits.
 
 ### 10.3 Common Actions
 
@@ -103,3 +103,4 @@ xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=m
 - 2026-06-21: Focused mutation tests passed:
   `xcodebuild -project vibekube.xcodeproj -scheme vibekube -destination 'platform=macOS' test -only-testing:vibekubeTests/KubernetesMutationPreviewTests -only-testing:vibekubeTests/vibekubeTests/appModelAppliesPreviewedMutationForSelectedResourceRow -only-testing:vibekubeTests/vibekubeTests/appModelPreviewsMutationForSelectedResourceRow`
 - 2026-06-21: Manual Computer Use QA against `kind-vibekube-dev` edited `Deployment/echo-web` YAML, searched the draft, previewed the server dry-run diff, expanded the diff, confirmed apply, and verified the live resource returned to `64Mi` memory with `kubectl`.
+- 2026-06-21: Manual Computer Use QA verified edit-mode `Cmd+F` focuses draft search from the WebKit editor, Enter advances matches while keeping focus in search, and only one Apply action appears after dry-run preview.

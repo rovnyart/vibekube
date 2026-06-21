@@ -41,6 +41,7 @@ struct ManifestYAMLView: View {
     @State private var isPreviewExpanded = false
     @State private var showsApplyConfirmation = false
     @State private var isApplying = false
+    @FocusState private var isEditSearchFocused: Bool
 
     let yaml: String
     var mutationTarget: ManifestYAMLMutationTarget?
@@ -98,6 +99,7 @@ struct ManifestYAMLView: View {
         }
         .onChange(of: editSearchText) {
             selectedEditMatchIndex = 0
+            jumpToSelectedEditMatch()
         }
         .onChange(of: draftYAML) {
             if !previewState.isLoading {
@@ -136,17 +138,6 @@ struct ManifestYAMLView: View {
                 .help(previewMutation == nil ? "Preview unavailable" : "Preview")
                 .accessibilityIdentifier("resource.detail.yaml.preview")
 
-                Button {
-                    showsApplyConfirmation = true
-                } label: {
-                    Label(isApplying ? "Applying" : "Apply", systemImage: isApplying ? "hourglass" : "checkmark.circle")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.green)
-                .disabled(!canApplyPreview)
-                .help(applyHelpText)
-                .accessibilityIdentifier("resource.detail.yaml.apply")
-
                 Divider()
                     .frame(height: 18)
 
@@ -155,9 +146,10 @@ struct ManifestYAMLView: View {
 
                 TextField("Find Draft", text: $editSearchText)
                     .textFieldStyle(.roundedBorder)
+                    .focused($isEditSearchFocused)
                     .frame(minWidth: 120, idealWidth: 160, maxWidth: 220)
                     .onSubmit {
-                        jumpToSelectedEditMatch()
+                        selectNextEditMatch()
                     }
                     .accessibilityIdentifier("resource.detail.yaml.editSearch")
 
@@ -354,7 +346,10 @@ struct ManifestYAMLView: View {
                 text: $draftYAML,
                 searchQuery: editSearchText,
                 selectedSearchOrdinal: selectedEditMatch?.ordinal,
-                searchNavigationToken: editSearchNavigationToken
+                searchNavigationToken: editSearchNavigationToken,
+                onFindShortcut: {
+                    focusEditSearch()
+                }
             )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .layoutPriority(1)
@@ -407,19 +402,6 @@ struct ManifestYAMLView: View {
             loadedPreview.diff.hasChanges &&
             !previewState.isLoading &&
             !isApplying
-    }
-
-    private var applyHelpText: String {
-        if applyMutation == nil {
-            return "Apply unavailable"
-        }
-        guard let loadedPreview else {
-            return "Preview first"
-        }
-        if !loadedPreview.diff.hasChanges {
-            return "No changes to apply"
-        }
-        return "Apply previewed changes"
     }
 
     private var matchSummary: String {
@@ -493,6 +475,12 @@ struct ManifestYAMLView: View {
         }
 
         editSearchNavigationToken += 1
+    }
+
+    private func focusEditSearch() {
+        DispatchQueue.main.async {
+            isEditSearchFocused = true
+        }
     }
 
     private func closeExpandedPreviewAndConfirmApply() {
@@ -1047,9 +1035,10 @@ private struct ManifestYAMLEditorView: NSViewRepresentable {
     var searchQuery: String = ""
     var selectedSearchOrdinal: Int?
     var searchNavigationToken: Int = 0
+    var onFindShortcut: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
+        Coordinator(text: $text, onFindShortcut: onFindShortcut)
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -1068,6 +1057,7 @@ private struct ManifestYAMLEditorView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
+        context.coordinator.onFindShortcut = onFindShortcut
         context.coordinator.setText(text, in: webView)
         context.coordinator.setSearch(
             query: searchQuery,
@@ -1365,7 +1355,6 @@ window.vibekubeSelectSearch = function(query, ordinal) {
     }
 
     const end = found + query.length;
-    editor.focus({ preventScroll: true });
     editor.setSelectionRange(found, end);
 
     const line = editor.value.slice(0, found).split("\n").length - 1;
@@ -1389,7 +1378,10 @@ editor.addEventListener("click", updateCurrentLine);
 editor.addEventListener("select", updateCurrentLine);
 
 editor.addEventListener("keydown", event => {
-    if (event.key === "Tab") {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "f") {
+        event.preventDefault();
+        window.webkit.messageHandlers.editor.postMessage({ type: "find" });
+    } else if (event.key === "Tab") {
         event.preventDefault();
         replaceSelection("  ");
     } else if (event.key === "Enter") {
@@ -1425,14 +1417,16 @@ window.webkit.messageHandlers.editor.postMessage({ type: "ready" });
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         @Binding private var text: String
         weak var webView: WKWebView?
+        var onFindShortcut: (() -> Void)?
         private var isLoaded = false
         private var pendingText: String?
         private var renderedText: String?
         private var pendingSearch: (query: String, ordinal: Int?)?
         private var renderedSearchToken = 0
 
-        init(text: Binding<String>) {
+        init(text: Binding<String>, onFindShortcut: (() -> Void)?) {
             _text = text
+            self.onFindShortcut = onFindShortcut
         }
 
         func setText(_ value: String, in webView: WKWebView) {
@@ -1496,6 +1490,13 @@ window.webkit.messageHandlers.editor.postMessage({ type: "ready" });
                         navigationToken: renderedSearchToken + 1,
                         in: webView
                     )
+                }
+                return
+            }
+
+            if type == "find" {
+                DispatchQueue.main.async {
+                    self.onFindShortcut?()
                 }
                 return
             }
